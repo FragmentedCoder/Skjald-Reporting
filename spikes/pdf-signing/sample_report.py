@@ -24,6 +24,7 @@ html { font-family: 'IBM Plex Sans'; font-size: 10.5pt; line-height: 1.55; color
 h1, h2, h3 { font-family: 'Marcellus'; font-weight: 400; color: #0F1B2D; }
 h1 { font-size: 26pt; line-height: 1.15; margin: 0 0 6pt; }
 h2 { font-size: 16pt; margin: 22pt 0 6pt; }
+h3 { font-size: 12.5pt; margin: 16pt 0 4pt; }
 .overline { font-weight: 600; font-size: 8pt; letter-spacing: 0.12em; color: #5B6675; }
 .lead { font-size: 12pt; color: #5B6675; }
 .mark { width: 34pt; height: 34pt; margin-bottom: 18pt; }
@@ -35,7 +36,14 @@ code, .mono { font-family: 'IBM Plex Mono'; font-weight: 500; font-size: 9pt; }
 .critical { background: #F9E3E0; color: #A3352A; }
 .warning { background: #FBEFD9; color: #8A5A12; }
 .ok { background: #E3F1E8; color: #2F6B47; }
-.signoff { page-break-before: always; }
+/* Readability: every major section starts on its own page, and nothing awkward splits */
+.major { break-before: page; }
+.major > .overline + h2 { margin-top: 4pt; }
+h2, h3 { break-after: avoid; }
+tr, .pill, .callout { break-inside: avoid; }
+thead { display: table-header-group; }
+p { orphans: 3; widows: 3; }
+.callout { border: 0.5pt solid #E5E5E5; border-radius: 6pt; background: #EFEFEF; padding: 8pt 10pt; margin: 10pt 0; }
 .sigrow { margin-top: 18pt; display: flex; gap: 12pt; }
 .sigbox { width: 150pt; height: 72pt; border: 0.75pt dashed #8A94A3; border-radius: 6pt; }
 .draft { position: fixed; top: 95mm; left: 0; width: 100%; text-align: center; font: 600 96pt 'IBM Plex Sans';
@@ -76,22 +84,45 @@ def report_html(draft: bool) -> str:
 breach list. Twelve accounts were locked automatically; no account was taken over. The attacking addresses were
 blocked at the firewall at 04:05, and all affected users have reset their passwords. Æ, ø and å render correctly.</p>
 
-<h2>Attacking addresses</h2>
-<table>
-  <tr><th>Address</th><th>Attempts</th><th>Status</th></tr>
-  <tr><td class="mono">198.51.100.23</td><td>1 204</td><td><span class="pill ok">Blocked</span></td></tr>
-  <tr><td class="mono">203.0.113.77</td><td>611</td><td><span class="pill ok">Blocked</span></td></tr>
-  <tr><td class="mono">2001:db8::5</td><td>27</td><td><span class="pill warning">Monitoring</span></td></tr>
-</table>
+<section class="major">
+  <div class="overline">SECTION 2</div>
+  <h2>Timeline</h2>
+  <table>
+    <thead><tr><th>Time (CEST)</th><th>Event</th></tr></thead>
+    <tr><td class="mono">2026-10-21 03:14</td><td>First failed sign-in from 198.51.100.23</td></tr>
+    <tr><td class="mono">2026-10-21 03:21</td><td>Monitoring alert: sign-in failures above threshold</td></tr>
+    <tr><td class="mono">2026-10-21 03:38</td><td>On-call technician starts investigation</td></tr>
+    <tr><td class="mono">2026-10-21 04:02</td><td>Last attempt recorded</td></tr>
+    <tr><td class="mono">2026-10-21 04:05</td><td>Both addresses blocked at the firewall</td></tr>
+    <tr><td class="mono">2026-10-21 09:30</td><td>Customer informed; password resets started</td></tr>
+  </table>
+</section>
 
-<!-- The renderer must refuse this: no network access, ever. -->
-<img class="blocked-image" src="http://198.51.100.200/tracker.png" alt="">
+<section class="major">
+  <div class="overline">SECTION 3</div>
+  <h2>Attacking addresses</h2>
+  <table>
+    <thead><tr><th>Address</th><th>Attempts</th><th>Status</th></tr></thead>
+    <tr><td class="mono">198.51.100.23</td><td>1 204</td><td><span class="pill ok">Blocked</span></td></tr>
+    <tr><td class="mono">203.0.113.77</td><td>611</td><td><span class="pill ok">Blocked</span></td></tr>
+    <tr><td class="mono">2001:db8::5</td><td>27</td><td><span class="pill warning">Monitoring</span></td></tr>
+  </table>
+  <!-- The renderer must refuse this: no network access, ever. -->
+  <img class="blocked-image" src="http://198.51.100.200/tracker.png" alt="">
+</section>
 
-<h2>Actions taken</h2>
-<p>Firewall rules added for both addresses; rate limiting tightened on the portal; MFA enforcement brought forward
-for all portal users. Log excerpt: <code>2026-10-21T03:14:07Z auth fail user=a.berg src=198.51.100.23</code></p>
+<section class="major">
+  <div class="overline">SECTION 4</div>
+  <h2>Actions taken</h2>
+  <p>Firewall rules were added for both addresses, rate limiting was tightened on the portal, and MFA enforcement
+  was brought forward for all portal users.</p>
+  <div class="callout">Log excerpt: <code>2026-10-21T03:14:07Z auth fail user=a.berg src=198.51.100.23</code></div>
+  <h3>Recommendations</h3>
+  <p>Require MFA for every portal account by 2026-11-01, add the breach-list check to password changes, and review
+  the alert threshold so a similar attack raises an alarm within five minutes.</p>
+</section>
 
-<section class="signoff">
+<section class="major">
   <div class="overline">SIGN-OFF</div>
   <h2>Signatures</h2>
   <p>This report is signed by the technician, countersigned by the reviewer and sealed by Nordlys IT ApS.

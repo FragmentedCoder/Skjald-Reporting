@@ -64,7 +64,7 @@ Technicians check out a section or a whole report before editing. Administrators
 A template has three tabs:
 
 - **Questions** — the form a technician fills in: fields, validation, defaults and repeating groups.
-- **Layout** — the document, built by drag and drop: cover, headings, rich text with variables, tables bound to repeating groups, images, conditional and repeated sections, table of contents, signature blocks.
+- **Layout** — the document, built by drag and drop: cover, headings, rich text with variables, tables bound to repeating groups, images, conditional and repeated sections, table of contents, signature blocks. Every major section starts on its own page by default (a per-section setting), headings are never left alone at the foot of a page, table rows never split and table headers repeat on each page.
 - **Data** — what the template can read: company, customer, project, report, answers, lookup tables and calculated values.
 
 ### Logic and the Skjald Expression Language (SEL)
