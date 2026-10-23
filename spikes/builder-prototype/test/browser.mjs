@@ -156,13 +156,21 @@ const ok = (name, cond, detail = '') => { results.push({name, pass: !!cond, deta
   ok('system dark preference applies', (await sys.evaluate(() => getComputedStyle(document.body).backgroundColor)) === 'rgb(11, 20, 32)')
 
   // Phone width: no horizontal page scroll on any tab.
-  const phone = await browser.newPage({viewport: {width: 390, height: 844}, isMobile: true, hasTouch: true})
-  for (const tab of ['questions', 'layout', 'data', 'preview']) {
-    await phone.goto(file + '#' + tab)
-    await phone.waitForTimeout(150)
-    const [sw, cw] = await phone.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth])
-    ok(`phone width, ${tab}: no horizontal scroll`, sw <= cw, `${sw} > ${cw}`)
-    await phone.screenshot({path: `${out}/phone-${tab}.png`, fullPage: true})
+  for (const width of [390, 360]) {
+    const phone = await browser.newPage({viewport: {width, height: 800}, isMobile: true, hasTouch: true})
+    for (const tab of ['questions', 'layout', 'data', 'preview']) {
+      await phone.goto(file + '#' + tab)
+      await phone.waitForTimeout(150)
+      await phone.evaluate(() => document.fonts.ready)
+      const [sw, cw, widest] = await phone.evaluate(() => {
+        const cw = document.documentElement.clientWidth
+        const widest = [...document.querySelectorAll('body *')].filter((e) => e.getBoundingClientRect().right > cw + 0.5)
+          .map((e) => `${e.tagName.toLowerCase()}.${[...e.classList][0] ?? ''}`).slice(-3).join(', ')
+        return [document.documentElement.scrollWidth, cw, widest]
+      })
+      ok(`phone width ${width}px, ${tab}: no horizontal scroll`, sw <= cw, `${sw} > ${cw}: ${widest}`)
+      if (width === 390) await phone.screenshot({path: `${out}/phone-${tab}.png`, fullPage: true})
+    }
   }
 
   ok('no network requests', requests.length === 0, requests.join(', '))

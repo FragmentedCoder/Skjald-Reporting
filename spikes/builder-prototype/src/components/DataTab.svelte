@@ -73,7 +73,7 @@
           <div class="calc-head"><span class="mono">{c.name}</span><span class="muted">{c.label}</span></div>
           <label class="sr" for="calc-{i}">Expression for {c.label}</label>
           <textarea id="calc-{i}" class="input mono" rows="2" value={c.expr} oninput={(e) => setComputed(i, {expr: e.currentTarget.value})}></textarea>
-          {#if r.ok}<span class="pill ok">Result: {show(r.value)}</span>{:else}<span class="pill critical">Error: {r.error}</span>{/if}
+          {#if r.ok}<span class="pill ok">Result: {show(r.value)}</span>{:else}<span class="pill critical wrap">Error: {r.error}</span>{/if}
         </div>
       {/each}
     </div>

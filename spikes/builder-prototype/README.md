@@ -36,7 +36,7 @@ This is a throwaway prototype for phase 0, not the start of the real frontend. N
 npm ci
 npm test               # pagination, variables and CEL rules (Node)
 npm run build          # dist/index.html, plus dist/artifact.html as a page fragment
-npm run check:browser  # 35 checks in Chromium, screenshots in dist/shots
+npm run check:browser  # 39 checks in Chromium, screenshots in dist/shots
 npm run dev            # live development server
 ```
 

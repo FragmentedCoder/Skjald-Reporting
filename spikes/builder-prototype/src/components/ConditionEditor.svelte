@@ -62,7 +62,7 @@
       <span class="overline">Stored as CEL</span>
       <code class="mono">{expr}</code>
       {#if result && !result.ok}
-        <span class="pill critical">Error: {result.error}</span>
+        <span class="pill critical wrap">Error: {result.error}</span>
       {:else if result}
         <span class="pill {result.value ? 'ok' : 'plain'}">{result.value ? 'Shown' : 'Hidden'} with the sample answers</span>
       {/if}

@@ -88,6 +88,8 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 400; text-wrap: bala
 .pill.critical { background: var(--critical-bg); color: var(--critical-text); }
 .pill.info { background: var(--info-bg); color: var(--info-text); }
 .pill.plain { background: var(--surface-subtle); color: var(--text-muted); }
+/* Pills that carry a sentence, such as a rule, may wrap on narrow screens */
+.pill.wrap { white-space: normal; border-radius: var(--radius-sm); }
 
 .field { display: grid; gap: 4px; }
 .field > label, .field > .label { font-size: 12.5px; font-weight: 600; color: var(--text); }

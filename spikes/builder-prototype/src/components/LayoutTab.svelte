@@ -85,7 +85,7 @@
               </div>
               <div class="chips">
                 {#if block.newPage}<span class="pill info">Starts a new page</span>{/if}
-                {#if block.showWhen}<span class="pill warning">Only when: {describeRule(block.showWhen, doc.questions)}</span>{/if}
+                {#if block.showWhen}<span class="pill warning wrap">Only when: {describeRule(block.showWhen, doc.questions)}</span>{/if}
               </div>
             {:else if block.kind === 'heading'}
               <h4>{block.text}</h4>
@@ -108,7 +108,7 @@
               </div>
             {/if}
             {#if block.kind !== 'section' && block.showWhen}
-              <span class="pill warning when">Only when: {describeRule(block.showWhen, doc.questions)}</span>
+              <span class="pill warning wrap when">Only when: {describeRule(block.showWhen, doc.questions)}</span>
             {/if}
           </div>
         {/each}

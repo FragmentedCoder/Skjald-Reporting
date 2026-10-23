@@ -73,7 +73,7 @@
           <span class="chips">
             {#if q.required}<span class="pill plain">Required</span>{/if}
             {#if q.type === 'secret'}<span class="pill info">Masked</span>{/if}
-            {#if q.showWhen}<span class="pill warning">Only when: {describeRule(q.showWhen, doc.questions)}</span>{/if}
+            {#if q.showWhen}<span class="pill warning wrap">Only when: {describeRule(q.showWhen, doc.questions)}</span>{/if}
           </span>
         </li>
       {/each}

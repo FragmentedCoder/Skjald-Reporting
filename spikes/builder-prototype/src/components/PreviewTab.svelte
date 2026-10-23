@@ -75,7 +75,7 @@
 
             {#each page.items as {block, number, rule} (block.id)}
               <div class="item" class:rule-error={rule.error}>
-                {#if rule.error}<span class="pill critical">Rule error: {rule.error}</span>{/if}
+                {#if rule.error}<span class="pill critical wrap">Rule error: {rule.error}</span>{/if}
                 {#if block.kind === 'section'}
                   <h2 class="section"><span class="num">{number}</span>{block.title}</h2>
                 {:else if block.kind === 'heading'}
@@ -143,7 +143,7 @@
           <span class="where">{r.where}</span>
           <span class="desc">Only when {describeRule(r.rule, doc.questions)}</span>
           <code class="mono">{r.result.expr}</code>
-          {#if !r.result.ok}<span class="pill critical">Error: {r.result.error}</span>
+          {#if !r.result.ok}<span class="pill critical wrap">Error: {r.result.error}</span>
           {:else}<span class="pill {r.result.value ? 'ok' : 'plain'}">{r.result.value ? 'True: shown' : 'False: hidden'}</span>{/if}
         </div>
       {:else}
