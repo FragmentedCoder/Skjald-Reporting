@@ -1,8 +1,15 @@
-"""Compare results/*.json against the expectations in cases.json and print a Markdown table."""
+"""Compare results/*.json against the expectations in cases.json and print a Markdown table.
+
+With --check, exit non-zero unless the server engine passes everything and the browser engine
+fails only the built-in matches() cases that Skjald does not allow in templates.
+"""
 
 import json
 import math
 import pathlib
+import sys
+
+ALLOWED_JS_FAILURES = {"regex_lookahead", "regex_redos"}  # built-in matches(); templates use re_match()
 
 HERE = pathlib.Path(__file__).parent
 SPEC = json.loads((HERE / "cases.json").read_text())
@@ -44,6 +51,20 @@ def main() -> None:
         print(f"| {case['need']} | " + " | ".join(cells) + " |")
     count = len(SPEC["cases"])
     print("| **Passed** | " + " | ".join(f"**{totals[n]} / {count}**" for n in ENGINES) + " |")
+
+    if "--check" in sys.argv:
+        problems = []
+        for case in SPEC["cases"]:
+            if "google" in RESULTS and not verdict(case, RESULTS["google"][case["id"]])[0]:
+                problems.append(f"server engine failed {case['id']}")
+            if ("js" in RESULTS and case["id"] not in ALLOWED_JS_FAILURES
+                    and not verdict(case, RESULTS["js"][case["id"]])[0]):
+                problems.append(f"browser engine failed {case['id']}")
+        if not {"google", "js"} <= set(RESULTS):
+            problems.append("results for both the google and js engines are required")
+        if problems:
+            print("\n".join(problems))
+            sys.exit(1)
 
 
 if __name__ == "__main__":

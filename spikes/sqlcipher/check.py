@@ -17,7 +17,6 @@ from __future__ import annotations
 import argparse
 import json
 import multiprocessing as mp
-import os
 import pathlib
 import secrets
 import sqlite3
