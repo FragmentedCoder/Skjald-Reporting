@@ -67,11 +67,11 @@ A template has three tabs:
 - **Layout** — the document, built by drag and drop: cover, headings, rich text with variables, tables bound to repeating groups, images, conditional and repeated sections, table of contents, signature blocks. Every major section starts on its own page by default (a per-section setting), headings are never left alone at the foot of a page, table rows never split and table headers repeat on each page.
 - **Data** — what the template can read: company, customer, project, report, answers, lookup tables and calculated values.
 
-### Logic and the Skjald Expression Language (SEL)
+### Logic and CEL
 
-Rules combine a condition (comparisons, ranges, AND / OR / XOR / NOT, IF / ELSE IF / ELSE, SWITCH, regular expressions) with actions (show or hide questions, sections and pages; set values; replace text; apply styles). A visual rule builder writes SEL, which power users can also edit as text.
+Rules combine a condition (comparisons, ranges, AND / OR / XOR / NOT, IF / ELSE IF / ELSE, SWITCH, regular expressions) with actions (show or hide questions, sections and pages; set values; replace text; apply styles). A visual rule builder writes the expressions in CEL, the Common Expression Language; power users can also edit them as text.
 
-SEL has no general loops, no file or network access and no code execution. Expressions have limits on size, steps and run time, and regular expressions use linear-time (RE2) semantics. The same SEL runs in the browser for the live form and on the server for the final render, kept identical by a shared conformance test suite. Phase 0 decides between writing SEL and adopting CEL.
+CEL has no general loops, no file or network access and no code execution. The server evaluates with Google's official engine (cel-expr-python); the browser uses cel-js for the live form and preview. Skjald adds a small function library to both: `xor`, `switch`, `re_match`, `re_replace`, `replace`, `sum`, `lookup` and date helpers. Regular expressions go only through `re_match` and `re_replace`, which use RE2 on both sides (linear time, identical syntax); the template validator rejects CEL's built-in `matches()`. Browser evaluation runs in a Web Worker with a time limit. A shared test file runs both engines in CI ([the expression-language spike](../spikes/expression-language/README.md) has the results).
 
 ### Versions and translation
 
@@ -192,9 +192,9 @@ docs/        documentation and brand assets
 
 | Step | Scope |
 | --- | --- |
-| Phase 0 | Repository, CI and signed builds; design tokens; spikes for SEL vs CEL, PDF/A with several signatures, SQLCipher and the drag-and-drop builder |
+| Phase 0 | Repository, CI and signed builds; design tokens; spikes for the expression language (CEL chosen), PDF/A with several signatures, SQLCipher and the drag-and-drop builder |
 | Phase 1 | Installer and setup wizard, local sign-in with MFA, roles and assignments, admin panel, customers and projects, keys, audit log, backups |
-| Phase 2 | Template builder: tabs, field types, rules and SEL, lookup library, styles and page designer, preview, versions, template files |
+| Phase 2 | Template builder: tabs, field types, rules in CEL, lookup library, styles and page designer, preview, versions, template files |
 | Phase 3 | Reports end to end: editor with checkout, uploads, review, rendering, signing, delivery, archive, retention, three built-in templates |
 | 1.0 | Release gate: one-command install, ASVS Level 2 test plan passes, restore test green, all built-in templates sign end to end |
 | 1.1 | Bifrost secure links |
