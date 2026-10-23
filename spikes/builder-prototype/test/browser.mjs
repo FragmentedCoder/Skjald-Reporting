@@ -169,5 +169,10 @@ const ok = (name, cond, detail = '') => { results.push({name, pass: !!cond, deta
   ok('no console errors or warnings', errors.length === 0, errors.join(' || '))
   await browser.close()
   for (const r of results) console.log(`${r.pass ? 'PASS' : 'FAIL'}  ${r.name}${r.pass || !r.detail ? '' : `  (${r.detail})`}`)
+  // In GitHub Actions, failures also become annotations, which show on the pull request without opening the log.
+  if (process.env.GITHUB_ACTIONS) {
+    const clean = (s) => String(s).replace(/%/g, '%25').replace(/\r?\n/g, ' ').slice(0, 900)
+    for (const r of results.filter((x) => !x.pass)) console.log(`::error title=Browser check failed::${clean(r.name)}${r.detail ? ` (${clean(r.detail)})` : ''}`)
+  }
   process.exitCode = results.every((r) => r.pass) ? 0 : 1
 })()
