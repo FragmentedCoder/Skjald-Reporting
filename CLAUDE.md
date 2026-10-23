@@ -4,9 +4,9 @@ Skjald is a self-hosted report builder that stores sensitive customer data. Read
 
 ## Workflow
 
-- Work on a feature branch and open a pull request; never push to `main`.
-- Keep pull requests focused and describe how the change was tested.
-- Batch fixes into fewer, larger pull requests rather than many tiny ones; CI minutes are shared.
+- One branch per phase or larger milestone (for example `phase-0`), with many small, focused commits; never push to `main`.
+- Open the pull request as a draft early so progress can be followed, and mark it ready only when everything in it is tested.
+- Describe in the pull request what changed and how it was tested.
 
 ## Rules that always apply
 
