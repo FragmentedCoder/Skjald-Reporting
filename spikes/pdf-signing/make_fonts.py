@@ -1,10 +1,10 @@
 """Turn the Fontsource npm packages into the TTF files the spike needs.
 
-    npm pack @fontsource/marcellus @fontsource/ibm-plex-sans @fontsource/ibm-plex-mono
+    npm pack @fontsource/marcellus @fontsource/ibm-plex-sans @fontsource/ibm-plex-mono @fontsource/mr-dafoe
     for f in fontsource-*.tgz; do mkdir -p "${f%.tgz}" && tar -xzf "$f" -C "${f%.tgz}"; done
     python make_fonts.py <folder with the unpacked packages> fonts/
 
-All three families are licensed under the SIL Open Font License 1.1. The spike uses the
+All four families are licensed under the SIL Open Font License 1.1. The spike uses the
 Latin subset (which includes æ, ø and å); the real product will bundle the full fonts.
 """
 
@@ -19,6 +19,8 @@ FILES = {
     "IBMPlexSans-Medium.ttf": "fontsource-ibm-plex-sans-*/package/files/ibm-plex-sans-latin-500-normal.woff2",
     "IBMPlexSans-SemiBold.ttf": "fontsource-ibm-plex-sans-*/package/files/ibm-plex-sans-latin-600-normal.woff2",
     "IBMPlexMono-Medium.ttf": "fontsource-ibm-plex-mono-*/package/files/ibm-plex-mono-latin-500-normal.woff2",
+    # Handwriting-style font for generated signatures
+    "MrDafoe-Regular.ttf": "fontsource-mr-dafoe-*/package/files/mr-dafoe-latin-400-normal.woff2",
 }
 
 

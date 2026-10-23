@@ -81,6 +81,13 @@ Published template versions are frozen. Templates move between installs as `.skj
 
 Every report gets a PAdES signature with an RFC 3161 timestamp from an independent timestamp service and embedded revocation data, plus a visible signature block. Each template sets who signs: the company seal, the technician, or the technician followed by a reviewer. All signature fields, including the lock on the last one, are created before the first signature.
 
+The visible part of each signature is set per signer in the template:
+
+- **Handwritten** — the signer's own signature above their name, role and signing time. Each user sets it up once in their profile: drawn in the browser, uploaded as a scan, or generated from their name in a handwriting-style font. It is stored encrypted and used only after MFA.
+- **Stamp** — a company stamp with company name, role, signing time and report number, in the company brand.
+
+Appearances are small HTML templates rendered by the same renderer as the reports, so they use the brand fonts and colours and keep the PDF/A output valid.
+
 Signing runs in a separate **signer** container that holds the keys; the web-facing app never does. Keys are stored encrypted under the master key, and a user's key is used only after that user passes MFA. Certificates come from Skjald's built-in signing CA or from a commercial document-signing certificate, through a CSR flow so private keys never leave the server. The signer reaches keys through one interface, so a PKCS#11 HSM backend can be added later.
 
 ## Delivery

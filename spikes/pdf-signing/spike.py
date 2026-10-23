@@ -36,10 +36,8 @@ from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 from pyhanko import stamp
 from pyhanko.keys import load_cert_from_pemder, load_private_key_from_pemder
 from pyhanko.pdf_utils import generic
-from pyhanko.pdf_utils.font.opentype import GlyphAccumulatorFactory
 from pyhanko.pdf_utils.incremental_writer import IncrementalPdfFileWriter
 from pyhanko.pdf_utils.reader import PdfFileReader
-from pyhanko.pdf_utils.text import TextBoxStyle
 from pyhanko.pdf_utils.writer import copy_into_new_writer
 from pyhanko.sign import fields, signers
 from pyhanko.sign.signers.pdf_signer import PdfSignatureMetadata, PdfSigner
@@ -51,6 +49,7 @@ from weasyprint import CSS, HTML
 from weasyprint.text.fonts import FontConfiguration
 from weasyprint.urls import URLFetcher, URLFetchingError
 
+import appearances
 from sample_report import REPORT_CSS, report_html
 
 # RFC 9336 id-kp-documentSigning
@@ -186,18 +185,19 @@ def make_pki(folder: pathlib.Path) -> dict[str, pathlib.Path]:
 
 
 ROLES = [
-    # (anchor id, PDF field name, person file prefix, role label, locks the document)
-    ("sig-technician", "Sig_Technician", "technician", "Technician", False),
-    ("sig-reviewer", "Sig_Reviewer", "reviewer", "Reviewer", False),
-    ("sig-company", "Sig_Company", "company", "Company seal", True),
+    # (anchor id, PDF field name, person file prefix, role label, locks the document, appearance, display name)
+    ("sig-technician", "Sig_Technician", "technician", "Technician", False, "handwritten", "Freja Holm"),
+    ("sig-reviewer", "Sig_Reviewer", "reviewer", "Reviewer", False, "handwritten", "Ivar Lund"),
+    ("sig-company", "Sig_Company", "company", "Company seal", True, "stamp", "Nordlys IT ApS"),
 ]
+COMPANY, REPORT_NO = "Nordlys IT ApS", "INC-2026-0142"
 
 
 def add_signature_fields(pdf: bytes, boxes, password: str | None = None) -> bytes:
     w = IncrementalPdfFileWriter(io.BytesIO(pdf))
     if password:
         w.encrypt(password)
-    for anchor, field_name, _, _, locks in ROLES:
+    for anchor, field_name, _, _, locks, _, _ in ROLES:
         page, box = boxes[anchor]
         fields.append_signature_field(w, fields.SigFieldSpec(
             field_name, on_page=page, box=box,
@@ -209,18 +209,24 @@ def add_signature_fields(pdf: bytes, boxes, password: str | None = None) -> byte
     return out.getvalue()
 
 
-def sign_once(pdf: bytes, field_name: str, role: str, signer, tsa, vc, font: pathlib.Path,
+def appearance_style(kind: str, role: str, name: str, box, fonts: pathlib.Path, folder: pathlib.Path):
+    """Render this signer's appearance as a one-page PDF the size of the box, for pyHanko to place."""
+    when = dt.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M %Z")
+    if kind == "stamp":
+        body = appearances.stamp_html(COMPANY, role, name, when, REPORT_NO)
+    else:
+        body = appearances.handwritten_html(name, name, role, when)
+    size = (box[2] - box[0], box[3] - box[1])
+    path = appearances.render_appearance(body, size, fonts, LocalOnlyFetcher(fonts),
+                                         folder / f"{role.lower().replace(' ', '-')}.pdf")
+    return stamp.StaticStampStyle.from_pdf_file(str(path), border_width=0)
+
+
+def sign_once(pdf: bytes, field_name: str, role: str, signer, tsa, vc, style,
               password: str | None = None) -> bytes:
     w = IncrementalPdfFileWriter(io.BytesIO(pdf))
     if password:
         w.encrypt(password)
-    style = stamp.TextStampStyle(
-        stamp_text="%(role)s\n%(signer)s\n%(ts)s",
-        text_box_style=TextBoxStyle(font=GlyphAccumulatorFactory(str(font), font_size=8), font_size=8,
-                                    text_color=(0.059, 0.106, 0.176)),  # Midnat #0F1B2D
-        border_width=0,  # the report's own dashed box frames the stamp
-        timestamp_format="%Y-%m-%d %H:%M %Z",
-    )
     meta = PdfSignatureMetadata(
         field_name=field_name,
         md_algorithm="sha256",
@@ -232,18 +238,19 @@ def sign_once(pdf: bytes, field_name: str, role: str, signer, tsa, vc, font: pat
     )
     pdf_signer = PdfSigner(meta, signer=signer, timestamper=tsa, stamp_style=style)
     out = io.BytesIO()
-    pdf_signer.sign_pdf(w, output=out, appearance_text_params={"role": role})
+    pdf_signer.sign_pdf(w, output=out)
     return out.getvalue()
 
 
-def sign_all(pdf: bytes, pki, tsa, vc, font, password=None) -> tuple[list[bytes], list[float]]:
+def sign_all(pdf: bytes, pki, tsa, vc, boxes, fonts, folder, password=None) -> tuple[list[bytes], list[float]]:
     revisions, seconds = [], []
     current = pdf
-    for _, field_name, prefix, role, _ in ROLES:
+    for anchor, field_name, prefix, role, _, kind, name in ROLES:
         signer = signers.SimpleSigner.load(
             str(pki[f"{prefix}.key"]), str(pki[f"{prefix}.cert"]), ca_chain_files=(str(pki["root.cert"]),))
         start = time.perf_counter()
-        current = sign_once(current, field_name, role, signer, tsa, vc, font, password)
+        style = appearance_style(kind, role, name, boxes[anchor][1], fonts, folder)
+        current = sign_once(current, field_name, role, signer, tsa, vc, style, password)
         seconds.append(time.perf_counter() - start)
         revisions.append(current)
     return revisions, seconds
@@ -348,7 +355,6 @@ def main() -> None:
     args = parser.parse_args()
     out, fonts = args.out, args.fonts.resolve()
     out.mkdir(parents=True, exist_ok=True)
-    plex = fonts / "IBMPlexSans-Regular.ttf"
     report: dict = {}
 
     # 1. Render
@@ -376,7 +382,7 @@ def main() -> None:
 
     # 3. Three signatures in a row
     prepared = add_signature_fields(final_pdf, boxes)
-    revisions, seconds = sign_all(prepared, pki, tsa, vc, plex)
+    revisions, seconds = sign_all(prepared, pki, tsa, vc, boxes, fonts, out / "appearances")
     for i, rev in enumerate(revisions, start=1):
         (out / f"3-signed-{i}-{ROLES[i - 1][2]}.pdf").write_bytes(rev)
     signed = revisions[-1]
@@ -414,7 +420,8 @@ def main() -> None:
     encrypted = io.BytesIO()
     copy_writer.write(encrypted)
     prepared_b = add_signature_fields(encrypted.getvalue(), boxes, DELIVERY_PASSWORD)
-    revisions_b, seconds_b = sign_all(prepared_b, pki, tsa, vc, plex, DELIVERY_PASSWORD)
+    revisions_b, seconds_b = sign_all(prepared_b, pki, tsa, vc, boxes, fonts, out / "appearances",
+                                      DELIVERY_PASSWORD)
     (out / "5b-encrypted-then-signed.pdf").write_bytes(revisions_b[-1])
     report["protected_B_encrypt_then_sign"] = validate(revisions_b[-1], vc, DELIVERY_PASSWORD)
     report["protected_B_sign_seconds"] = [round(s, 3) for s in seconds_b]
