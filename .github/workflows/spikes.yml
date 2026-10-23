@@ -96,3 +96,30 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python check.py
       - run: python ci_check.py out/report.json
+
+  builder-prototype:
+    name: Template builder prototype
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: spikes/builder-prototype
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run check:browser
+      - name: Keep the build and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: builder-prototype
+          path: |
+            spikes/builder-prototype/dist/index.html
+            spikes/builder-prototype/dist/shots/
+          if-no-files-found: ignore
