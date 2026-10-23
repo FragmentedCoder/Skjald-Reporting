@@ -79,7 +79,7 @@ Published template versions are frozen. Templates move between installs as `.skj
 
 ## Signing
 
-Every report gets a PAdES signature with an RFC 3161 timestamp and embedded revocation data, plus a visible signature block. Each template sets who signs: the company seal, the technician, or the technician followed by a reviewer.
+Every report gets a PAdES signature with an RFC 3161 timestamp from an independent timestamp service and embedded revocation data, plus a visible signature block. Each template sets who signs: the company seal, the technician, or the technician followed by a reviewer. All signature fields, including the lock on the last one, are created before the first signature.
 
 Signing runs in a separate **signer** container that holds the keys; the web-facing app never does. Keys are stored encrypted under the master key, and a user's key is used only after that user passes MFA. Certificates come from Skjald's built-in signing CA or from a commercial document-signing certificate, through a CSR flow so private keys never leave the server. The signer reaches keys through one interface, so a PKCS#11 HSM backend can be added later.
 
@@ -92,7 +92,9 @@ Signing runs in a separate **signer** container that holds the keys; the web-fac
 | Password-protected PDF | 1.0 |
 | Secure link with access code, through Bifrost | 1.1 |
 
-Raw data travels beside the report as a separate encrypted bundle. The PDF/A original is kept; a password-protected copy is made only at delivery, because PDF/A does not allow encryption.
+Raw data travels beside the report as a separate encrypted bundle.
+
+The PDF/A original is never encrypted, because PDF/A does not allow it. Encrypting a signed PDF afterwards breaks every signature (shown in [the PDF signing spike](../spikes/pdf-signing/README.md)). So when a report enters signing and its template allows password-protected delivery, Skjald generates the delivery password, stores it encrypted with the customer key, and each signer signs both the original and an encrypted copy in one action.
 
 ### Bifrost, the delivery gateway
 
