@@ -48,7 +48,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD/out:/data" verapdf/cli --format text \
             /data/2-final-unsigned.pdf /data/3-signed-3-company.pdf | tee verapdf.txt
-          grep -q "^PASS" verapdf.txt
+          test "$(grep -c "^PASS" verapdf.txt)" -eq 2
           ! grep -q "^FAIL" verapdf.txt
       - name: Keep the PDFs and the veraPDF report
         if: always()
