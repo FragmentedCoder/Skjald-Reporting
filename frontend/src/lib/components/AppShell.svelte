@@ -1,6 +1,7 @@
 <script lang="ts">
   import { resolve } from "$app/paths";
   import { page } from "$app/state";
+  import Building from "@lucide/svelte/icons/building";
   import House from "@lucide/svelte/icons/house";
   import LogOut from "@lucide/svelte/icons/log-out";
   import Moon from "@lucide/svelte/icons/moon";
@@ -19,6 +20,8 @@
   const user = $derived((session.current ?? info).user);
   const current = $derived(session.current ?? info);
   const showAdmin = $derived(can(current, "administer") || can(current, "read_audit_log"));
+  // Every role sees some of the customers (all, assigned, names or metadata).
+  const showCustomers = $derived(current.user.roles.length > 0);
   const path = $derived(page.url.pathname);
 
   // Light or dark right now: the person's choice, or the device's when "system".
@@ -54,6 +57,13 @@
       <House size={16} aria-hidden="true" />
       Home
     </a>
+    {#if showCustomers}
+      <a href={resolve("/customers")}
+        aria-current={path.startsWith("/customers") || path.startsWith("/projects") ? "page" : undefined}>
+        <Building size={16} aria-hidden="true" />
+        Customers
+      </a>
+    {/if}
     {#if showAdmin}
       <a href={resolve("/admin")} aria-current={path.startsWith("/admin") ? "page" : undefined}>
         <Shield size={16} aria-hidden="true" />

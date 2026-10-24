@@ -84,7 +84,8 @@ test("the admin panel, from adding a user to their first sign-in", async ({ brow
   await expect(bjorn.getByRole("heading", { name: /Welcome/ })).toBeVisible();
   await adminMenu(admin, "Users").click();
   await admin.getByRole("button", { name: "Actions for Bjørn Havn" }).click();
-  await shot(admin, "7-row-menu");
+  // The visible screen only: a full-page capture resizes the window under the open menu.
+  await admin.screenshot({ path: "e2e-results/screens/admin-7-row-menu.png" });
   await admin.getByRole("menuitem", { name: "Reset multifactor…" }).click();
   await admin.getByRole("dialog").getByRole("button", { name: "Reset multifactor" }).click();
   await expect(toastWith(admin, "Bjørn Havn sets up multifactor again")).toBeVisible();

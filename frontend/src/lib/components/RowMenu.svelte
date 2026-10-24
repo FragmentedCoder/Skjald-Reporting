@@ -11,7 +11,7 @@
 
 <script lang="ts">
   import EllipsisVertical from "@lucide/svelte/icons/ellipsis-vertical";
-  import { tick } from "svelte";
+  import { onDestroy, tick } from "svelte";
 
   // A "⋮" button with a short menu of actions for one row. The menu is a popover:
   // the browser closes it on Escape or a click elsewhere, and it isn't clipped by
@@ -37,14 +37,24 @@
     if (event.newState === "open") menu.style.visibility = "hidden";
   }
 
+  // While open it follows its button when the page scrolls or resizes.
+  function follow(on: boolean) {
+    const method = on ? "addEventListener" : "removeEventListener";
+    window[method]("scroll", place, true);
+    window[method]("resize", place);
+  }
+
   async function toggled(event: ToggleEvent) {
     expanded = event.newState === "open";
+    follow(expanded);
     if (!expanded) return;
     place();
     menu.style.visibility = "visible";
     await tick();
     menu.querySelector<HTMLButtonElement>("[role=menuitem]")?.focus();
   }
+
+  onDestroy(() => follow(false));
 
   function choose(item: MenuItem) {
     menu.hidePopover();
