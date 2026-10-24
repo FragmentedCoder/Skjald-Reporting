@@ -1,7 +1,7 @@
 from alembic import context
 from sqlalchemy.engine import Connection
 
-import app.audit  # noqa: F401  (registers its tables on Base.metadata)
+import app.models  # noqa: F401
 from app.db import Base, get_engine
 
 if context.is_offline_mode():

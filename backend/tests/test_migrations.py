@@ -1,7 +1,7 @@
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
 
-import app.audit  # noqa: F401  (registers its tables on Base.metadata)
+import app.models  # noqa: F401
 from app.db import Base
 
 
