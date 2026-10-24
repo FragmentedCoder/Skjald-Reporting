@@ -5,9 +5,16 @@
   let {
     heading,
     intro,
+    eyebrow,
     children,
     footer,
-  }: { heading: string; intro?: string; children: Snippet; footer?: Snippet } = $props();
+  }: {
+    heading: string;
+    intro?: string;
+    eyebrow?: string;
+    children: Snippet;
+    footer?: Snippet;
+  } = $props();
 </script>
 
 <main class="page">
@@ -16,7 +23,10 @@
       <Mark size={40} />
       <span class="wordmark">Skjald</span>
     </header>
-    <h1 class="title">{heading}</h1>
+    <div class="heading">
+      {#if eyebrow}<p class="eyebrow muted">{eyebrow}</p>{/if}
+      <h1 class="title">{heading}</h1>
+    </div>
     {#if intro}<p class="muted">{intro}</p>{/if}
     {@render children()}
     {#if footer}
@@ -37,7 +47,7 @@
     flex-direction: column;
     gap: var(--space-4);
     width: 100%;
-    max-width: 420px;
+    max-width: 440px;
     padding: var(--space-8);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
@@ -51,6 +61,16 @@
   }
   .wordmark {
     font: var(--type-subheading);
+  }
+  .heading {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+  .eyebrow {
+    font: var(--type-overline);
+    letter-spacing: var(--type-overline-tracking);
+    text-transform: uppercase;
   }
   .footer {
     display: flex;

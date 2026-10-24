@@ -14,7 +14,7 @@
   onMount(() => {
     error = session.notice;
     session.notice = null;
-    settle((info) => info === null);
+    settle("/sign-in");
   });
 
   async function submit(event: SubmitEvent) {

@@ -2,12 +2,20 @@
   import LogOut from "@lucide/svelte/icons/log-out";
   import { onMount } from "svelte";
   import Mark from "$lib/components/Mark.svelte";
-  import { settle, signOut, type SessionInfo } from "$lib/session.svelte";
+  import { settle, signOut, type Role, type SessionInfo } from "$lib/session.svelte";
 
   let info = $state<SessionInfo | null>(null);
 
+  const ROLE_NAMES: Record<Role, string> = {
+    administrator: "Administrator",
+    report_designer: "Report designer",
+    technician: "Technician",
+    reviewer: "Reviewer",
+    auditor: "Auditor",
+  };
+
   onMount(async () => {
-    info = await settle((i) => i?.second_factor === "done");
+    info = await settle("/");
   });
 </script>
 
@@ -28,7 +36,12 @@
     </div>
   </header>
   <main class="content">
-    <h1 class="title">Welcome, {info.user.display_name}</h1>
+    <div class="heading">
+      <h1 class="title">Welcome, {info.user.display_name}</h1>
+      {#if info.user.roles.length}
+        <p class="small muted">{info.user.roles.map((r) => ROLE_NAMES[r]).join(", ")}</p>
+      {/if}
+    </div>
     <section class="empty">
       <p>The hall is quiet for now.</p>
       <p class="small muted">Customers, projects and reports will appear here.</p>
@@ -62,6 +75,11 @@
     max-width: 960px;
     margin: 0 auto;
     padding: var(--space-8) var(--space-6);
+  }
+  .heading {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
   }
   .empty {
     display: flex;

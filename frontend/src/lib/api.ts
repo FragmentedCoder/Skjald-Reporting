@@ -24,8 +24,13 @@ export function messageFrom(status: number, body: unknown): string {
   return FALLBACK;
 }
 
-export async function api<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
-  const headers: Record<string, string> = { Accept: "application/json" };
+export async function api<T>(
+  method: "GET" | "POST",
+  path: string,
+  body?: unknown,
+  extraHeaders: Record<string, string> = {},
+): Promise<T> {
+  const headers: Record<string, string> = { Accept: "application/json", ...extraHeaders };
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (method !== "GET" && csrfToken) headers["X-CSRF-Token"] = csrfToken;
 
