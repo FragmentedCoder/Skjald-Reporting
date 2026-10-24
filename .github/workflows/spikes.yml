@@ -23,11 +23,11 @@ jobs:
       run:
         working-directory: spikes/pdf-signing
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: "22"
       - name: System packages
@@ -68,7 +68,7 @@ jobs:
           ! grep -q "^FAIL" verapdf.txt
       - name: Keep the PDFs and the veraPDF report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: signed-sample-report
           path: |
@@ -84,11 +84,11 @@ jobs:
       run:
         working-directory: spikes/expression-language
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: "22"
       - run: pip install -r requirements.txt
@@ -105,8 +105,8 @@ jobs:
       run:
         working-directory: spikes/sqlcipher
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
       - run: pip install -r requirements.txt
@@ -121,8 +121,8 @@ jobs:
       run:
         working-directory: spikes/builder-prototype
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
         with:
           node-version: "22"
       - run: npm ci
@@ -132,7 +132,7 @@ jobs:
       - run: npm run check:browser
       - name: Keep the build and screenshots
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: builder-prototype
           path: |
