@@ -10,6 +10,10 @@
 		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
+		# The page's full CSP is a <meta> tag the frontend build writes (with script
+		# hashes); these are the parts only a header can carry.
+		Content-Security-Policy "frame-ancestors 'none'; object-src 'none'; base-uri 'none'"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
 		Referrer-Policy "same-origin"
 		-Server
 	}
