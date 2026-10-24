@@ -44,6 +44,26 @@ In the product the handwritten signature comes from the user's profile: drawn in
 
 So the design changes: when a report enters Signing and its template allows password-protected delivery, Skjald generates the delivery password, stores it encrypted with the customer key, and each signer signs both the PDF/A original and the encrypted copy in one action. The original stays unencrypted, because PDF/A does not allow encryption. The password is shown to the technician once, at delivery, as decided in D4.
 
+## Check a signed report
+
+`check_report.py` is the logic behind the "Check a signed report" tool, where a technician uploads a PDF someone sent back. It validates every signature with pyHanko and answers in plain words:
+
+| Question | How |
+| --- | --- |
+| Are the signatures intact and trusted? | Each signature's hash and certificate chain, against Skjald's trust roots |
+| When, and by whom? | Signer name and organisation from the certificate; time from the trusted timestamp |
+| Was anything changed after signing? | pyHanko's modification level: only later signatures, only validation data, annotations, or changed content |
+| Is it still PDF/A? | The PDF/A-3 marker in the XMP metadata |
+| Did Skjald issue this exact file? | Its SHA-256 against the archive of issued reports |
+
+| Sample | Verdict |
+| --- | --- |
+| The signed report | Valid: 3 signatures intact and trusted, issued as INC-2026-0142 |
+| A copy with one byte changed | Changed: all 3 signatures broken, not a file Skjald issued |
+| The unsigned PDF | Not signed |
+
+In the product this runs in the signer container; the uploaded file is checked and discarded, and each check is logged.
+
 ## Findings for the real build
 
 - **Create every signature field before the first signature.** The lock on the last field has to exist from the start; adding fields later counts as a change to signed content.
@@ -52,7 +72,7 @@ So the design changes: when a report enters Signing and its template allows pass
 
 ## Still to check
 
-- **veraPDF validation.** The sandbox could not download veraPDF, so the PDF/A checks above are markers, not a full validation. Run veraPDF in CI before Phase 1.
+- **veraPDF validation.** Done in CI: the unsigned and the signed PDF both pass PDF/A-3b.
 - **Adobe Acrobat.** Open the signed file in Acrobat Reader, trust the test root and confirm that all three signatures and the lock show as expected. ECDSA P-256 signatures and the RFC 9336 document-signing EKU should be accepted, but this needs a real check.
 
 ## Run it
@@ -63,6 +83,8 @@ npm pack @fontsource/marcellus @fontsource/ibm-plex-sans @fontsource/ibm-plex-mo
 for f in fontsource-*.tgz; do mkdir -p "${f%.tgz}" && tar -xzf "$f" -C "${f%.tgz}"; done
 .venv/bin/python make_fonts.py . fonts/
 .venv/bin/python spike.py --fonts fonts --out out
+.venv/bin/python check_report.py out/3-signed-3-company.pdf --trust out/pki/root.cert.pem --crl out/pki/ca.crl \
+    --issued out/3-signed-3-company.pdf=INC-2026-0142 --json out/check-signed.json
 ```
 
 `out/` gets the draft, the unsigned and signed PDFs, the tampered and encrypted variants, `report.json`, and a throw-away test PKI. Never commit `out/`; it holds private keys.

@@ -20,7 +20,7 @@ flowchart TD
     Project -->|has many| Report["Report<br/>revisions, signatures, deliveries"]
     subgraph Library
         Templates["Templates<br/>frozen published versions"]
-        Lookups["Lookup tables"]
+        Shared["Shared library<br/>variables, text snippets, data tables"]
         Styles["Styles"]
     end
     Library -->|pinned version, allowed style| Report
@@ -35,8 +35,8 @@ flowchart TD
 | Role | Can |
 | --- | --- |
 | Administrator | Everything, including all customers, users, policies, keys, backups and breaking checkouts |
-| Report Designer | Build templates, lookup tables, custom fields and styles |
-| Technician | Create projects and reports for assigned customers, fill them in, upload data, sign, deliver |
+| Report Designer | Build templates, custom fields and styles; edit the shared library |
+| Technician | Create projects and reports for assigned customers, fill them in, upload data, sign, deliver; add and change shared library entries; check signed reports |
 | Reviewer | Review and countersign reports for assigned customers |
 | Auditor | Read the audit log and report metadata |
 
@@ -61,13 +61,32 @@ Technicians check out a section or a whole report before editing. Administrators
 
 ## Templates
 
-A template has three tabs:
+Only Administrators and Report Designers see the template builder. It has three tabs, and every element in it is labelled with who sees it: **Form** (the technician, while filling in), **PDF** (the customer) or **Builder only**.
 
-- **Questions** — the form a technician fills in: fields, validation, defaults and repeating groups.
-- **Layout** — the document, built by drag and drop: cover, headings, rich text with variables, tables bound to repeating groups, images, conditional and repeated sections, table of contents, signature blocks. Every major section starts on its own page by default (a per-section setting), headings are never left alone at the foot of a page, table rows never split and table headers repeat on each page.
-- **Data** — what the template can read: company, customer, project, report, answers, lookup tables and calculated values.
+- **Questions** — the form a technician fills in, in steps: fields, help text, validation, defaults and repeating groups. Each question shows which PDF blocks print it.
+- **Layout** — the PDF, built by drag and drop from blocks: sections, headings, text with variables, answers, tables bound to repeating groups, images, callouts, sources, page breaks and signature boxes, plus the cover, table of contents and repeated sections. Every major section starts on its own page by default (a per-section setting), headings are never left alone at the foot of a page, table rows never split and table headers repeat on each page.
+- **Data** — every name a template can read, with what it is, where it comes from and an example: company, customer, project, report, answers, the shared library and calculated values, plus a reference for each function.
+
+A "Try it" view shows the technician's screen for the draft template, with sample answers, before it is published.
+
+Each block has its own settings, all printed in the PDF:
+
+| Block | Settings |
+| --- | --- |
+| Section | Title, an introduction under the heading, start on a new page, numbered or not |
+| Table | Rows from a repeating group, caption (numbered "Table 1"), which columns and in what order, text for no rows |
+| Image | A file uploaded with the template or a technician's photo, caption (numbered "Figure 1"), width; at most about 40% of the page height |
+| Callout | A named tone from the style (Info, Note, Warning, Critical, Success), or a custom colour; the text colour is picked for contrast and the builder warns below 4.5:1 |
+| Sources | Sources every report gets, plus the technician's own; printed as a numbered list |
+| Signatures | One to four boxes: who signs each, handwritten or stamp, label, side by side or stacked, signing date |
 
 The builder uses svelte-dnd-action for dragging from a palette and reordering, with click-to-add for touch screens and keyboard users. Renaming a question's variable updates every block, rule and calculated value that uses it. The preview and the renderer share the page rules: a visible section set to start on a new page begins one, a page-break block forces one, a hidden section takes its blocks with it, and no rule leaves an empty page. The preview shows A4 pages and flags a page that runs over; exact pagination is left to the renderer, which flows long content onto more pages. ([The builder prototype](../spikes/builder-prototype/README.md) has the details.)
+
+### Shared library
+
+Variables (such as the service desk phone number), text snippets (reusable paragraphs) and data tables (keys and values for `lookup()`) that every template and report can use, as `{{vars.name}}`, `{{text.name}}` and `lookup("table", "key")`. A snippet may use variables but not other snippets. Technicians can insert snippets into long answers.
+
+Report Designers and Technicians can add and change entries. Every change is versioned and written to the audit log, and Administrators can lock an entry. A report uses the current values until it is signed; the signed revision stores the values it used, so later edits never change a signed report.
 
 ### Logic and CEL
 
@@ -91,6 +110,10 @@ The visible part of each signature is set per signer in the template:
 Appearances are small HTML templates rendered by the same renderer as the reports, so they use the brand fonts and colours and keep the PDF/A output valid.
 
 Signing runs in a separate **signer** container that holds the keys; the web-facing app never does. Keys are stored encrypted under the master key, and a user's key is used only after that user passes MFA. Certificates come from Skjald's built-in signing CA or from a commercial document-signing certificate, through a CSR flow so private keys never leave the server. The signer reaches keys through one interface, so a PKCS#11 HSM backend can be added later.
+
+### Checking a signed report
+
+Any user can upload a PDF to check it, for example a report a customer sends back. The signer checks each signature and its timestamp, whether anything but later signatures and validation data was added after signing, whether the file is still PDF/A, and whether this exact file (by SHA-256) is a report Skjald issued. The upload goes through the usual upload checks (size limit, file type, virus scan), is checked and then discarded, and each check is logged. ([The signing spike](../spikes/pdf-signing/README.md) has the checker.)
 
 ## Delivery
 
@@ -136,7 +159,7 @@ Sign-ins, admin and permission changes, every view, download and export, secret 
 - The PDF renderer has no network, a read-only filesystem and CPU, memory and time limits.
 - Containers run as non-root with no extra capabilities.
 - Rich text and SVG are sanitised; the browser gets a strict Content-Security-Policy.
-- Secret fields are encrypted, masked by default, revealed only after MFA and always masked in PDFs.
+- Secret fields are encrypted and masked by default. A technician can reveal one for 30 seconds after an MFA check, and every reveal is logged. In the PDF a secret is printed partly — at most a quarter of its characters and at most three at each end, with a fixed run of dots that hides its length — or left out, per field. The customer gets the full value from the technician, by phone, or through a secure link from release 1.1.
 - Uploads are checked against an admin-managed file type blocklist (by extension and content) and scanned with ClamAV.
 
 ## Components
@@ -196,8 +219,8 @@ docs/        documentation and brand assets
 | --- | --- |
 | Phase 0 | Repository, CI and signed builds; design tokens; spikes for the expression language (CEL chosen), PDF/A with several signatures, SQLCipher and the drag-and-drop builder |
 | Phase 1 | Installer and setup wizard, local sign-in with MFA, roles and assignments, admin panel, customers and projects, keys, audit log, backups |
-| Phase 2 | Template builder: tabs, field types, rules in CEL, lookup library, styles and page designer, preview, versions, template files |
-| Phase 3 | Reports end to end: editor with checkout, uploads, review, rendering, signing, delivery, archive, retention, three built-in templates |
+| Phase 2 | Template builder: tabs, field types, block settings, rules in CEL, shared library, styles and page designer, "Try it" preview, versions, template files |
+| Phase 3 | Reports end to end: editor with checkout, uploads, review, rendering, signing, checking signed reports, delivery, archive, retention, three built-in templates |
 | 1.0 | Release gate: one-command install, ASVS Level 2 test plan passes, restore test green, all built-in templates sign end to end |
 | 1.1 | Bifrost secure links |
 | 1.2 | Active Directory and Entra ID sign-in, API tokens with IP allowlists, webhooks |

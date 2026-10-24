@@ -3,29 +3,30 @@
   import {OPERATORS, toCelExpression} from '../lib/cel.js'
   import {doc, templateData, ruleResult} from '../lib/state.svelte.js'
 
-  let {rule, onchange, idPrefix} = $props()
+  let {rule, onchange, idPrefix, self = null} = $props()
 
-  const usable = $derived(doc.questions.filter((q) => ['yesno', 'number', 'text', 'dropdown', 'ip', 'longtext'].includes(q.type)))
+  const usable = $derived(doc.questions.filter((q) => q.key !== self && ['yesno', 'number', 'text', 'dropdown', 'ip', 'longtext', 'secret', 'photo', 'datetime'].includes(q.type)))
   const question = $derived(rule ? doc.questions.find((q) => q.key === rule.field) : null)
   const ops = $derived(Object.entries(OPERATORS).filter(([, o]) => !question || o.types.includes(question.type)))
   const expr = $derived(rule ? toCelExpression(rule, doc.questions) : '')
   const result = $derived(rule ? ruleResult(rule, templateData(doc.answers)) : null)
+  const noValue = $derived(rule ? OPERATORS[rule.op]?.noValue : false)
 
   function enable(on) {
     if (!on) return onchange(null)
     const first = usable.find((q) => q.type === 'yesno') ?? usable[0]
-    onchange({field: first.key, op: 'is', value: first.type === 'yesno' ? true : ''})
+    onchange({field: first.key, op: first.type === 'yesno' || first.type === 'number' ? 'is' : 'isFilled', value: first.type === 'yesno' ? true : ''})
   }
   function setField(key) {
     const q = doc.questions.find((x) => x.key === key)
-    const op = OPERATORS[rule.op].types.includes(q.type) ? rule.op : 'is'
+    const op = OPERATORS[rule.op].types.includes(q.type) ? rule.op : (OPERATORS.is.types.includes(q.type) ? 'is' : 'isFilled')
     onchange({field: key, op, value: q.type === 'yesno' ? true : q.type === 'number' ? 0 : ''})
   }
 </script>
 
 <div class="cond">
   <label class="check"><input id="{idPrefix}-cond-on" type="checkbox" checked={!!rule} onchange={(e) => enable(e.currentTarget.checked)} />
-    Show only when a rule is true</label>
+    Only when a rule is true</label>
 
   {#if rule}
     <div class="row">
@@ -41,22 +42,24 @@
           {#each ops as [key, op] (key)}<option value={key}>{op.label}</option>{/each}
         </select>
       </div>
-      <div class="field">
-        <label for="{idPrefix}-cond-value">Value</label>
-        {#if question?.type === 'yesno'}
-          <select id="{idPrefix}-cond-value" class="input" value={rule.value ? 'yes' : 'no'}
-            onchange={(e) => onchange({...rule, value: e.currentTarget.value === 'yes'})}>
-            <option value="yes">Yes</option><option value="no">No</option>
-          </select>
-        {:else if question?.type === 'dropdown' && rule.op !== 'matches'}
-          <select id="{idPrefix}-cond-value" class="input" value={rule.value} onchange={(e) => onchange({...rule, value: e.currentTarget.value})}>
-            {#each question.options as o (o)}<option value={o}>{o}</option>{/each}
-          </select>
-        {:else}
-          <input id="{idPrefix}-cond-value" class="input" type={question?.type === 'number' ? 'number' : 'text'} step="0.1"
-            value={rule.value} oninput={(e) => onchange({...rule, value: question?.type === 'number' ? Number(e.currentTarget.value) : e.currentTarget.value})} />
-        {/if}
-      </div>
+      {#if !noValue}
+        <div class="field">
+          <label for="{idPrefix}-cond-value">Value</label>
+          {#if question?.type === 'yesno'}
+            <select id="{idPrefix}-cond-value" class="input" value={rule.value ? 'yes' : 'no'}
+              onchange={(e) => onchange({...rule, value: e.currentTarget.value === 'yes'})}>
+              <option value="yes">Yes</option><option value="no">No</option>
+            </select>
+          {:else if question?.type === 'dropdown' && rule.op !== 'matches'}
+            <select id="{idPrefix}-cond-value" class="input" value={rule.value} onchange={(e) => onchange({...rule, value: e.currentTarget.value})}>
+              {#each question.options as o (o)}<option value={o}>{o}</option>{/each}
+            </select>
+          {:else}
+            <input id="{idPrefix}-cond-value" class="input" type={question?.type === 'number' ? 'number' : 'text'} step="0.1"
+              value={rule.value} oninput={(e) => onchange({...rule, value: question?.type === 'number' ? Number(e.currentTarget.value) : e.currentTarget.value})} />
+          {/if}
+        </div>
+      {/if}
     </div>
     <div class="cel">
       <span class="overline">Stored as CEL</span>
@@ -64,7 +67,7 @@
       {#if result && !result.ok}
         <span class="pill critical wrap">Error: {result.error}</span>
       {:else if result}
-        <span class="pill {result.value ? 'ok' : 'plain'}">{result.value ? 'Shown' : 'Hidden'} with the sample answers</span>
+        <span class="pill {result.value ? 'ok' : 'plain'}">{result.value ? 'True with the sample answers' : 'False with the sample answers'}</span>
       {/if}
     </div>
   {/if}
