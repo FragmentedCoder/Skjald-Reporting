@@ -9,6 +9,8 @@ COPY app ./app
 
 RUN pip install --no-cache-dir .
 
+RUN mkdir -p /data && chown skjald:skjald /data
+
 USER skjald
 EXPOSE 8000
 

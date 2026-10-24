@@ -10,6 +10,7 @@ dependencies = [
   "sqlalchemy>=2.1,<2.2",
   "sqlcipher3-binary>=0.6,<0.7",
   "argon2-cffi>=25.1,<26",
+  "cryptography>=46,<47",
   "pydantic>=2.11,<3",
   "pydantic-settings>=2.11,<3",
 ]
@@ -39,6 +40,10 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.mypy]
 python_version = "3.13"
 strict = true
+
+[[tool.mypy.overrides]]
+module = "sqlcipher3"
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
