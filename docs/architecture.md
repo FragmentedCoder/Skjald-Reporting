@@ -178,7 +178,8 @@ Sign-ins, admin and permission changes, every view, download and export, secret 
 
 - The PDF renderer has no network, a read-only filesystem and CPU, memory and time limits.
 - Containers run as non-root with no extra capabilities.
-- Rich text and SVG are sanitised; the browser gets a strict Content-Security-Policy.
+- Rich text and SVG are sanitised; the browser gets a strict Content-Security-Policy. Scripts, styles, fonts, images and connections are limited to Skjald's own origin; the frontend build writes the policy into each page with the hash of SvelteKit's one inline script, and Caddy adds `frame-ancestors 'none'`. The only inline style allowed is SvelteKit's screen-reader route announcer, by its exact hash (`'unsafe-hashes'`, not `'unsafe-inline'`); a test fails if a SvelteKit upgrade changes it. Fonts are bundled, and Vite never inlines assets as `data:` URLs.
+- Browser tests (Playwright, `frontend/e2e/run.sh`) run against the real stack behind Caddy on every pull request, including passkeys through Chrome's virtual authenticator, and fail on any CSP violation.
 - Secret fields are encrypted and masked by default. A technician can reveal one for 30 seconds after an MFA check, and every reveal is logged. In the PDF a secret is printed partly — at most a quarter of its characters and at most three at each end, with a fixed run of dots that hides its length — or left out, per field. The customer gets the full value from the technician, by phone, or through a secure link from release 1.1.
 - Uploads are checked against an admin-managed file type blocklist (by extension and content) and scanned with ClamAV.
 
