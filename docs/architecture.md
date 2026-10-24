@@ -42,6 +42,8 @@ flowchart TD
 
 Access to customer data is assignment-based. Nobody can review or countersign their own report.
 
+Routes ask for a capability (such as "administer" or "read the audit log"), never a role; `backend/app/roles.py` holds the one table of which roles grant which capability, and a test checks it against the spec. A refused request is written to the audit log. A person can hold several roles, and every grant is logged with who made it. Customer assignments arrive with customers.
+
 ## Report lifecycle
 
 ```mermaid
@@ -158,7 +160,7 @@ Bifrost is a separate, optional service on its own small VM or VPS. It is the on
 - **Database key** — opens the SQLCipher database (as a raw 256-bit key, so opening a connection costs no key stretching). The app generates it on first start and keeps it in the data folder wrapped by the master key, so it travels in backups but opens nothing without the master key.
 - **Customer keys** — generated per customer; encrypt that customer's files, answers, contacts and secrets. Deleting a customer destroys its key, so its data is unreadable everywhere, old backups included.
 - **Signing keys** — held by the signer, wrapped by the master key.
-- **Backup key** — separate; encrypts backups.
+- **Backup key** — separate; encrypts backups. The app generates it during setup, so the recovery kit is complete from the start, and keeps it wrapped by the master key in the data folder. The wrapped copy travels inside the encrypted backups, so a restore needs the backup key from the recovery kit.
 
 Keys are wrapped with AES-256-GCM, and each wrapped key is bound to what it is for (for example one customer's ID), so a wrapped key copied onto another customer's record will not open.
 
@@ -220,6 +222,8 @@ SQLite allows one writer at a time, so every transaction takes the write lock wh
 ## Deployment
 
 - **Install:** one command on Ubuntu Server LTS installs Docker Engine if needed, generates the master key, verifies the signed images and starts the stack. A web wizard then sets up the company, the break-glass administrator, the recovery kit, TLS, email and backups. A plain `docker-compose.yml` is also published.
+- **Setup wizard.** Until setup is finished, every page leads to `/setup`, and every step needs the one-time setup token. The app prints a fresh token to its log each time it starts while setup is pending, and `docker compose exec app python -m app.setup` prints another; only someone with access to the VM can read it. It is 120 random bits, kept only as a hash, refused after 10 wrong tries per address in 15 minutes, and dead once setup is complete. The wizard names the company, creates the break-glass Administrator and has them set up a second factor, then shows the recovery kit (the master and backup keys, in base32) until it is confirmed as saved. After that, every setup step answers 410 Gone and the keys are never shown again. Interrupted setups resume where they stopped. TLS, email and the backup target join the wizard as those features are built.
+- **Break-glass Administrator.** A local account that works when the directory is down. Every sign-in with it is flagged in the audit log (and, once email exists, mailed to all Administrators).
 - **Updates:** automatic by default, inside an admin-set maintenance window: verify signatures, back up, migrate, health-check, roll back on failure. Manual mode is available. The updater runs on the host, not in a container, because an updater container would need the Docker socket.
 - **Backups:** encrypted restic backups to local disk, SMB shares or S3-compatible storage, with a scheduled restore test.
 
