@@ -145,7 +145,7 @@
   .facts .hash { grid-column: 1 / -1; }
   .facts dt { font-size: 12px; font-weight: 600; color: var(--text-muted); }
   .facts dd { margin: 0; overflow-wrap: anywhere; }
-  .table-wrap { overflow-x: auto; }
+  .table-wrap { position: relative; overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th { text-align: left; font-size: 12px; font-weight: 600; color: var(--text-muted); padding: 6px 10px; border-bottom: 1px solid var(--border-strong); }
   td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }

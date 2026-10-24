@@ -57,7 +57,7 @@ Everything is labelled with where it shows up: **Form** (the technician sees it)
 npm ci
 npm test               # pagination, variables, secrets, colours and CEL (Node)
 npm run build          # dist/index.html, plus dist/artifact.html as a page fragment
-npm run check:browser  # 72 checks in Chromium, screenshots in dist/shots
+npm run check:browser  # 79 checks in Chromium, screenshots in dist/shots
 npm run dev            # live development server
 ```
 

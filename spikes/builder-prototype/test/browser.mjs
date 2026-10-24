@@ -220,7 +220,7 @@ await sys.goto(file + '#questions')
 ok('the system dark setting applies', (await sys.evaluate(() => getComputedStyle(document.body).backgroundColor)) === 'rgb(11, 20, 32)')
 
 // ---- Phone width: no horizontal page scroll anywhere
-for (const width of [390, 360]) {
+for (const width of [390, 360, 320]) {
   const phone = await browser.newPage({viewport: {width, height: 800}, isMobile: true, hasTouch: true})
   for (const view of ['questions', 'layout', 'data', 'try', 'report', 'library', 'check']) {
     await phone.goto(file + '#' + view)

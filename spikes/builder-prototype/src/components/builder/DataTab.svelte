@@ -225,7 +225,8 @@
   .example.big { margin: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .example.big > div { display: grid; gap: 2px; min-width: 0; }
   .example code { overflow-wrap: anywhere; }
-  .table-wrap { overflow-x: auto; padding: 0 16px 16px; }
+  /* position: relative keeps visually hidden headers inside the scroll area, so they cannot widen the page. */
+  .table-wrap { position: relative; overflow-x: auto; padding: 0 16px 16px; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th { text-align: left; font-size: 12px; font-weight: 600; color: var(--text-muted); padding: 6px 10px; border-bottom: 1px solid var(--border-strong); }
   td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
