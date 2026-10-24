@@ -28,14 +28,18 @@ def load_master_key(path: str | Path) -> bytes:
     return data
 
 
-def wrap_key(master_key: bytes, plaintext_key: bytes) -> bytes:
-    """Encrypt plaintext_key under the master key. The result is safe to store at rest."""
+def wrap_key(master_key: bytes, plaintext_key: bytes, *, context: bytes) -> bytes:
+    """Encrypt plaintext_key under the master key, bound to context (what the key is for).
+
+    The same context must be given to unwrap it, so a wrapped key moved onto
+    another record, such as another customer, will not open.
+    """
     nonce = os.urandom(NONCE_LENGTH)
-    ciphertext = AESGCM(master_key).encrypt(nonce, plaintext_key, None)
-    return nonce + ciphertext
+    return nonce + AESGCM(master_key).encrypt(nonce, plaintext_key, context)
 
 
-def unwrap_key(master_key: bytes, wrapped: bytes) -> bytes:
-    """Reverse wrap_key. Raises cryptography.exceptions.InvalidTag if wrapped was tampered with."""
+def unwrap_key(master_key: bytes, wrapped: bytes, *, context: bytes) -> bytes:
+    """Reverse wrap_key. Raises cryptography.exceptions.InvalidTag if wrapped was tampered
+    with, or was wrapped for a different context."""
     nonce, ciphertext = wrapped[:NONCE_LENGTH], wrapped[NONCE_LENGTH:]
-    return AESGCM(master_key).decrypt(nonce, ciphertext, None)
+    return AESGCM(master_key).decrypt(nonce, ciphertext, context)

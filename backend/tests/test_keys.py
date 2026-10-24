@@ -3,6 +3,8 @@ from cryptography.exceptions import InvalidTag
 
 from app.crypto.keys import generate_key, load_master_key, unwrap_key, wrap_key
 
+CONTEXT = b"skjald/test-key"
+
 
 def test_generate_key_is_32_bytes_and_random() -> None:
     assert len(generate_key()) == 32
@@ -12,21 +14,29 @@ def test_generate_key_is_32_bytes_and_random() -> None:
 def test_wrap_and_unwrap_round_trip() -> None:
     master_key = generate_key()
     plaintext = generate_key()
-    assert unwrap_key(master_key, wrap_key(master_key, plaintext)) == plaintext
+    wrapped = wrap_key(master_key, plaintext, context=CONTEXT)
+    assert unwrap_key(master_key, wrapped, context=CONTEXT) == plaintext
 
 
 def test_unwrap_detects_tampering() -> None:
     master_key = generate_key()
-    wrapped = bytearray(wrap_key(master_key, generate_key()))
+    wrapped = bytearray(wrap_key(master_key, generate_key(), context=CONTEXT))
     wrapped[-1] ^= 0x01
     with pytest.raises(InvalidTag):
-        unwrap_key(master_key, bytes(wrapped))
+        unwrap_key(master_key, bytes(wrapped), context=CONTEXT)
 
 
 def test_unwrap_rejects_the_wrong_master_key() -> None:
-    wrapped = wrap_key(generate_key(), generate_key())
+    wrapped = wrap_key(generate_key(), generate_key(), context=CONTEXT)
     with pytest.raises(InvalidTag):
-        unwrap_key(generate_key(), wrapped)
+        unwrap_key(generate_key(), wrapped, context=CONTEXT)
+
+
+def test_a_key_wrapped_for_one_customer_does_not_open_for_another() -> None:
+    master_key = generate_key()
+    wrapped = wrap_key(master_key, generate_key(), context=b"skjald/customer-key/1")
+    with pytest.raises(InvalidTag):
+        unwrap_key(master_key, wrapped, context=b"skjald/customer-key/2")
 
 
 def test_load_master_key_round_trips_from_disk(tmp_path) -> None:
