@@ -9,9 +9,10 @@ if context.is_offline_mode():
 
 
 def run(connection: Connection) -> None:
-    context.configure(
-        connection=connection, target_metadata=Base.metadata, render_as_batch=True
-    )
+    # No render_as_batch: batch mode rebuilds tables, and on SQLite with foreign keys
+    # on, dropping the old copy deletes every row that cascades from it
+    # (tests/test_migrations.py checks upgrades keep data).
+    context.configure(connection=connection, target_metadata=Base.metadata)
     with context.begin_transaction():
         context.run_migrations()
 

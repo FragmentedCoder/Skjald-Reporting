@@ -11,12 +11,12 @@ from sqlalchemy.engine import Engine
 from app.db import get_engine
 
 
-def upgrade(engine: Engine | None = None) -> None:
+def upgrade(engine: Engine | None = None, revision: str = "head") -> None:
     config = Config()
     config.set_main_option("script_location", str(Path(__file__).parent / "migrations"))
     with (engine or get_engine()).connect() as conn:
         config.attributes["connection"] = conn
-        command.upgrade(config, "head")
+        command.upgrade(config, revision)
 
 
 if __name__ == "__main__":
