@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { api, ApiError, messageFrom, setCsrfToken } from "./api";
+import { api, ApiError, messageFrom, onRefusal, sessionGone, setCsrfToken } from "./api";
 
-function respond(status: number, body?: unknown) {
+function respond(status: number, body?: unknown, headers: Record<string, string> = {}) {
   const fetch = vi.fn().mockResolvedValue(
-    new Response(body === undefined ? null : JSON.stringify(body), { status }),
+    new Response(body === undefined ? null : JSON.stringify(body), { status, headers }),
   );
   vi.stubGlobal("fetch", fetch);
   return fetch;
@@ -49,6 +49,35 @@ describe("api", () => {
       status: 0,
       message: expect.stringContaining("could not be reached"),
     });
+  });
+
+  it("passes on why the server refused, and tells the refusal handler first", async () => {
+    const seen: ApiError[] = [];
+    onRefusal((error) => seen.push(error));
+    respond(401, { detail: "You were signed out." }, { "X-Skjald-Reason": "session_timed_out" });
+
+    const error = await api("GET", "/account").catch((e: unknown) => e);
+    expect(error).toMatchObject({ status: 401, reason: "session_timed_out" });
+    expect(seen).toEqual([error]);
+    expect(sessionGone(error)).toBe(true);
+  });
+
+  it("leaves refusals without a reason, like a wrong password, to the page", async () => {
+    const seen: ApiError[] = [];
+    onRefusal((error) => seen.push(error));
+    respond(401, { detail: "Sign-in failed." });
+    const error = await api("POST", "/auth/sign-in", {}).catch((e: unknown) => e);
+    expect(seen).toEqual([]);
+    expect(sessionGone(error)).toBe(false);
+  });
+
+  it("sends a picture as raw bytes", async () => {
+    const fetch = respond(200, {});
+    const picture = new Blob([new Uint8Array([137, 80, 78, 71])], { type: "image/png" });
+    await api("PUT", "/account/avatar", picture);
+    const [, init] = fetch.mock.calls[0];
+    expect(init.headers["Content-Type"]).toBe("application/octet-stream");
+    expect(init.body).toBe(picture);
   });
 
   it("returns nothing for 204 No Content", async () => {

@@ -11,13 +11,16 @@ function sessionIn(
       username: "astrid",
       display_name: "Astrid Fjeld",
       theme: "system",
+      avatar_url: null,
       roles: [],
       capabilities: [],
     },
     second_factor,
     methods: [],
     password_change_required,
+    recovery_codes_left: null,
     csrf_token: "t",
+    idle_expires_at: "2026-10-24T12:00:00Z",
     expires_at: "2026-10-24T12:00:00Z",
   };
 }
@@ -32,11 +35,11 @@ describe("placeFor", () => {
     expect(placeFor(info, false)).toBe(place);
   });
 
-  it("asks for a new password before setting up a second factor", () => {
+  it("asks for a new password before setting up multifactor", () => {
     expect(placeFor(sessionIn("enrol", true), false)).toBe("/sign-in/new-password");
   });
 
-  it("asks for the second factor already set up before a new password", () => {
+  it("asks for multifactor already set up before a new password", () => {
     expect(placeFor(sessionIn("verify", true), false)).toBe("/sign-in/verify");
     expect(placeFor(sessionIn("done", true), false)).toBe("/sign-in/new-password");
   });
