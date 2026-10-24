@@ -3,7 +3,7 @@ import { resolve } from "$app/paths";
 import { page } from "$app/state";
 import { api, ApiError, onRefusal, setCsrfToken } from "./api";
 import type { Capability, Role } from "./roles";
-import { dismissKey, toast } from "./toast.svelte";
+import { clearToasts, dismissKey, toast } from "./toast.svelte";
 
 export type Method = "totp" | "webauthn" | "recovery_code";
 export type Theme = "system" | "light" | "dark";
@@ -116,11 +116,19 @@ export function can(info: SessionInfo | null, capability: Capability): boolean {
   return info?.user.capabilities.includes(capability) ?? false;
 }
 
-/** The server ended the session: say why, and go straight to the sign-in page. */
+let leaving: Promise<void> | null = null;
+
+/**
+ * The server ended the session: say why, and go straight to the sign-in page.
+ * Several requests may find out at once; they share one toast and one move.
+ */
 export async function sessionEnded(message: string): Promise<void> {
+  if (session.current) clearToasts(); // they were about the session that ended
   useSession(null);
   toast(message, "warning", { key: "session" });
-  if (page.url?.pathname !== "/sign-in") await goto(resolve("/sign-in"), { replaceState: true });
+  if (page.url?.pathname === "/sign-in") return;
+  leaving ??= goto(resolve("/sign-in"), { replaceState: true }).finally(() => (leaving = null));
+  await leaving;
 }
 
 export async function signOut(): Promise<void> {
@@ -130,12 +138,20 @@ export async function signOut(): Promise<void> {
     // Signed out on the server already, or unreachable: forget the session either way.
   }
   useSession(null);
-  dismissKey("session");
+  clearToasts();
   await goto(resolve(placeFor(null)), { replaceState: true });
 }
 
-/** Fetch the session again (rights may have changed) and go where it belongs. */
-async function refresh(): Promise<void> {
+let refreshing: Promise<void> | null = null;
+
+/** Fetch the session again (rights may have changed) and go where it belongs, once
+ * however many requests were refused at the same time. */
+function refresh(): Promise<void> {
+  refreshing ??= reload().finally(() => (refreshing = null));
+  return refreshing;
+}
+
+async function reload(): Promise<void> {
   session.loaded = false;
   const info = await loadSession();
   const place = placeFor(info);
@@ -167,6 +183,8 @@ const WARN_BEFORE_MS = 2 * 60_000;
 let pollTimer: ReturnType<typeof setInterval> | undefined;
 let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
 let warnTimer: ReturnType<typeof setTimeout> | undefined;
+// The idle deadline already warned about, so one warning is shown once.
+let warnedFor: string | null = null;
 
 function stopWatching(): void {
   clearInterval(pollTimer);
@@ -187,35 +205,52 @@ function schedule(status: SessionStatus): void {
   clearTimeout(warnTimer);
   const idle = Date.parse(status.idle_expires_at);
   const end = Math.min(idle, Date.parse(status.expires_at));
+  const warnAt = idle - WARN_BEFORE_MS;
   deadlineTimer = setTimeout(checkStatus, Math.max(end - Date.now() + 1500, 0));
-  if (idle <= end) {
-    warnTimer = setTimeout(warnIdle, Math.max(idle - WARN_BEFORE_MS - Date.now(), 0));
+  if (warnAt > Date.now()) {
+    // Kept alive (here or in another tab): any warning is out of date.
+    warnedFor = null;
+    dismissKey("idle");
+  }
+  if (idle <= end && warnedFor !== status.idle_expires_at) {
+    warnTimer = setTimeout(warnIdle, Math.max(warnAt - Date.now(), 0));
   }
 }
 
-async function checkStatus(): Promise<SessionStatus | null> {
-  if (!session.current) return null;
+async function fetchStatus(): Promise<SessionStatus | null> {
   try {
-    const status = await api<SessionStatus>("GET", "/auth/session/status");
-    if (session.current) {
-      session.current.idle_expires_at = status.idle_expires_at;
-      session.current.expires_at = status.expires_at;
-      schedule(status);
-    }
-    return status;
+    return await api<SessionStatus>("GET", "/auth/session/status");
   } catch {
     return null; // an ended session is handled by the refusal handler; offline: next time
   }
 }
 
+function useStatus(status: SessionStatus): void {
+  if (!session.current) return;
+  session.current.idle_expires_at = status.idle_expires_at;
+  session.current.expires_at = status.expires_at;
+  schedule(status);
+}
+
+async function checkStatus(): Promise<void> {
+  const status = await fetchStatus();
+  if (status) useStatus(status);
+}
+
 async function warnIdle(): Promise<void> {
   // Other tabs or requests may have kept it alive meanwhile: ask before warning.
-  const status = await checkStatus();
-  if (!status || Date.parse(status.idle_expires_at) - Date.now() > WARN_BEFORE_MS + 5000) return;
-  toast("You'll be signed out in two minutes because nothing has happened for a while.", "warning", {
-    key: "idle",
-    action: { label: "Stay signed in", run: () => void stayActive() },
-  });
+  const status = await fetchStatus();
+  if (!status || !session.current) return;
+  if (Date.parse(status.idle_expires_at) - WARN_BEFORE_MS <= Date.now()) {
+    warnedFor = status.idle_expires_at; // set first, so useStatus doesn't arm it again
+    toast("You'll be signed out in two minutes because nothing has happened for a while.", "warning", {
+      key: "idle",
+      action: { label: "Stay signed in", run: () => void stayActive() },
+      // Up until the sign-out, not the usual 30 seconds.
+      lifetime: Math.max(Date.parse(status.idle_expires_at) - Date.now(), 1000),
+    });
+  }
+  useStatus(status);
 }
 
 async function stayActive(): Promise<void> {
