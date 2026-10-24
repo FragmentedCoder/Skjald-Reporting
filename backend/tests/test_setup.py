@@ -1,5 +1,3 @@
-import hashlib
-
 import httpx
 import pyotp
 import pytest
@@ -151,10 +149,8 @@ def test_only_one_break_glass_administrator(client, token, server, no_breach_fou
 
 
 def test_a_breached_password_is_refused(client, token, server, monkeypatch) -> None:
-    digest = hashlib.sha1(PASSWORD.encode()).hexdigest().upper()
-    monkeypatch.setattr(pwned, "_client", lambda: httpx.Client(transport=httpx.MockTransport(
-        lambda request: httpx.Response(200, text=f"{digest[5:]}:12")
-    )))
+    # The breach service's protocol is tested in test_pwned.py; here only the answer matters.
+    monkeypatch.setattr(pwned, "times_breached", lambda password: 12)
     response = create_admin(client, token)
     assert response.status_code == 400
     assert "data breach" in response.json()["detail"]
