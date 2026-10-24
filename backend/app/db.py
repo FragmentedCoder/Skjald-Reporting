@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Generator
+from collections.abc import Generator, Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -13,6 +14,8 @@ from sqlalchemy.types import TypeDecorator
 
 from app.crypto.key_files import load_or_create_database_key
 from app.settings import settings
+
+READ_ONLY = "skjald_read_only"
 
 
 class Base(DeclarativeBase):
@@ -74,10 +77,14 @@ def make_engine(
     # SQLite allows one writer at a time anyway. Taking the write lock when a
     # transaction begins, rather than at its first write, means read-then-write
     # steps (the audit chain head, report numbers, job claims) never interleave
-    # and never fail halfway with SQLITE_BUSY_SNAPSHOT.
+    # and never fail halfway with SQLITE_BUSY_SNAPSHOT. Long reads use reading()
+    # instead, which takes no write lock.
     @event.listens_for(engine, "begin")
-    def _begin_immediate(conn: Connection) -> None:
-        conn.exec_driver_sql("BEGIN IMMEDIATE")
+    def _begin(conn: Connection) -> None:
+        if conn.get_execution_options().get(READ_ONLY):
+            conn.exec_driver_sql("BEGIN")
+        else:
+            conn.exec_driver_sql("BEGIN IMMEDIATE")
 
     return engine
 
@@ -108,8 +115,27 @@ def get_db() -> Generator[Session]:
         session.close()
 
 
+@contextmanager
+def reading(bound_engine: Engine) -> Iterator[Session]:
+    """A session for long reads, such as checking the audit chain or an export.
+
+    Its transaction is a plain BEGIN, so it holds no write lock: with WAL, other
+    requests keep writing while it reads a consistent snapshot. Never write with it.
+    """
+    with bound_engine.connect() as conn:
+        conn.execution_options(**{READ_ONLY: True})
+        with Session(bind=conn) as session:
+            yield session
+
+
+def engine_of(session: Session) -> Engine:
+    bind = session.get_bind()
+    return bind.engine if isinstance(bind, Connection) else bind
+
+
 def check_integrity(bound_engine: Engine) -> list[str]:
     """Problems PRAGMA cipher_integrity_check found; empty means the database is intact."""
     with bound_engine.connect() as conn:
+        conn.execution_options(**{READ_ONLY: True})
         rows = conn.exec_driver_sql("PRAGMA cipher_integrity_check").fetchall()
         return [row[0] for row in rows]

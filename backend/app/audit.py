@@ -42,7 +42,7 @@ class AuditEntry(Base):
     seq: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
     occurred_at: Mapped[str] = mapped_column(String(32), index=True)
     actor_id: Mapped[int | None] = mapped_column(Integer, index=True)
-    actor_name: Mapped[str | None] = mapped_column(String(255))
+    actor_name: Mapped[str | None] = mapped_column(String(255), index=True)
     action: Mapped[str] = mapped_column(String(100), index=True)
     target_type: Mapped[str | None] = mapped_column(String(50))
     target_id: Mapped[str | None] = mapped_column(String(100))

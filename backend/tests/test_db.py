@@ -5,7 +5,7 @@ import sqlcipher3
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
-from app.db import check_integrity, make_engine
+from app.db import check_integrity, make_engine, reading
 
 
 def test_the_database_file_is_encrypted_at_rest(data_dir, master_key_path) -> None:
@@ -54,6 +54,26 @@ def test_every_transaction_takes_the_write_lock_when_it_begins(data_dir, master_
                 other.driver_connection.execute("BEGIN IMMEDIATE")
         finally:
             other.close()
+    engine.dispose()
+
+
+def test_long_reads_take_no_write_lock(data_dir, master_key_path) -> None:
+    engine = make_engine(data_dir, master_key_path)
+    with engine.begin() as conn:
+        conn.execute(text("CREATE TABLE t (x INTEGER)"))
+        conn.execute(text("INSERT INTO t VALUES (1)"))
+    with reading(engine) as reader:
+        assert reader.execute(text("SELECT count(*) FROM t")).scalar() == 1
+        other = engine.raw_connection()
+        try:
+            other.driver_connection.execute("PRAGMA busy_timeout = 100")
+            other.driver_connection.execute("BEGIN IMMEDIATE")
+            other.driver_connection.execute("INSERT INTO t VALUES (2)")
+            other.driver_connection.execute("COMMIT")
+        finally:
+            other.close()
+        # The reader keeps the snapshot it started with.
+        assert reader.execute(text("SELECT count(*) FROM t")).scalar() == 1
     engine.dispose()
 
 

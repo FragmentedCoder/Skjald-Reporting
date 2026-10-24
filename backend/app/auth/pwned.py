@@ -47,3 +47,12 @@ def times_breached(password: str) -> int:
         if candidate.strip() == suffix:
             return int(count)
     return 0
+
+
+def reachable() -> bool:
+    """Whether the range API answers, for the server health page."""
+    try:
+        _fetch_range("00000")
+    except BreachCheckUnavailable:
+        return False
+    return True

@@ -5,18 +5,20 @@
 import csv
 import io
 import json
+from collections.abc import Iterator
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import Response
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import ColumnElement, select
+from sqlalchemy import ColumnElement, Engine, func, select
 
 from app import audit
 from app.audit import AuditEntry, timestamp
 from app.auth.dependencies import DB, client_ip, require
 from app.auth.sessions import UserSession
+from app.db import engine_of, reading
 from app.roles import Capability
 from app.users import normalize_username
 
@@ -24,6 +26,7 @@ router = APIRouter(prefix="/audit")
 
 Auditor = Annotated[UserSession, Depends(require(Capability.READ_AUDIT_LOG))]
 PAGE_SIZE = 50
+EXPORT_BATCH = 1000
 CSV_COLUMNS = ("seq", "occurred_at", "actor_id", "actor_name", "action", "target_type",
                "target_id", "ip", "details", "hash")
 # A spreadsheet treats a cell starting with one of these as a formula (CSV injection).
@@ -113,7 +116,9 @@ def list_actions(_: Auditor, db: DB) -> list[str]:
 
 @router.get("/verify")
 def verify_chain(_: Auditor, db: DB) -> ChainStatus:
-    check = audit.verify(db)
+    db.commit()  # re-hashing every entry takes a while: hold no write lock meanwhile
+    with reading(engine_of(db)) as reader:
+        check = audit.verify(reader)
     return ChainStatus(ok=check.ok, entries_checked=check.entries_checked,
                        first_bad_seq=check.first_bad_seq, problem=check.problem)
 
@@ -123,25 +128,39 @@ def _cell(value: object) -> str:
     return f"'{text}" if text.startswith(FORMULA_STARTS) else text
 
 
+def _csv_line(values: list[str]) -> str:
+    buffer = io.StringIO()
+    csv.writer(buffer).writerow(values)
+    return buffer.getvalue()
+
+
+def _csv_rows(engine: Engine, clauses: list[ColumnElement[bool]], last_seq: int) -> Iterator[str]:
+    """The export, a batch at a time, so a large log never sits in memory whole."""
+    yield _csv_line(list(CSV_COLUMNS))
+    with reading(engine) as reader:
+        query = (select(AuditEntry).where(*clauses, AuditEntry.seq <= last_seq)
+                 .order_by(AuditEntry.seq).execution_options(yield_per=EXPORT_BATCH))
+        for entry in reader.scalars(query):
+            yield _csv_line([_cell(getattr(entry, column)) for column in CSV_COLUMNS])
+
+
 @router.get("/export")
 def export_csv(
     request: Request, reader: Auditor, db: DB, filters: Annotated[Filters, Depends()]
-) -> Response:
-    rows = list(db.scalars(select(AuditEntry).where(*filters.clauses).order_by(AuditEntry.seq)))
-    buffer = io.StringIO()
-    writer = csv.writer(buffer)
-    writer.writerow(CSV_COLUMNS)
-    for entry in rows:
-        writer.writerow([_cell(getattr(entry, column)) for column in CSV_COLUMNS])
+) -> StreamingResponse:
+    # Everything up to now; the entry recording this export comes after.
+    last_seq = db.scalar(select(func.max(AuditEntry.seq))) or 0
+    rows = db.scalar(select(func.count()).select_from(AuditEntry)
+                     .where(*filters.clauses, AuditEntry.seq <= last_seq)) or 0
     audit.append(
         db, "audit.exported", actor_id=reader.user.id, actor_name=reader.user.username,
         ip=client_ip(request),
-        details={"rows": len(rows), "filters": {k: str(v) for k, v in filters.values.items() if v}},
+        details={"rows": rows, "filters": {k: str(v) for k, v in filters.values.items() if v}},
     )
     db.commit()
     day = datetime.now(UTC).strftime("%Y%m%d")
-    return Response(
-        buffer.getvalue(),
+    return StreamingResponse(
+        _csv_rows(engine_of(db), filters.clauses, last_seq),
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="skjald-audit-{day}.csv"'},
     )
