@@ -14,4 +14,6 @@ RUN mkdir -p /data && chown skjald:skjald /data
 USER skjald
 EXPOSE 8000
 
-CMD ["sh", "-c", "python -m app.migrate && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+# Trust X-Forwarded-For from any peer: the app port is published to nobody but Caddy
+# on the internal network, and Caddy replaces the header for untrusted clients.
+CMD ["sh", "-c", "python -m app.migrate && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips '*'"]
