@@ -4,9 +4,11 @@
   import { onMount } from "svelte";
   import { api, ApiError } from "$lib/api";
   import AuthLayout from "$lib/components/AuthLayout.svelte";
+  import PolicyFields from "$lib/components/PolicyFields.svelte";
   import SaveSecrets from "$lib/components/SaveSecrets.svelte";
   import SecondFactorSetup from "$lib/components/SecondFactorSetup.svelte";
   import VerifySecondFactor from "$lib/components/VerifySecondFactor.svelte";
+  import type { SecuritySettings } from "$lib/policy";
   import { recoveryCodesText, recoveryKitText, type RecoveryKit } from "$lib/secrets";
   import {
     session,
@@ -19,34 +21,40 @@
   type Step =
     | "token"
     | "company"
+    | "security"
     | "administrator"
     | "sign-in"
     | "second-factor"
     | "verify"
     | "codes"
     | "kit";
-  const STEP_COUNT = 5;
+  const STEP_COUNT = 6;
   const STEP_NUMBER: Record<Step, number> = {
     token: 1,
     company: 2,
-    administrator: 3,
-    "sign-in": 3,
-    "second-factor": 4,
-    verify: 4,
-    codes: 4,
-    kit: 5,
+    security: 3,
+    administrator: 4,
+    "sign-in": 4,
+    "second-factor": 5,
+    verify: 5,
+    codes: 5,
+    kit: 6,
   };
 
   interface Progress {
     company_name: string | null;
+    address: string;
+    security_reviewed: boolean;
+    security: SecuritySettings;
     administrator: string | null;
   }
 
   let ready = $state(false);
   let step = $state<Step>("token");
   let token = $state("");
-  let progress = $state<Progress>({ company_name: null, administrator: null });
+  let progress = $state<Progress | null>(null);
   let companyName = $state("");
+  let security = $state<SecuritySettings | null>(null);
   let admin = $state({ display_name: "", username: "", email: "", password: "", repeat: "" });
   let password = $state("");
   let codes = $state<string[]>([]);
@@ -85,7 +93,9 @@
   function nextStep() {
     const current = session.current;
     error = null;
-    if (!progress.company_name) step = "company";
+    if (!progress) step = "token";
+    else if (!progress.company_name) step = "company";
+    else if (!progress.security_reviewed) step = "security";
     else if (!progress.administrator) step = "administrator";
     else if (current?.user.username !== progress.administrator) step = "sign-in";
     else if (current.second_factor === "enrol") step = "second-factor";
@@ -99,6 +109,7 @@
     if (!found) return;
     progress = found;
     companyName = found.company_name ?? "";
+    security = { ...found.security };
     nextStep();
   }
 
@@ -106,6 +117,16 @@
     event.preventDefault();
     const found = await run(() =>
       api<Progress>("POST", "/setup/company", { name: companyName }, tokenHeader),
+    );
+    if (!found) return;
+    progress = found;
+    nextStep();
+  }
+
+  async function submitSecurity(event: SubmitEvent) {
+    event.preventDefault();
+    const found = await run(() =>
+      api<Progress>("POST", "/setup/security", security, tokenHeader),
     );
     if (!found) return;
     progress = found;
@@ -139,7 +160,7 @@
     });
     if (!info) return;
     useSession(info);
-    progress.administrator = info.user.username;
+    if (progress) progress.administrator = info.user.username;
     admin.password = admin.repeat = "";
     nextStep();
   }
@@ -147,7 +168,7 @@
   async function submitSignIn(event: SubmitEvent) {
     event.preventDefault();
     const info = await run(() =>
-      api<SessionInfo>("POST", "/auth/sign-in", { username: progress.administrator, password }),
+      api<SessionInfo>("POST", "/auth/sign-in", { username: progress?.administrator, password }),
     );
     password = "";
     if (!info) return;
@@ -210,12 +231,20 @@
         </button>
       </form>
     </AuthLayout>
-  {:else if step === "company"}
+  {:else if step === "company" && progress}
     <AuthLayout
-      heading="Your company"
+      heading="Company and server"
       intro="Skjald works for one company. Its name appears in the app and on every report."
       {eyebrow}
     >
+      <div class="address stack">
+        <p class="check-title">Server address</p>
+        <p class="mono">{progress.address}</p>
+        <p class="small muted">
+          Passkeys are tied to this address. If it isn't the one people will use, stop here,
+          set <span class="mono">SKJALD_ADDRESS</span> on the server and restart Skjald.
+        </p>
+      </div>
       <form class="stack" onsubmit={submitCompany}>
         {#if error}<p class="alert alert-critical" role="alert">{error}</p>{/if}
         <div class="field">
@@ -228,6 +257,20 @@
             bind:value={companyName}
           />
         </div>
+        <button class="button button-primary button-block" type="submit" disabled={busy}>
+          Continue
+        </button>
+      </form>
+    </AuthLayout>
+  {:else if step === "security" && security}
+    <AuthLayout
+      heading="Security settings"
+      intro="These defaults suit most teams. You can change them any time under Admin, Security."
+      {eyebrow}
+    >
+      <form class="stack" onsubmit={submitSecurity}>
+        {#if error}<p class="alert alert-critical" role="alert">{error}</p>{/if}
+        <PolicyFields bind:values={security} />
         <button class="button button-primary button-block" type="submit" disabled={busy}>
           Continue
         </button>
@@ -329,7 +372,7 @@
         </button>
       </form>
     </AuthLayout>
-  {:else if step === "sign-in"}
+  {:else if step === "sign-in" && progress}
     <AuthLayout
       heading="Sign in as {progress.administrator}"
       intro="The administrator for this server is already created. Sign in to continue setup."
@@ -413,6 +456,12 @@
 {/if}
 
 <style>
+  .address {
+    gap: var(--space-1);
+    padding: var(--space-4);
+    border-radius: var(--radius-md);
+    background: var(--surface-subtle);
+  }
   .kit {
     display: flex;
     flex-direction: column;
