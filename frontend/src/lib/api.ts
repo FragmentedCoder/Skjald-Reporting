@@ -25,7 +25,7 @@ export function messageFrom(status: number, body: unknown): string {
 }
 
 export async function api<T>(
-  method: "GET" | "POST",
+  method: "GET" | "POST" | "PUT" | "PATCH",
   path: string,
   body?: unknown,
   extraHeaders: Record<string, string> = {},
