@@ -325,7 +325,16 @@ def test_the_allowlist_closes_the_admin_panel_to_other_addresses(
     # The frontend hides the admin panel: the session says it isn't available here.
     info = client.get("/api/auth/session", headers=headers).json()
     assert "administrator" in info["user"]["roles"]
-    assert "administer" not in info["user"]["capabilities"]
+    capabilities = info["user"]["capabilities"]
+    assert "administer" not in capabilities and "read_audit_log" not in capabilities
+    assert "manage_customers" in capabilities  # the rest of the work goes on
+    assert client.get("/api/audit", headers=headers).status_code == 403
+
+    # An Administrator who is an Auditor too still reads the log from anywhere.
+    user, _ = admin
+    grant_role(session, user, Role.AUDITOR, actor=None, ip=None)
+    session.commit()
+    assert client.get("/api/audit", headers=headers).status_code == 200
 
     assert console.reset_allowlist(session) == ["admin panel"]
     session.commit()

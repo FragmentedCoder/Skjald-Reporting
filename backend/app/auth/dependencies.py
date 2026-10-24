@@ -19,7 +19,7 @@ from app.auth.sessions import (
 )
 from app.db import get_db
 from app.policy import admin_allowed_from, load_policy
-from app.roles import Capability, can, roles_of
+from app.roles import Capability, Role, can, roles_of
 
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 CSRF_HEADER = "X-CSRF-Token"
@@ -27,6 +27,9 @@ CSRF_HEADER = "X-CSRF-Token"
 # multifactor, confirm it's you); the detail text is for people.
 REASON_HEADER = "X-Skjald-Reason"
 STEP_UP_WINDOW = timedelta(minutes=5)
+# What the admin panel shows. Outside the admin IP allowlist the Administrator role
+# opens none of it.
+ADMIN_PANEL = frozenset({Capability.ADMINISTER, Capability.READ_AUDIT_LOG})
 
 DB = Annotated[Session, Depends(get_db)]
 
@@ -96,14 +99,18 @@ def require_recent_confirmation(record: UserSession) -> None:
 def effective_capabilities(
     db: Session, record: UserSession, request: Request
 ) -> set[Capability]:
-    """What the roles allow from where this request comes from: the admin panel only
-    counts inside the admin IP allowlist."""
+    """What the roles allow from where this request comes from.
+
+    Outside the admin IP allowlist, the Administrator role grants nothing in the
+    admin panel, so its link disappears; everything else, and the same capability
+    through another role (an Auditor reading the log), still counts.
+    """
     roles = roles_of(db, record.user_id)
-    allowed = admin_allowed_from(load_policy(db), client_ip(request))
-    return {
-        c for c in Capability
-        if can(roles, c) and (c is not Capability.ADMINISTER or allowed)
-    }
+    capabilities = {c for c in Capability if can(roles, c)}
+    if not admin_allowed_from(load_policy(db), client_ip(request)):
+        others = roles - {Role.ADMINISTRATOR}
+        capabilities -= {c for c in ADMIN_PANEL if not can(others, c)}
+    return capabilities
 
 
 def require(capability: Capability) -> Callable[..., UserSession]:

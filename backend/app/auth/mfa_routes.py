@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app import audit, clock
 from app.auth import passkeys
-from app.auth.dependencies import DB, AnySession, FullSession, client_ip
+from app.auth.dependencies import DB, AnySession, FullSession, client_ip, refuse
 from app.auth.mfa import (
     Method,
     MfaFactor,
@@ -94,7 +94,8 @@ def _require_factors(db: Session, record: UserSession) -> None:
     if locked_until is not None and locked_until > clock.utcnow():
         db.delete(record)
         db.commit()
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Sign in again in a few minutes.")
+        raise refuse(status.HTTP_401_UNAUTHORIZED, "Your account is locked for a few minutes "
+                     "after too many wrong attempts.", "session_locked")
     if not confirmed_factors(db, record.user_id):
         raise HTTPException(status.HTTP_409_CONFLICT, "Set up multifactor authentication first.")
 
@@ -138,9 +139,8 @@ def _fail(db: Session, request: Request, record: UserSession, method: Method) ->
                      details={"minutes": policy.lockout_minutes})
     db.commit()
     if locked:
-        raise HTTPException(
-            status.HTTP_401_UNAUTHORIZED, "Too many wrong attempts. Sign in again in a few minutes."
-        )
+        raise refuse(status.HTTP_401_UNAUTHORIZED,
+                     "Too many wrong attempts. Sign in again in a few minutes.", "session_locked")
     raise HTTPException(status.HTTP_400_BAD_REQUEST, WRONG_CODE)
 
 
