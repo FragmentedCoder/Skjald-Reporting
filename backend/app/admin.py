@@ -1,36 +1,68 @@
-"""The admin panel's API: users and their roles, security settings, server settings.
+"""The admin panel's API: users and their roles, security settings, branding.
 
 Every route needs the ADMINISTER capability, which also enforces the admin IP
 allowlist. Guards keep an install from locking itself out: you can't disable
 yourself or drop your own Administrator role, the break-glass Administrator
 keeps that role and stays active, and an allowlist that leaves out your own
-address is refused.
+address is refused. Security changes that weaken the policy or can sign people
+out need a fresh confirmation that it's you (step-up).
 """
 
 from __future__ import annotations
 
-import importlib.metadata
 from dataclasses import asdict, replace
 from datetime import datetime
-from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app import audit, clock
-from app.account import SessionSummary, factor_infos, session_summaries
-from app.auth.dependencies import DB, client_ip, require
-from app.auth.mfa import MfaFactor, RecoveryCode, confirmed_factors, unused_recovery_codes
+from app.account import (
+    Profile,
+    ProfileUpdate,
+    SessionSummary,
+    apply_profile,
+    factor_infos,
+    profile_of,
+    session_summaries,
+)
+from app.auth.dependencies import DB, client_ip, require, require_recent_confirmation
+from app.auth.mfa import (
+    MfaFactor,
+    RecoveryCode,
+    confirmed_factors,
+    mfa_required,
+    unused_recovery_codes,
+)
 from app.auth.mfa_routes import FactorInfo
+from app.auth.passwords import PasswordRejected
+from app.auth.pwned import BreachCheckUnavailable
 from app.auth.sessions import UserSession, end_sessions
-from app.policy import LIMITS, admin_allowed_from, load_policy, normalize_networks, save_policy
+from app.branding import LOGO_KEY, Branding, branding, save_branding
+from app.images import LOGO_SIZE, ImageRejected, avatar_url, clean_image, remove_image, store_image
+from app.policy import (
+    LIMITS,
+    SecurityPolicy,
+    admin_allowed_from,
+    load_policy,
+    login_allowed_from,
+    normalize_networks,
+    save_policy,
+)
 from app.roles import Capability, Role, grant_role, revoke_role, roles_of
-from app.settings import settings
-from app.setup import company_name, set_company_name, setup_completed_at
-from app.users import User, create_user, find_user, set_password, temporary_password
+from app.setup import set_company_name
+from app.users import (
+    NewPassword,
+    User,
+    create_user,
+    find_user,
+    set_password,
+    temporary_password,
+    vet_new_password,
+)
 
 router = APIRouter(prefix="/admin")
 
@@ -51,10 +83,15 @@ class SecuritySettings(BaseModel):
     lockout_minutes: int = _limit("lockout_minutes")
     idle_timeout_minutes: int = _limit("idle_timeout_minutes")
     max_session_hours: int = _limit("max_session_hours")
+    require_mfa_everyone: bool = True
+    require_mfa_administrators: bool = True
 
 
 class AdminSecurity(SecuritySettings):
-    admin_allowlist: list[str] = Field(max_length=50)
+    admin_allowlist_enabled: bool = False
+    admin_allowlist: list[str] = Field(default=[], max_length=50)
+    login_allowlist_enabled: bool = False
+    login_allowlist: list[str] = Field(default=[], max_length=200)
 
 
 class AdminSecurityView(AdminSecurity):
@@ -62,16 +99,16 @@ class AdminSecurityView(AdminSecurity):
     limits: dict[str, tuple[int, int]]
 
 
-class UserSummary(BaseModel):
+class UserSummary(Profile):
     id: int
     username: str
-    display_name: str
-    email: str | None
+    avatar_url: str | None
     roles: list[Role]
     is_active: bool
     is_break_glass: bool
     locked: bool
     second_factors: int
+    mfa_required: bool
     password_change_required: bool
     last_sign_in_at: datetime | None
     created_at: datetime
@@ -84,36 +121,35 @@ class UserDetail(UserSummary):
     sessions: list[SessionSummary]
 
 
-class NewUser(BaseModel):
+class PasswordChoice(BaseModel):
+    # Leave out to have Skjald make a random one-time password.
+    password: str | None = Field(default=None, min_length=1, max_length=1024)
+    # A password the administrator chose is still replaced at first sign-in unless
+    # they untick this; ASVS 6.4 expects initial passwords to be temporary.
+    must_change_password: bool = True
+
+
+class NewUser(ProfileUpdate, PasswordChoice):
     username: str = Field(min_length=1, max_length=150, pattern=r"^\S+$")
     display_name: str = Field(min_length=1, max_length=200)
-    email: str | None = Field(default=None, max_length=254, pattern=r"^([^@\s]+@[^@\s]+)?$")
     roles: list[Role] = []
 
 
-class UserUpdate(BaseModel):
-    display_name: str | None = Field(default=None, min_length=1, max_length=200)
-    email: str | None = Field(default=None, max_length=254, pattern=r"^([^@\s]+@[^@\s]+)?$")
+class UserUpdate(ProfileUpdate):
     roles: list[Role] | None = None
     is_active: bool | None = None
 
 
-class TemporaryPassword(BaseModel):
+class PasswordResult(BaseModel):
     user: UserDetail
-    temporary_password: str
-    expires_at: datetime
+    # Only when Skjald made the password; one the administrator typed isn't echoed.
+    temporary_password: str | None
+    expires_at: datetime | None
 
 
-class ServerInfo(BaseModel):
-    company_name: str | None
-    address: str
-    version: str
-    schema_version: str | None
-    setup_completed_at: str | None
-    keys: dict[str, bool]
-
-
-class ServerUpdate(BaseModel):
+class BrandingUpdate(BaseModel):
+    site_name: str = Field(min_length=1, max_length=60)
+    tagline: str = Field(default="", max_length=120)
     company_name: str = Field(min_length=1, max_length=200)
 
 
@@ -128,18 +164,19 @@ def _log(
     )
 
 
-def _summary_fields(db: Session, user: User) -> dict[str, Any]:
+def _summary_fields(db: Session, user: User, policy: SecurityPolicy) -> dict[str, Any]:
     locked_until = user.locked_until
     return {
+        **profile_of(user),
         "id": user.id,
         "username": user.username,
-        "display_name": user.display_name,
-        "email": user.email,
+        "avatar_url": avatar_url(db, user.id),
         "roles": sorted(roles_of(db, user.id)),
         "is_active": user.is_active,
         "is_break_glass": user.is_break_glass,
         "locked": locked_until is not None and locked_until > clock.utcnow(),
         "second_factors": len(confirmed_factors(db, user.id)),
+        "mfa_required": mfa_required(db, user.id, policy),
         "password_change_required": user.must_change_password,
         "last_sign_in_at": user.last_sign_in_at,
         "created_at": user.created_at,
@@ -148,7 +185,7 @@ def _summary_fields(db: Session, user: User) -> dict[str, Any]:
 
 def _detail(db: Session, user: User) -> UserDetail:
     return UserDetail(
-        **_summary_fields(db, user),
+        **_summary_fields(db, user, load_policy(db)),
         password_expires_at=user.password_expires_at,
         factors=factor_infos(db, user.id),
         recovery_codes_left=len(unused_recovery_codes(db, user.id)),
@@ -170,31 +207,60 @@ def _not_yourself(admin: UserSession, user: User, what: str) -> None:
         )
 
 
+def _password_for(db: Session, choice: PasswordChoice, username: str) -> tuple[NewPassword, bool]:
+    """The password to set, and whether Skjald made it.
+
+    Commits first: the checks hash and may call out to the network.
+    """
+    policy = load_policy(db)
+    db.commit()
+    if choice.password is None:
+        return temporary_password(policy, username=username), True
+    try:
+        return vet_new_password(choice.password, policy, username=username), False
+    except PasswordRejected as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    except BreachCheckUnavailable as exc:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Skjald couldn't check that password against known data breaches. Try again, or "
+            "let Skjald make a random one.",
+        ) from exc
+
+
+def _password_log(generated: bool, temporary: bool) -> dict[str, object]:
+    return {"password": "generated" if generated else "chosen by administrator",
+            "must_change_password": temporary}
+
+
 # Users
 
 
 @router.get("/users")
 def list_users(_: Admin, db: DB) -> list[UserSummary]:
+    policy = load_policy(db)
     users = db.scalars(select(User).order_by(User.display_name, User.username))
-    return [UserSummary(**_summary_fields(db, user)) for user in users]
+    return [UserSummary(**_summary_fields(db, user, policy)) for user in users]
 
 
 @router.post("/users")
-def add_user(body: NewUser, request: Request, admin: Admin, db: DB) -> TemporaryPassword:
+def add_user(body: NewUser, request: Request, admin: Admin, db: DB) -> PasswordResult:
     if find_user(db, body.username) is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, "That username is taken.")
-    password = temporary_password(load_policy(db), username=body.username)
-    db.commit()  # create_user hashes the password: never inside a transaction
-    user = create_user(db, body.username, body.display_name, password, email=body.email or None,
-                       temporary=True)
+    password, generated = _password_for(db, body, body.username)
+    temporary = generated or body.must_change_password
+    user = create_user(db, body.username, body.display_name, password, temporary=temporary)
+    apply_profile(user, body)
     for role in sorted(set(body.roles)):
         grant_role(db, user, role, actor=admin.user, ip=client_ip(request))
-    _log(db, request, admin, "admin.user_created", target=user,
-         details={"username": user.username, "roles": sorted(r.value for r in body.roles)})
+    _log(db, request, admin, "admin.user_created", target=user, details={
+        "username": user.username, "roles": sorted(r.value for r in body.roles),
+        **_password_log(generated, temporary),
+    })
     db.commit()
-    assert user.password_expires_at is not None
-    return TemporaryPassword(user=_detail(db, user), temporary_password=password.value,
-                             expires_at=user.password_expires_at)
+    return PasswordResult(user=_detail(db, user),
+                          temporary_password=password.value if generated else None,
+                          expires_at=user.password_expires_at)
 
 
 @router.get("/users/{user_id}")
@@ -226,17 +292,14 @@ def update_user(user_id: int, body: UserUpdate, request: Request, admin: Admin, 
         )
 
     changes: dict[str, object] = {}
-    if body.display_name is not None and body.display_name.strip() != user.display_name:
-        changes["display_name"] = [user.display_name, body.display_name.strip()]
-        user.display_name = body.display_name.strip()
-    if "email" in body.model_fields_set and (body.email or None) != user.email:
-        changes["email"] = [user.email, body.email or None]
-        user.email = body.email or None
+    if fields := apply_profile(user, body):
+        changes["fields"] = fields
     if body.is_active is not None and body.is_active != user.is_active:
         changes["is_active"] = [user.is_active, body.is_active]
         user.is_active = body.is_active
         if not body.is_active:
-            changes["sessions_ended"] = end_sessions(db, user.id)
+            # Disabling locks them out at once: every session ends.
+            changes["sessions_ended"] = end_sessions(db, user.id, "disabled")
     ip = client_ip(request)
     for role in sorted(wanted - current):
         grant_role(db, user, role, actor=admin.user, ip=ip)
@@ -249,30 +312,35 @@ def update_user(user_id: int, body: UserUpdate, request: Request, admin: Admin, 
 
 
 @router.post("/users/{user_id}/reset-password")
-def reset_password(user_id: int, request: Request, admin: Admin, db: DB) -> TemporaryPassword:
+def reset_password(
+    user_id: int, request: Request, admin: Admin, db: DB,
+    body: Annotated[PasswordChoice | None, Body()] = None,
+) -> PasswordResult:
     user = _target(db, user_id)
     _not_yourself(admin, user, "reset the password")
-    password = temporary_password(load_policy(db), username=user.username)
-    set_password(db, user, password, temporary=True)
-    ended = end_sessions(db, user.id)
+    choice = body or PasswordChoice()
+    password, generated = _password_for(db, choice, user.username)
+    temporary = generated or choice.must_change_password
+    set_password(db, user, password, temporary=temporary)
+    ended = end_sessions(db, user.id, "password_reset")
     _log(db, request, admin, "admin.password_reset", target=user,
-         details={"sessions_ended": ended})
+         details={"sessions_ended": ended, **_password_log(generated, temporary)})
     db.commit()
-    assert user.password_expires_at is not None
-    return TemporaryPassword(user=_detail(db, user), temporary_password=password.value,
-                             expires_at=user.password_expires_at)
+    return PasswordResult(user=_detail(db, user),
+                          temporary_password=password.value if generated else None,
+                          expires_at=user.password_expires_at)
 
 
-@router.post("/users/{user_id}/reset-second-factors")
-def reset_second_factors(user_id: int, request: Request, admin: Admin, db: DB) -> UserDetail:
-    """For a lost phone or key: the user sets up a new second factor at next sign-in."""
+@router.post("/users/{user_id}/reset-mfa")
+def reset_mfa(user_id: int, request: Request, admin: Admin, db: DB) -> UserDetail:
+    """For a lost phone or key: the user sets up multifactor again at next sign-in."""
     user = _target(db, user_id)
-    _not_yourself(admin, user, "reset second factors")
+    _not_yourself(admin, user, "reset multifactor")
     removed = len(confirmed_factors(db, user.id))
     db.execute(delete(MfaFactor).where(MfaFactor.user_id == user.id))
     db.execute(delete(RecoveryCode).where(RecoveryCode.user_id == user.id))
-    ended = end_sessions(db, user.id)
-    _log(db, request, admin, "admin.second_factors_reset", target=user,
+    ended = end_sessions(db, user.id, "mfa_reset")
+    _log(db, request, admin, "admin.mfa_reset", target=user,
          details={"factors_removed": removed, "sessions_ended": ended})
     db.commit()
     return _detail(db, user)
@@ -292,9 +360,26 @@ def unlock_user(user_id: int, request: Request, admin: Admin, db: DB) -> UserDet
 def sign_out_everywhere(user_id: int, request: Request, admin: Admin, db: DB) -> UserDetail:
     user = _target(db, user_id)
     _not_yourself(admin, user, "end every session")
-    ended = end_sessions(db, user.id)
+    ended = end_sessions(db, user.id, "by_admin")
     _log(db, request, admin, "auth.sessions.ended", target=user,
          details={"count": ended, "by": "administrator"})
+    db.commit()
+    return _detail(db, user)
+
+
+@router.post("/users/{user_id}/sessions/{session_id}/end")
+def end_one_session(user_id: int, session_id: int, request: Request, admin: Admin, db: DB
+                    ) -> UserDetail:
+    user = _target(db, user_id)
+    record = db.get(UserSession, session_id)
+    if record is None or record.user_id != user.id or record.ended_reason is not None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "That session doesn't exist.")
+    if record.id == admin.id:
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            "That's the session you're using. Use Sign out instead.")
+    record.ended_reason = "by_admin"
+    _log(db, request, admin, "auth.sessions.ended", target=user,
+         details={"count": 1, "by": "administrator", "session": session_id})
     db.commit()
     return _detail(db, user)
 
@@ -302,10 +387,25 @@ def sign_out_everywhere(user_id: int, request: Request, admin: Admin, db: DB) ->
 # Security
 
 
+def _needs_confirmation(old: SecurityPolicy, new: SecurityPolicy) -> bool:
+    """Whether a change weakens the policy or can sign people out or lock them out.
+
+    Only two changes are purely stricter for new passwords and touch no one's
+    session: a longer minimum length and switching the breach check on.
+    """
+    before, after = asdict(old), asdict(new)
+    harmless = {
+        "min_password_length": after["min_password_length"] > before["min_password_length"],
+        "breach_check_enabled": after["breach_check_enabled"],
+    }
+    return any(after[name] != value and not harmless.get(name, False)
+               for name, value in before.items())
+
+
 def _security_view(db: Session, request: Request) -> AdminSecurityView:
-    policy = load_policy(db)
-    values = asdict(policy)
-    values["admin_allowlist"] = list(policy.admin_allowlist)
+    values = asdict(load_policy(db))
+    values["admin_allowlist"] = list(values["admin_allowlist"])
+    values["login_allowlist"] = list(values["login_allowlist"])
     return AdminSecurityView(**values, your_address=client_ip(request), limits=LIMITS)
 
 
@@ -318,21 +418,33 @@ def get_security(request: Request, _: Admin, db: DB) -> AdminSecurityView:
 def update_security(body: AdminSecurity, request: Request, admin: Admin, db: DB
                     ) -> AdminSecurityView:
     try:
-        allowlist = normalize_networks(body.admin_allowlist)
+        admin_list = normalize_networks(body.admin_allowlist)
+        login_list = normalize_networks(body.login_allowlist)
     except ValueError as exc:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
             "Each allowlist entry must be an address or a range, such as 10.0.0.0/24.",
         ) from exc
+    for enabled, entries, name in ((body.admin_allowlist_enabled, admin_list, "admin panel"),
+                                   (body.login_allowlist_enabled, login_list, "sign-in")):
+        if enabled and not entries:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                f"Add at least one address to the {name} allowlist, or switch it off.",
+            )
     old = load_policy(db)
-    new = replace(old, **body.model_dump(exclude={"admin_allowlist"}), admin_allowlist=allowlist)
+    new = replace(
+        old, **body.model_dump(exclude={"admin_allowlist", "login_allowlist"}),
+        admin_allowlist=admin_list, login_allowlist=login_list,
+    )
     ip = client_ip(request)
-    if not admin_allowed_from(new, ip):
+    if not admin_allowed_from(new, ip) or not login_allowed_from(new, ip):
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
-            f"Your own address ({ip}) isn't in the allowlist, so saving it would lock you out "
-            "of the admin panel.",
+            f"Your own address ({ip}) isn't in the allowlist, so saving it would lock you out.",
         )
+    if _needs_confirmation(old, new):
+        require_recent_confirmation(admin)
     changes = {
         name: [before, after]
         for name, before in asdict(old).items()
@@ -345,36 +457,45 @@ def update_security(body: AdminSecurity, request: Request, admin: Admin, db: DB
     return _security_view(db, request)
 
 
-# Server
+# Branding
 
 
-def _server_info(db: Session) -> ServerInfo:
-    data_dir = Path(settings.data_dir)
-    return ServerInfo(
-        company_name=company_name(db),
-        address=settings.address,
-        version=importlib.metadata.version("skjald-backend"),
-        schema_version=db.execute(text("SELECT version_num FROM alembic_version")).scalar(),
-        setup_completed_at=setup_completed_at(db),
-        keys={
-            "master_key": Path(settings.master_key_path).exists(),
-            "database_key": (data_dir / "db.key.enc").exists(),
-            "backup_key": (data_dir / "backup.key.enc").exists(),
-        },
-    )
-
-
-@router.get("/server")
-def get_server(_: Admin, db: DB) -> ServerInfo:
-    return _server_info(db)
-
-
-@router.put("/server")
-def update_server(body: ServerUpdate, request: Request, admin: Admin, db: DB) -> ServerInfo:
-    before = company_name(db)
-    if body.company_name.strip() != before:
-        set_company_name(db, body.company_name)
-        _log(db, request, admin, "admin.company_renamed",
-             details={"from": before, "to": body.company_name.strip()})
+@router.put("/branding")
+def update_branding(body: BrandingUpdate, request: Request, admin: Admin, db: DB) -> Branding:
+    before = branding(db)
+    save_branding(db, site_name=body.site_name, tagline=body.tagline)
+    set_company_name(db, body.company_name)
+    db.flush()
+    after = branding(db)
+    changes = {
+        name: [getattr(before, name), getattr(after, name)]
+        for name in ("site_name", "tagline", "company_name")
+        if getattr(before, name) != getattr(after, name)
+    }
+    if changes:
+        _log(db, request, admin, "admin.branding_changed", details={"changes": changes})
     db.commit()
-    return _server_info(db)
+    return after
+
+
+@router.put("/branding/logo")
+def upload_logo(
+    data: Annotated[bytes, Body(media_type="application/octet-stream")],
+    request: Request, admin: Admin, db: DB,
+) -> Branding:
+    try:
+        png = clean_image(data, max_size=LOGO_SIZE)
+    except ImageRejected as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    store_image(db, LOGO_KEY, png)
+    _log(db, request, admin, "admin.logo_changed")
+    db.commit()
+    return branding(db)
+
+
+@router.delete("/branding/logo")
+def remove_logo(request: Request, admin: Admin, db: DB) -> Branding:
+    if remove_image(db, LOGO_KEY):
+        _log(db, request, admin, "admin.logo_removed")
+    db.commit()
+    return branding(db)
