@@ -25,6 +25,7 @@ import datetime as dt
 import io
 import json
 import pathlib
+import secrets
 import subprocess
 import time
 import urllib.parse
@@ -56,7 +57,8 @@ from sample_report import REPORT_CSS, report_html
 DOCUMENT_SIGNING = x509.ObjectIdentifier("1.3.6.1.5.5.7.3.36")
 CRL_URL = "http://pki.skjald.invalid/ca.crl"  # never fetched; the CRL is supplied directly
 PT_PER_PX = 0.75  # WeasyPrint reports anchor boxes in CSS px (1px = 0.75pt)
-DELIVERY_PASSWORD = "correct-horse-fjord-anchor"  # test value only
+# Like Skjald itself, the spike generates the delivery password when signing starts; it is never stored or printed.
+DELIVERY_PASSWORD = secrets.token_urlsafe(18)
 
 
 # --------------------------------------------------------------------------- render
@@ -429,7 +431,10 @@ def main() -> None:
     report["qpdf_protected_B"] = qpdf_check(out / "5b-encrypted-then-signed.pdf", DELIVERY_PASSWORD)
 
     (out / "report.json").write_text(json.dumps(report, indent=2, default=str))
-    print(json.dumps(report, indent=2, default=str))
+    # A short summary only; the full results are in report.json (read by ci_check.py).
+    valid = sum(1 for s in report["validation_final"] if s.get("bottom_line"))
+    print(f"spike done: {report['pages']} pages, {valid} of {len(report['validation_final'])} signatures valid, "
+          f"results in {out / 'report.json'}")
 
 
 def pdfa_markers_safe(pdf: bytes) -> dict:
