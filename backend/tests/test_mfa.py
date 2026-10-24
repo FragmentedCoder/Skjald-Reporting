@@ -351,7 +351,7 @@ def test_multifactor_confirms_it_is_you_for_security_changes(
     session.commit()
     sign_in(client)
     post(client, f"{MFA}/totp/verify", {"code": code_at(secret, frozen_clock.now)})
-    frozen_clock.advance(minutes=6)
+    frozen_clock.advance(minutes=1)
     weaker = {
         "min_password_length": 12, "breach_check_enabled": False, "lockout_threshold": 10,
         "lockout_minutes": 15, "idle_timeout_minutes": 30, "max_session_hours": 12,

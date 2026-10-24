@@ -264,6 +264,8 @@ def security(**changes):
 
 def test_security_settings_are_saved_and_the_change_logged(client, admin, session) -> None:
     _, headers = admin
+    # Switching the breach check off lowers security: confirm first.
+    client.post("/api/auth/confirm-password", headers=headers, json={"password": PASSWORD})
     saved = client.put("/api/admin/security", headers=headers,
                        json=security(lockout_threshold=5, breach_check_enabled=False)).json()
     assert saved["lockout_threshold"] == 5 and saved["your_address"] == "testclient"
@@ -476,13 +478,12 @@ def test_ended_sessions_are_not_revived_by_enabling_again(
 # Step-up for security changes
 
 
-def test_weakening_security_needs_a_fresh_confirmation(
+def test_lowering_security_asks_every_time_however_recent_the_sign_in(
     frozen_clock, client, admin, session
 ) -> None:
-    _, headers = admin
-    frozen_clock.advance(minutes=6)
+    _, headers = admin  # signed in just now
     weaker = client.put("/api/admin/security", headers=headers,
-                        json=security(breach_check_enabled=False))
+                        json=security(require_mfa_everyone=False))
     assert weaker.status_code == 403
     assert weaker.headers["X-Skjald-Reason"] == "step_up_required"
     # Stricter rules for new passwords touch no one: no confirmation needed.
@@ -496,23 +497,51 @@ def test_weakening_security_needs_a_fresh_confirmation(
     confirmed = client.post("/api/auth/confirm-password", headers=headers,
                             json={"password": PASSWORD})
     assert confirmed.status_code == 204
-    assert client.put("/api/admin/security", headers=headers,
-                      json=security(min_password_length=14, breach_check_enabled=False)
-                      ).status_code == 200
+    lowered = client.put("/api/admin/security", headers=headers,
+                         json=security(min_password_length=14, require_mfa_everyone=False))
+    assert lowered.status_code == 200
+    # The confirmation was for that change only.
+    again = client.put("/api/admin/security", headers=headers,
+                       json=security(min_password_length=10, require_mfa_everyone=False))
+    assert again.headers["X-Skjald-Reason"] == "step_up_required"
     assert "auth.confirmed" in actions(session)
 
 
+def test_a_confirmation_goes_stale(frozen_clock, client, admin) -> None:
+    _, headers = admin
+    client.post("/api/auth/confirm-password", headers=headers, json={"password": PASSWORD})
+    frozen_clock.advance(minutes=6)
+    stale = client.put("/api/admin/security", headers=headers,
+                       json=security(breach_check_enabled=False))
+    assert stale.headers["X-Skjald-Reason"] == "step_up_required"
+
+
 @pytest.mark.parametrize("change", [
-    {"require_mfa_everyone": False},
+    {"min_password_length": 10},
+    {"breach_check_enabled": False},
+    {"lockout_threshold": 20},
+    {"lockout_minutes": 5},
+    {"idle_timeout_minutes": 60},
+    {"max_session_hours": 24},
+    {"require_mfa_everyone": False, "require_mfa_administrators": False},
+])
+def test_every_kind_of_lowering_asks_for_confirmation(client, admin, change) -> None:
+    _, headers = admin
+    response = client.put("/api/admin/security", headers=headers, json=security(**change))
+    assert response.headers["X-Skjald-Reason"] == "step_up_required"
+
+
+@pytest.mark.parametrize("change", [
     {"idle_timeout_minutes": 10},
     {"lockout_threshold": 5},
     {"admin_allowlist": ["10.0.0.0/8"]},
 ])
-def test_changes_that_weaken_or_can_lock_people_out_need_a_fresh_confirmation(
+def test_changes_that_can_lock_people_out_need_a_recent_confirmation(
     frozen_clock, client, admin, change
 ) -> None:
     _, headers = admin
+    assert client.put("/api/admin/security", headers=headers,
+                      json=security(**change)).status_code == 200
     frozen_clock.advance(minutes=6)
-    response = client.put("/api/admin/security", headers=headers, json=security(**change))
-    assert response.status_code == 403
-    assert response.headers["X-Skjald-Reason"] == "step_up_required"
+    undone = client.put("/api/admin/security", headers=headers, json=security())
+    assert undone.headers["X-Skjald-Reason"] == "step_up_required"

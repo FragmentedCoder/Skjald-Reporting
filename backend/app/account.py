@@ -28,6 +28,7 @@ from app.auth.pwned import BreachCheckUnavailable
 from app.auth.routes import SessionInfo, session_info, set_session_cookie
 from app.auth.sessions import UserSession, end_sessions, live_sessions, rotate_token
 from app.auth.sign_in import record_password_failure
+from app.colours import AccentColour, PrimaryColour
 from app.images import (
     AVATAR_SIZE,
     IMAGE_HEADERS,
@@ -87,6 +88,8 @@ class ProfileUpdate(BaseModel):
 class AccountInfo(Profile):
     username: str
     theme: str
+    primary_colour: str | None
+    accent_colour: str | None
     avatar_url: str | None
     password_changed_at: datetime | None
     mfa_required: bool
@@ -97,6 +100,16 @@ class AccountInfo(Profile):
 
 class AccountUpdate(ProfileUpdate):
     theme: Literal["system", "light", "dark"] | None = None
+    # Sent as null to follow the site's colours again.
+    primary_colour: PrimaryColour | None = None
+    accent_colour: AccentColour | None = None
+
+
+class PasswordRules(BaseModel):
+    """What a new password must meet, for the help text beside password fields."""
+
+    min_length: int
+    breach_check: bool
 
 
 class NewPasswordRequest(BaseModel):
@@ -247,9 +260,16 @@ def confirm_with_password(
         raise HTTPException(status.HTTP_409_CONFLICT,
                             "Confirm it's you with multifactor authentication.")
     _confirm_password(db, request, record, body.password)
-    record.confirmed_at = clock.utcnow()
+    record.confirmed_at = record.step_up_at = clock.utcnow()
     _log(db, request, record, "auth.confirmed", {"method": "password"})
     db.commit()
+
+
+@router.get("/auth/password-rules")
+def password_rules(_: AnySession, db: DB) -> PasswordRules:
+    policy = load_policy(db)
+    return PasswordRules(min_length=policy.min_password_length,
+                         breach_check=policy.breach_check_enabled)
 
 
 @router.get("/account")
@@ -259,6 +279,8 @@ def get_account(record: FullSession, db: DB) -> AccountInfo:
         **profile_of(user),
         username=user.username,
         theme=user.theme,
+        primary_colour=user.primary_colour,
+        accent_colour=user.accent_colour,
         avatar_url=avatar_url(db, user.id),
         password_changed_at=user.password_changed_at,
         mfa_required=mfa_required(db, user.id, load_policy(db)),
@@ -276,6 +298,10 @@ def update_account(body: AccountUpdate, request: Request, record: FullSession, d
     if body.theme and body.theme != user.theme:
         user.theme = body.theme
         changed.append("theme")
+    for name in ("primary_colour", "accent_colour"):
+        if name in body.model_fields_set and getattr(body, name) != getattr(user, name):
+            setattr(user, name, getattr(body, name))
+            changed.append(name)
     if changed:
         _log(db, request, record, "account.updated", {"fields": sorted(changed)})
     db.commit()

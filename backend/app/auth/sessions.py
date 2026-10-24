@@ -37,6 +37,9 @@ class UserSession(Base):
     # When the person last proved it's them (multifactor, or the password when they
     # have no factor). Sensitive changes need this to be recent (step-up).
     confirmed_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    # When they last confirmed it's them on request, while already signed in. Used
+    # up by a change that lowers security, so each such change asks again.
+    step_up_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     ip: Mapped[str | None] = mapped_column(String(45))
     user_agent: Mapped[str | None] = mapped_column(String(255))
     # A passkey ceremony in progress: one challenge at a time, used once.

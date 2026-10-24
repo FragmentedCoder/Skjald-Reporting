@@ -4,8 +4,9 @@ Every route needs the ADMINISTER capability, which also enforces the admin IP
 allowlist. Guards keep an install from locking itself out: you can't disable
 yourself or drop your own Administrator role, the break-glass Administrator
 keeps that role and stays active, and an allowlist that leaves out your own
-address is refused. Security changes that weaken the policy or can sign people
-out need a fresh confirmation that it's you (step-up).
+address is refused. Security changes that weaken the policy need the administrator
+to confirm it's them for that change (step-up); changes that can sign people out
+need a recent confirmation.
 """
 
 from __future__ import annotations
@@ -29,7 +30,13 @@ from app.account import (
     profile_of,
     session_summaries,
 )
-from app.auth.dependencies import DB, client_ip, require, require_recent_confirmation
+from app.auth.dependencies import (
+    DB,
+    client_ip,
+    require,
+    require_recent_confirmation,
+    require_step_up,
+)
 from app.auth.mfa import (
     MfaFactor,
     RecoveryCode,
@@ -42,6 +49,7 @@ from app.auth.passwords import PasswordRejected
 from app.auth.pwned import BreachCheckUnavailable
 from app.auth.sessions import UserSession, end_sessions
 from app.branding import LOGO_KEY, Branding, branding, save_branding
+from app.colours import DEFAULT_ACCENT, DEFAULT_PRIMARY, AccentColour, PrimaryColour
 from app.images import LOGO_SIZE, ImageRejected, avatar_url, clean_image, remove_image, store_image
 from app.policy import (
     LIMITS,
@@ -151,6 +159,9 @@ class BrandingUpdate(BaseModel):
     site_name: str = Field(min_length=1, max_length=60)
     tagline: str = Field(default="", max_length=120)
     company_name: str = Field(min_length=1, max_length=200)
+    primary_colour: PrimaryColour = DEFAULT_PRIMARY
+    accent_colour: AccentColour = DEFAULT_ACCENT
+    enforce_colours: bool = False
 
 
 def _log(
@@ -387,19 +398,37 @@ def end_one_session(user_id: int, session_id: int, request: Request, admin: Admi
 # Security
 
 
-def _needs_confirmation(old: SecurityPolicy, new: SecurityPolicy) -> bool:
-    """Whether a change weakens the policy or can sign people out or lock them out.
+def _widened(enabled: bool, old: tuple[str, ...], new: tuple[str, ...]) -> bool:
+    return enabled and bool(set(new) - set(old))
 
-    Only two changes are purely stricter for new passwords and touch no one's
-    session: a longer minimum length and switching the breach check on.
+
+def _weakens(old: SecurityPolicy, new: SecurityPolicy) -> bool:
+    """Whether a change lowers security: these always need a fresh confirmation."""
+    return any((
+        new.min_password_length < old.min_password_length,
+        old.breach_check_enabled and not new.breach_check_enabled,
+        new.lockout_threshold > old.lockout_threshold,
+        new.lockout_minutes < old.lockout_minutes,
+        new.idle_timeout_minutes > old.idle_timeout_minutes,
+        new.max_session_hours > old.max_session_hours,
+        old.require_mfa_everyone and not new.require_mfa_everyone,
+        old.require_mfa_administrators and not new.require_mfa_administrators,
+        old.admin_allowlist_enabled and not new.admin_allowlist_enabled,
+        old.login_allowlist_enabled and not new.login_allowlist_enabled,
+        _widened(new.admin_allowlist_enabled, old.admin_allowlist, new.admin_allowlist),
+        _widened(new.login_allowlist_enabled, old.login_allowlist, new.login_allowlist),
+    ))
+
+
+def _changes_anything_but_new_passwords(old: SecurityPolicy, new: SecurityPolicy) -> bool:
+    """Whether a change can sign people out or lock them out.
+
+    Only stricter rules for new passwords (a longer minimum, the breach check on)
+    touch no one's session.
     """
+    password_rules = {"min_password_length", "breach_check_enabled"}
     before, after = asdict(old), asdict(new)
-    harmless = {
-        "min_password_length": after["min_password_length"] > before["min_password_length"],
-        "breach_check_enabled": after["breach_check_enabled"],
-    }
-    return any(after[name] != value and not harmless.get(name, False)
-               for name, value in before.items())
+    return any(after[name] != before[name] for name in before if name not in password_rules)
 
 
 def _security_view(db: Session, request: Request) -> AdminSecurityView:
@@ -443,7 +472,12 @@ def update_security(body: AdminSecurity, request: Request, admin: Admin, db: DB
             status.HTTP_400_BAD_REQUEST,
             f"Your own address ({ip}) isn't in the allowlist, so saving it would lock you out.",
         )
-    if _needs_confirmation(old, new):
+    # Lowering security needs the administrator to confirm it's them for this very
+    # change, however recently they signed in; other changes that can sign people
+    # out need a confirmation (or sign-in) in the last few minutes.
+    if _weakens(old, new):
+        require_step_up(admin)
+    elif _changes_anything_but_new_passwords(old, new):
         require_recent_confirmation(admin)
     changes = {
         name: [before, after]
@@ -463,13 +497,16 @@ def update_security(body: AdminSecurity, request: Request, admin: Admin, db: DB
 @router.put("/branding")
 def update_branding(body: BrandingUpdate, request: Request, admin: Admin, db: DB) -> Branding:
     before = branding(db)
-    save_branding(db, site_name=body.site_name, tagline=body.tagline)
+    save_branding(db, site_name=body.site_name, tagline=body.tagline,
+                  primary_colour=body.primary_colour, accent_colour=body.accent_colour,
+                  enforce_colours=body.enforce_colours)
     set_company_name(db, body.company_name)
     db.flush()
     after = branding(db)
     changes = {
         name: [getattr(before, name), getattr(after, name)]
-        for name in ("site_name", "tagline", "company_name")
+        for name in ("site_name", "tagline", "company_name", "primary_colour",
+                     "accent_colour", "enforce_colours")
         if getattr(before, name) != getattr(after, name)
     }
     if changes:

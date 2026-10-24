@@ -121,7 +121,11 @@ def _complete(
     if codes:
         audit.append(db, "auth.mfa.recovery_codes_issued", **actor, ip=ip,
                      details={"count": len(codes)})
+    # Already past multifactor: this is a step-up, asked for by a sensitive change.
+    stepping_up = record.mfa_verified_at is not None and enrolled is None
     token = upgrade_session(db, record)
+    if stepping_up:
+        record.step_up_at = clock.utcnow()
     audit.append(db, "auth.mfa.verified", **actor, ip=ip, details={"method": method})
     db.commit()
     set_session_cookie(response, token)
