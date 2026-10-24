@@ -58,3 +58,25 @@ jobs:
         run: npm run test
       - name: Build
         run: npm run build
+
+  browser:
+    name: Browser tests against the full stack
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: Throwaway master key (as install.sh makes it)
+        run: |
+          sudo install -d -o 10001 -g 10001 -m 0700 /etc/skjald
+          sudo sh -c 'head -c 32 /dev/urandom > /etc/skjald/master.key'
+          sudo chown 10001:10001 /etc/skjald/master.key
+          sudo chmod 0600 /etc/skjald/master.key
+      - name: Run Playwright against Caddy, the app and its database
+        run: frontend/e2e/run.sh
+      - name: Keep screenshots and traces
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: e2e-results
+          path: frontend/e2e-results/
+          if-no-files-found: ignore

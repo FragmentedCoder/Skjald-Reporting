@@ -36,6 +36,8 @@ build/
 node_modules/
 .svelte-kit/
 .vite/
+e2e-results/
+test-results/
 
 # Editors and OS
 .vscode/
