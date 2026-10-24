@@ -8,7 +8,8 @@ This is throw-away spike code that proves the approach. It is not product code.
 
 | Check | Result |
 | --- | --- |
-| Render a two-page incident report as PDF/A-3b with Marcellus and IBM Plex, header, footer, "Page X of Y", TLP label, status pills, Æ ø å | Works; 0.4 s for draft and final together |
+| Render a five-page incident report as PDF/A-3b with Marcellus and IBM Plex, header, footer, "Page X of Y", TLP label, status pills, Æ ø å | Works; 0.4 s for draft and final together |
+| Every major section starts on its own page; headings never sit alone at a page foot, table rows never split, table headers repeat | Works with plain CSS (`break-before: page`, `break-after: avoid`, `break-inside: avoid`) |
 | DRAFT watermark on every page of the draft | Works |
 | Renderer refuses network access (the sample contains an `<img>` pointing at an outside address) | Refused; only files in the font folder can be read |
 | Place signature fields exactly where the layout put the sign-off boxes | Works, using WeasyPrint's anchor boxes for the `#sig-…` elements |
