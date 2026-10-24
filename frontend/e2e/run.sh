@@ -8,11 +8,12 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-# Its own project, so `down -v` below never touches a stack someone is using; and
-# always at localhost, whatever deploy/.env says, since the passkey tests expect it.
-# A stack already on port 443 has to be stopped first.
+# Its own project, so `down -v` below never touches a stack someone is using; on
+# its own port, so it runs beside one; and always at localhost, whatever
+# deploy/.env says, since the passkey tests expect it.
 COMPOSE=(docker compose -p skjald-e2e -f "$ROOT/deploy/docker-compose.yml")
-export SKJALD_ADDRESS=https://localhost
+export SKJALD_HTTPS_PORT=${E2E_PORT:-8443}
+export SKJALD_ADDRESS=https://localhost:$SKJALD_HTTPS_PORT
 PLAYWRIGHT_IMAGE=mcr.microsoft.com/playwright:v1.64.0-noble
 E2E_PASSWORD="e2e passphrase by the fjord $(date +%s)"
 WORK=$(mktemp -d)
@@ -21,7 +22,7 @@ trap 'rm -rf "$WORK"; "${COMPOSE[@]}" down -v >/dev/null 2>&1 || true' EXIT
 "${COMPOSE[@]}" up -d --build
 # The app applies migrations before it serves; wait until it answers.
 for _ in $(seq 60); do
-	curl -fsk -o /dev/null https://localhost/api/health && break
+	curl -fsk -o /dev/null "$SKJALD_ADDRESS/api/health" && break
 	sleep 1
 done
 
@@ -57,6 +58,7 @@ status=0
 docker run --rm --network host \
 	-e E2E_PASSWORD="$E2E_PASSWORD" \
 	-e E2E_SETUP_TOKEN="$SETUP_TOKEN" \
+	-e SKJALD_URL="$SKJALD_ADDRESS" \
 	-e HOST_UID="$(id -u)" \
 	-e NODE_EXTRA_CA_CERTS=/work/caddy-root.crt \
 	-v "$ROOT/frontend":/src:ro \

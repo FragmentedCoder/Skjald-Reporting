@@ -27,7 +27,7 @@ for (const colorScheme of ["light", "dark"] as const) {
       await shot("2-sign-in-error");
 
       await signIn(page, username);
-      await page.getByRole("heading", { name: "Set up your second step" }).waitFor();
+      await page.getByRole("heading", { name: "Set up multifactor" }).waitFor();
       await page.mouse.move(0, 0);
       await shot("3-set-up");
 

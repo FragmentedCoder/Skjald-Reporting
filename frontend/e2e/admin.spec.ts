@@ -1,8 +1,13 @@
 import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
-import { setUpAuthenticatorApp, signIn, watchForCspViolations } from "./helpers";
+import { setUpAuthenticatorApp, signIn, totp, watchForCspViolations } from "./helpers";
 
 const BJORN_PASSWORD = "bjørns egen lange adgangssætning";
+
+/** A section link in the admin panel's own menu (not a breadcrumb of the same name). */
+function adminMenu(page: Page, name: string) {
+  return page.getByRole("navigation", { name: "Admin" }).getByRole("link", { name });
+}
 
 async function shot(page: Page, name: string) {
   await page.screenshot({ path: `e2e-results/screens/admin-${name}.png`, fullPage: true });
@@ -16,14 +21,14 @@ test("the admin panel, from adding a user to their first sign-in", async ({ brow
   await signIn(admin, "e2e-admin");
   await expect(admin).toHaveURL(/\/sign-in\/set-up$/);
   await setUpAuthenticatorApp(admin);
-  await admin.getByRole("link", { name: "Admin" }).click();
+  await admin.getByRole("link", { name: "Admin", exact: true }).click();
 
   // Users: the list, then adding Bjørn as a technician and reviewer.
   await expect(admin.getByRole("heading", { name: "Users" })).toBeVisible();
   await expect(admin.getByRole("row", { name: /Ingrid Admin/ })).toContainText("Break-glass");
   await shot(admin, "1-users");
   await admin.getByRole("link", { name: "Add user" }).click();
-  await admin.getByLabel("Full name").fill("Bjørn Havn");
+  await admin.getByLabel("Display name").fill("Bjørn Havn");
   await admin.getByLabel("Username").fill("bjorn");
   await admin.getByRole("checkbox", { name: /^Technician\b/ }).check();
   await admin.getByRole("checkbox", { name: /^Reviewer\b/ }).check();
@@ -35,7 +40,7 @@ test("the admin panel, from adding a user to their first sign-in", async ({ brow
   await admin.getByRole("link", { name: "Open user" }).click();
   await expect(admin.getByText("Awaiting first sign-in")).toBeVisible();
 
-  // Bjørn, in his own browser: temporary password, his own password, a second factor.
+  // Bjørn, in his own browser: temporary password, his own password, multifactor.
   const bjornContext = await browser.newContext();
   const bjorn = await bjornContext.newPage();
   await signIn(bjorn, "bjorn", temporary);
@@ -46,54 +51,87 @@ test("the admin panel, from adding a user to their first sign-in", async ({ brow
   await bjorn.getByRole("button", { name: "Save password" }).click();
 
   // The breach check calls out to the internet; an offline run gets a clear refusal.
-  const setUp = bjorn.getByRole("heading", { name: "Set up your second step" });
+  const setUp = bjorn.getByRole("heading", { name: "Set up multifactor" });
   await expect(setUp.or(bjorn.getByRole("alert"))).toBeVisible();
   test.skip(!(await setUp.isVisible()), "the breach check service could not be reached");
 
-  await setUpAuthenticatorApp(bjorn);
+  const bjornSecret = await setUpAuthenticatorApp(bjorn);
   await expect(bjorn.getByText("Reviewer, Technician")).toBeVisible();
-  await expect(bjorn.getByRole("link", { name: "Admin" })).toHaveCount(0);
+  await expect(bjorn.getByRole("link", { name: "Admin", exact: true })).toHaveCount(0);
   await bjorn.goto("/admin/users");
   await expect(bjorn.getByText("You don't have access to the admin panel.")).toBeVisible();
 
-  // Back to the administrator: Bjørn is active now; reset his second factor.
+  // Back to the administrator: Bjørn is active now. End his session: his browser
+  // goes to the sign-in page and says why.
   await admin.reload();
-  await expect(admin.getByText("Active", { exact: true })).toBeVisible();
+  await expect(admin.locator(".tags").getByText("Active", { exact: true })).toBeVisible();
   await expect(admin.locator("li", { hasText: "Authenticator app" })).toBeVisible();
   await shot(admin, "5-user");
-  await admin.getByRole("button", { name: "Reset second factors" }).click();
-  await admin.getByRole("dialog").getByRole("button", { name: "Reset second factors" }).click();
-  await expect(admin.getByText("None set up yet.")).toBeVisible();
+  await admin.getByRole("button", { name: /^End session/ }).click();
+  await expect(admin.getByText("Not signed in anywhere.")).toBeVisible();
+  await bjorn.getByRole("link", { name: /your account/ }).click();
+  await expect(bjorn).toHaveURL(/\/sign-in$/);
+  await expect(bjorn.getByText("An administrator signed you out.")).toBeVisible();
+  await shot(bjorn, "6-signed-out-toast");
+  await bjorn.getByRole("button", { name: "Dismiss" }).click();
+  await expect(bjorn.getByText("An administrator signed you out.")).toHaveCount(0);
+
+  // He signs in again with his app; then the row menu resets his multifactor.
+  await signIn(bjorn, "bjorn", BJORN_PASSWORD);
+  await bjorn.getByLabel("Code from your authenticator app").fill(totp(bjornSecret, 1));
+  await bjorn.getByRole("button", { name: "Verify code" }).click();
+  await expect(bjorn.getByRole("heading", { name: /Welcome/ })).toBeVisible();
+  await adminMenu(admin, "Users").click();
+  await admin.getByRole("button", { name: "Actions for Bjørn Havn" }).click();
+  await shot(admin, "7-row-menu");
+  await admin.getByRole("menuitem", { name: "Reset multifactor…" }).click();
+  await admin.getByRole("dialog").getByRole("button", { name: "Reset multifactor" }).click();
+  await expect(admin.getByText("Bjørn Havn sets up multifactor again")).toBeVisible();
+  await expect(admin.getByRole("row", { name: /Bjørn Havn/ })).toContainText("Not yet");
   await bjorn.reload();
   await expect(bjorn).toHaveURL(/\/sign-in$/);
+  await expect(bjorn.getByText(/reset your multifactor authentication/)).toBeVisible();
 
   // Security: a change is saved; an allowlist that shuts this browser out is refused.
-  await admin.getByRole("link", { name: "Security" }).click();
+  await adminMenu(admin, "Security").click();
+  await expect(admin.getByRole("switch", { name: "Required for everyone" })).toBeChecked();
   await admin.getByLabel("Keep it locked for").fill("20");
   await admin.getByRole("button", { name: "Save settings" }).click();
-  await expect(admin.getByRole("status")).toContainText("Saved");
-  await admin.getByLabel("Allowed addresses").fill("10.99.0.0/24");
+  await expect(admin.getByText("Security settings saved.")).toBeVisible();
+  await admin.getByRole("switch", { name: /Only open the admin panel/ }).check();
+  await admin.getByLabel("Admin panel allowlist").fill("10.99.0.0/24");
   await admin.getByRole("button", { name: "Save settings" }).click();
   await expect(admin.getByRole("alert")).toContainText("lock you out");
-  await shot(admin, "6-security");
+  await expect(admin.getByText("python -m app.console reset-allowlist")).toBeVisible();
+  await shot(admin, "8-security");
+  await admin.reload();
 
-  // Server: the keys are there; the company can be renamed.
-  await admin.getByRole("link", { name: "Server" }).click();
-  await expect(admin.getByText("Present")).toHaveCount(3);
+  // Branding: a new site name and company name show at once.
+  await adminMenu(admin, "Branding").click();
+  await admin.getByLabel("Site name").fill("Nordlys Rapport");
+  await admin.getByLabel("Tag line").fill("Rapporter fra fjorden.");
   await admin.getByLabel("Company name").fill("Nordlys IT A/S");
-  await admin.getByRole("button", { name: "Save" }).click();
-  await expect(admin.getByRole("status")).toContainText("Saved");
-  await shot(admin, "7-server");
+  await admin.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(admin.getByText("Branding saved.")).toBeVisible();
+  await expect(admin.getByRole("banner")).toContainText("Nordlys Rapport");
+  await expect(admin).toHaveTitle(/Nordlys Rapport/);
+  await shot(admin, "9-branding");
+
+  // Server health: every check runs, and the audit chain is intact.
+  await adminMenu(admin, "Server health").click();
+  await expect(admin.getByText(/Chain intact: \d+ entries checked/)).toBeVisible();
+  await expect(admin.getByText("Encrypted, and every page passed")).toBeVisible();
+  await shot(admin, "10-health");
 
   // Audit log: the chain checks out, filters work, and the export downloads.
-  await admin.getByRole("link", { name: "Audit log" }).click();
+  await adminMenu(admin, "Audit log").click();
   await expect(admin.getByText("Chain intact")).toBeVisible();
   await admin.getByLabel("What").selectOption("admin.*");
   await admin.getByRole("button", { name: "Show" }).click();
   const actions = admin.locator("tbody td:nth-child(4)");
   await expect(actions.first()).toContainText("admin.");
   for (const action of await actions.allTextContents()) expect(action).toMatch(/^admin\./);
-  await shot(admin, "8-audit");
+  await shot(admin, "11-audit");
   const [download] = await Promise.all([
     admin.waitForEvent("download"),
     admin.getByRole("link", { name: "Export CSV" }).click(),
@@ -110,7 +148,7 @@ test("the admin panel, from adding a user to their first sign-in", async ({ brow
   await admin.getByLabel("Dark").check();
   await admin.getByRole("button", { name: "Save", exact: true }).click();
   await expect(admin.locator("html")).toHaveAttribute("data-theme", "dark");
-  await shot(admin, "9-account-dark");
+  await shot(admin, "12-account-dark");
   await admin.getByLabel("Same as this device").check();
   await admin.getByRole("button", { name: "Save", exact: true }).click();
   await expect(admin.locator("html")).not.toHaveAttribute("data-theme", /.+/);

@@ -5,7 +5,9 @@ services:
       dockerfile: deploy/caddy.Dockerfile
     restart: unless-stopped
     ports:
-      - "443:443"
+      # Another port only for a second stack beside this one, such as the browser
+      # tests' (frontend/e2e/run.sh); SKJALD_ADDRESS must then carry it too.
+      - "${SKJALD_HTTPS_PORT:-443}:${SKJALD_HTTPS_PORT:-443}"
     environment:
       SKJALD_ADDRESS: ${SKJALD_ADDRESS:-https://localhost}
     volumes:
