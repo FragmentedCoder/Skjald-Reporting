@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { branding } from "$lib/branding.svelte";
   import AppShell from "$lib/components/AppShell.svelte";
   import { roleName } from "$lib/roles";
   import { settle, type SessionInfo } from "$lib/session.svelte";
@@ -11,7 +12,7 @@
   });
 </script>
 
-<svelte:head><title>Skjald</title></svelte:head>
+<svelte:head><title>{branding.current.site_name}</title></svelte:head>
 
 {#if info}
   <AppShell {info}>

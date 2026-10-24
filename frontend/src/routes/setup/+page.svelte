@@ -9,6 +9,8 @@
   import SecondFactorSetup from "$lib/components/SecondFactorSetup.svelte";
   import VerifySecondFactor from "$lib/components/VerifySecondFactor.svelte";
   import type { SecuritySettings } from "$lib/policy";
+  import { branding } from "$lib/branding.svelte";
+  import Command from "$lib/components/Command.svelte";
   import { recoveryCodesText, recoveryKitText, type RecoveryKit } from "$lib/secrets";
   import {
     session,
@@ -203,15 +205,19 @@
   }
 </script>
 
-<svelte:head><title>Set up Skjald</title></svelte:head>
+<svelte:head><title>Set up {branding.current.site_name}</title></svelte:head>
 
 {#if ready}
   {#if step === "token"}
     <AuthLayout heading="Set up Skjald" {eyebrow}>
       <p class="muted">
-        Enter the setup token Skjald printed when it started. On the server, it is in the output
-        of <span class="mono">docker compose logs app</span>.
+        Skjald printed a one-time setup token in its log when it started, so only someone with
+        access to the server can set it up. On the server, in the folder with Skjald's
+        <span class="mono">docker-compose.yml</span>, show it with:
       </p>
+      <Command command="docker compose logs app | grep 'Setup token'" />
+      <p class="small muted">Or print a new one (the old one stops working) with:</p>
+      <Command command="docker compose exec app python -m app.setup" />
       <form class="stack" onsubmit={submitToken}>
         {#if error}<p class="alert alert-critical" role="alert">{error}</p>{/if}
         <div class="field">
@@ -399,8 +405,8 @@
   {:else if step === "second-factor" && session.current}
     <AuthLayout
       heading="Protect the administrator"
-      intro="Every account needs a second step at sign-in. Set one up for {session.current.user
-        .username} now."
+      intro="The administrator always signs in with multifactor authentication. Set it up for {session
+        .current.user.username} now."
       {eyebrow}
     >
       <SecondFactorSetup onDone={secondFactorDone} />

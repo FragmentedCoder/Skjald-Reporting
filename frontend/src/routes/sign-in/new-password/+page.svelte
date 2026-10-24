@@ -2,6 +2,7 @@
   import { goto } from "$app/navigation";
   import { resolve } from "$app/paths";
   import { onMount } from "svelte";
+  import { pageTitle } from "$lib/branding.svelte";
   import { api, ApiError } from "$lib/api";
   import AuthLayout from "$lib/components/AuthLayout.svelte";
   import {
@@ -48,7 +49,7 @@
   }
 </script>
 
-<svelte:head><title>Choose your password · Skjald</title></svelte:head>
+<svelte:head><title>{pageTitle("Choose your password")}</title></svelte:head>
 
 {#if info}
   <AuthLayout

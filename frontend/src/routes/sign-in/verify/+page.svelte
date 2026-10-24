@@ -2,6 +2,7 @@
   import { goto } from "$app/navigation";
   import { resolve } from "$app/paths";
   import { onMount } from "svelte";
+  import { pageTitle } from "$lib/branding.svelte";
   import AuthLayout from "$lib/components/AuthLayout.svelte";
   import VerifySecondFactor from "$lib/components/VerifySecondFactor.svelte";
   import {
@@ -24,12 +25,12 @@
   }
 </script>
 
-<svelte:head><title>Confirm it's you · Skjald</title></svelte:head>
+<svelte:head><title>{pageTitle("Confirm it's you")}</title></svelte:head>
 
 {#if info}
   <AuthLayout
     heading="Confirm it's you"
-    intro={`Signed in as ${info.user.display_name}. Finish with your second step.`}
+    intro={`Signed in as ${info.user.display_name}. Finish with your multifactor method.`}
   >
     <VerifySecondFactor {info} onDone={done} />
     {#snippet footer()}

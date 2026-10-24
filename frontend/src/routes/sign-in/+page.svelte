@@ -3,8 +3,10 @@
   import { resolve } from "$app/paths";
   import { onMount } from "svelte";
   import { api, ApiError } from "$lib/api";
+  import { pageTitle } from "$lib/branding.svelte";
   import AuthLayout from "$lib/components/AuthLayout.svelte";
-  import { placeFor, session, settle, useSession, type SessionInfo } from "$lib/session.svelte";
+  import { placeFor, settle, useSession, type SessionInfo } from "$lib/session.svelte";
+  import { dismissKey } from "$lib/toast.svelte";
 
   let username = $state("");
   let password = $state("");
@@ -12,8 +14,6 @@
   let busy = $state(false);
 
   onMount(() => {
-    error = session.notice;
-    session.notice = null;
     settle("/sign-in");
   });
 
@@ -23,6 +23,7 @@
     error = null;
     try {
       const info = await api<SessionInfo>("POST", "/auth/sign-in", { username, password });
+      dismissKey("session"); // why the last session ended no longer matters
       useSession(info);
       await goto(resolve(placeFor(info)));
     } catch (e) {
@@ -34,7 +35,7 @@
   }
 </script>
 
-<svelte:head><title>Sign in · Skjald</title></svelte:head>
+<svelte:head><title>{pageTitle("Sign in")}</title></svelte:head>
 
 <AuthLayout heading="Sign in">
   <form class="stack" onsubmit={submit}>

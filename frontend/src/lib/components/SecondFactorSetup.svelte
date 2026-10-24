@@ -2,11 +2,13 @@
   import KeyRound from "@lucide/svelte/icons/key-round";
   import Smartphone from "@lucide/svelte/icons/smartphone";
   import { api, ApiError } from "$lib/api";
+  import CodeInput from "./CodeInput.svelte";
   import { browserSupportsWebAuthn, passkeyErrorMessage, registerPasskey } from "$lib/passkeys";
   import { groupSecret, qrPath } from "$lib/qr";
   import { sessionEnded, type SecondFactorResult } from "$lib/session.svelte";
 
   let { onDone }: { onDone: (result: SecondFactorResult) => void } = $props();
+  const uid = $props.id();
 
   let step = $state<"choose" | "app">("choose");
   let enrolment = $state<{ secret: string; otpauth_uri: string } | null>(null);
@@ -98,16 +100,8 @@
   <form class="stack" onsubmit={confirmApp}>
     {#if error}<p class="alert alert-critical" role="alert">{error}</p>{/if}
     <div class="field">
-      <label for="code">6-digit code</label>
-      <input
-        id="code"
-        class="input code"
-        inputmode="numeric"
-        autocomplete="one-time-code"
-        maxlength="7"
-        required
-        bind:value={code}
-      />
+      <label for="{uid}-code">6-digit code</label>
+      <CodeInput id="{uid}-code" bind:value={code} />
     </div>
     <button class="button button-primary button-block" type="submit" disabled={busy}>
       Confirm

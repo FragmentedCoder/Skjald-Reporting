@@ -1,6 +1,7 @@
 <script lang="ts">
   import KeyRound from "@lucide/svelte/icons/key-round";
   import { api, ApiError } from "$lib/api";
+  import CodeInput from "./CodeInput.svelte";
   import { passkeyErrorMessage, verifyWithPasskey } from "$lib/passkeys";
   import { sessionEnded, type SecondFactorResult, type SessionInfo } from "$lib/session.svelte";
 
@@ -8,6 +9,7 @@
     info,
     onDone,
   }: { info: SessionInfo; onDone: (result: SecondFactorResult) => void } = $props();
+  const uid = $props.id();
 
   let useRecovery = $state(false);
   let code = $state("");
@@ -90,16 +92,8 @@
   {#if hasApp}
     <form class="stack" onsubmit={submitCode}>
       <div class="field">
-        <label for="code">Code from your authenticator app</label>
-        <input
-          id="code"
-          class="input code"
-          inputmode="numeric"
-          autocomplete="one-time-code"
-          maxlength="7"
-          required
-          bind:value={code}
-        />
+        <label for="{uid}-code">Code from your authenticator app</label>
+        <CodeInput id="{uid}-code" bind:value={code} />
       </div>
       <button
         class="button button-block {hasPasskey ? 'button-secondary' : 'button-primary'}"

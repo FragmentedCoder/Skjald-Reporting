@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
-  import Mark from "./Mark.svelte";
+  import Brand from "./Brand.svelte";
 
   let {
     heading,
@@ -20,8 +20,7 @@
 <main class="page">
   <div class="card">
     <header class="brand">
-      <Mark size={40} />
-      <span class="wordmark">Skjald</span>
+      <Brand size={40} tagline />
     </header>
     <div class="heading">
       {#if eyebrow}<p class="eyebrow muted">{eyebrow}</p>{/if}
@@ -58,9 +57,6 @@
     align-items: center;
     gap: var(--space-3);
     margin-bottom: var(--space-2);
-  }
-  .wordmark {
-    font: var(--type-subheading);
   }
   .heading {
     display: flex;

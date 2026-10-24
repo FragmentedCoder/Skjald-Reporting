@@ -3,7 +3,7 @@
 export function recoveryCodesText(username: string, codes: string[]): string {
   return [
     "Skjald recovery codes",
-    `For ${username}. Each code lets you sign in once if you lose your second factor.`,
+    `For ${username}. Each code lets you sign in once if you lose your phone or key.`,
     "",
     ...codes,
     "",

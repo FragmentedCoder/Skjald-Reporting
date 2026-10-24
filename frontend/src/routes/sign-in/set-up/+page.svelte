@@ -2,6 +2,7 @@
   import { goto } from "$app/navigation";
   import { resolve } from "$app/paths";
   import { onMount } from "svelte";
+  import { pageTitle } from "$lib/branding.svelte";
   import AuthLayout from "$lib/components/AuthLayout.svelte";
   import SaveSecrets from "$lib/components/SaveSecrets.svelte";
   import SecondFactorSetup from "$lib/components/SecondFactorSetup.svelte";
@@ -27,12 +28,12 @@
   }
 </script>
 
-<svelte:head><title>Set up your second step · Skjald</title></svelte:head>
+<svelte:head><title>{pageTitle("Set up multifactor")}</title></svelte:head>
 
 {#if info && codes === null}
   <AuthLayout
-    heading="Set up your second step"
-    intro="Skjald asks for a second step every time you sign in. Choose how you want to confirm it's you."
+    heading="Set up multifactor"
+    intro="Your account needs more than a password: Skjald asks for one of these every time you sign in. Choose how you want to confirm it's you."
   >
     <SecondFactorSetup onDone={done} />
     {#snippet footer()}
