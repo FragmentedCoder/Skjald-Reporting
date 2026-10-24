@@ -1,22 +1,15 @@
 import sqlite3
 
+import pytest
+import sqlcipher3
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
-from app.crypto.keys import generate_key
 from app.db import check_integrity, make_engine
 
 
-def _master_key_path(tmp_path):
-    path = tmp_path / "master.key"
-    path.write_bytes(generate_key())
-    return path
-
-
-def test_the_database_file_is_encrypted_at_rest(tmp_path) -> None:
-    master_key_path = _master_key_path(tmp_path)
-    data_dir = tmp_path / "data"
+def test_the_database_file_is_encrypted_at_rest(data_dir, master_key_path) -> None:
     engine = make_engine(data_dir, master_key_path)
-
     with engine.connect() as conn:
         conn.execute(text("CREATE TABLE t (x TEXT)"))
         conn.execute(text("INSERT INTO t VALUES ('plaintext-marker')"))
@@ -36,10 +29,7 @@ def test_the_database_file_is_encrypted_at_rest(tmp_path) -> None:
     assert not plain_sqlite_opened
 
 
-def test_reopening_reuses_the_same_key_and_data(tmp_path) -> None:
-    master_key_path = _master_key_path(tmp_path)
-    data_dir = tmp_path / "data"
-
+def test_reopening_reuses_the_same_key_and_data(data_dir, master_key_path) -> None:
     engine_1 = make_engine(data_dir, master_key_path)
     with engine_1.connect() as conn:
         conn.execute(text("CREATE TABLE t (x INTEGER)"))
@@ -53,6 +43,29 @@ def test_reopening_reuses_the_same_key_and_data(tmp_path) -> None:
     engine_2.dispose()
 
 
-def test_check_integrity_reports_no_problems_on_a_fresh_database(tmp_path) -> None:
-    engine = make_engine(tmp_path / "data", _master_key_path(tmp_path))
+def test_every_transaction_takes_the_write_lock_when_it_begins(data_dir, master_key_path) -> None:
+    engine = make_engine(data_dir, master_key_path)
+    with engine.connect() as holder:
+        holder.execute(text("SELECT 1"))  # begins a transaction that writes nothing
+        other = engine.raw_connection()
+        try:
+            other.driver_connection.execute("PRAGMA busy_timeout = 100")
+            with pytest.raises(sqlcipher3.OperationalError, match="locked"):
+                other.driver_connection.execute("BEGIN IMMEDIATE")
+        finally:
+            other.close()
+    engine.dispose()
+
+
+def test_driver_errors_surface_as_sqlalchemy_errors(data_dir, master_key_path) -> None:
+    engine = make_engine(data_dir, master_key_path)
+    with engine.connect() as conn:
+        conn.execute(text("CREATE TABLE t (x TEXT UNIQUE)"))
+        conn.execute(text("INSERT INTO t VALUES ('a')"))
+        with pytest.raises(IntegrityError):
+            conn.execute(text("INSERT INTO t VALUES ('a')"))
+    engine.dispose()
+
+
+def test_check_integrity_reports_no_problems_on_a_fresh_database(engine) -> None:
     assert check_integrity(engine) == []

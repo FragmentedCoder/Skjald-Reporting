@@ -16,6 +16,7 @@ master.key
 *.db-wal
 *.db-shm
 /backups/
+.dev-data/
 
 # Python
 __pycache__/

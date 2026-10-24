@@ -4,9 +4,10 @@ from collections.abc import Generator
 from pathlib import Path
 
 import sqlcipher3
-from sqlalchemy import create_engine
-from sqlalchemy.engine import Engine
+from sqlalchemy import create_engine, event
+from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from sqlalchemy.pool import QueuePool
 
 from app.crypto.database_key import load_or_create_database_key
 from app.settings import settings
@@ -26,6 +27,8 @@ def _connect(db_path: Path, key: bytes) -> sqlcipher3.Connection:
     # A wrong key fails here, not on PRAGMA key: SQLCipher only notices once it
     # has to parse an actual page.
     conn.execute("SELECT count(*) FROM sqlite_master").fetchone()
+    # SQLAlchemy emits BEGIN itself (see make_engine), so the driver must not.
+    conn.isolation_level = None
     return conn
 
 
@@ -39,7 +42,25 @@ def make_engine(
     resolved_data_dir.mkdir(parents=True, exist_ok=True)
     db_path = resolved_data_dir / "skjald.db"
     key = load_or_create_database_key(resolved_data_dir, resolved_master_key_path)
-    return create_engine("sqlite://", creator=lambda: _connect(db_path, key))
+    # module=sqlcipher3: without it SQLAlchemy assumes the stdlib sqlite3 module and
+    # passes sqlcipher3's exceptions through unwrapped, so catching
+    # sqlalchemy.exc.IntegrityError would never match.
+    engine = create_engine(
+        "sqlite://",
+        module=sqlcipher3,
+        creator=lambda: _connect(db_path, key),
+        poolclass=QueuePool,
+    )
+
+    # SQLite allows one writer at a time anyway. Taking the write lock when a
+    # transaction begins, rather than at its first write, means read-then-write
+    # steps (the audit chain head, report numbers, job claims) never interleave
+    # and never fail halfway with SQLITE_BUSY_SNAPSHOT.
+    @event.listens_for(engine, "begin")
+    def _begin_immediate(conn: Connection) -> None:
+        conn.exec_driver_sql("BEGIN IMMEDIATE")
+
+    return engine
 
 
 # Built lazily: importing this module must not require the master key to
