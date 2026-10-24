@@ -17,6 +17,7 @@ from app.auth.sign_in import (
     too_many_failures_from,
 )
 from app.policy import load_policy
+from app.roles import Role, roles_of
 
 router = APIRouter(prefix="/auth")
 
@@ -34,6 +35,7 @@ class UserInfo(BaseModel):
     id: int
     username: str
     display_name: str
+    roles: list[Role]
 
 
 class SessionInfo(BaseModel):
@@ -52,6 +54,7 @@ def session_info(db: Session, record: UserSession, token: str) -> SessionInfo:
             id=record.user.id,
             username=record.user.username,
             display_name=record.user.display_name,
+            roles=sorted(roles_of(db, record.user_id)),
         ),
         second_factor=state,
         methods=methods,
@@ -102,9 +105,12 @@ def sign_in(body: SignInRequest, request: Request, response: Response, db: DB) -
     token, record = start_session(
         db, account, policy, ip=ip, user_agent=request.headers.get("user-agent")
     )
+    details: dict[str, object] = {"session": record.id}
+    if account.is_break_glass:
+        details["break_glass"] = True
     audit.append(
         db, "auth.sign_in.succeeded", actor_id=actor_id, actor_name=actor_name, ip=ip,
-        details={"session": record.id},
+        details=details,
     )
     db.commit()
     set_session_cookie(response, token)

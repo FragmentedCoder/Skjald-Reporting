@@ -4,7 +4,7 @@ import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from sqlalchemy import LargeBinary, String, select
+from sqlalchemy import LargeBinary, String, false, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app import clock
@@ -31,6 +31,9 @@ class User(Base):
     # None for accounts that sign in through a directory (release 1.2), never locally.
     password_hash: Mapped[str | None] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(default=True)
+    # The setup wizard's local Administrator, for when the directory is down. Every
+    # use is flagged in the audit log.
+    is_break_glass: Mapped[bool] = mapped_column(default=False, server_default=false())
     failed_sign_ins: Mapped[int] = mapped_column(default=0)
     locked_until: Mapped[datetime | None] = mapped_column(UTCDateTime)
     password_changed_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
@@ -83,6 +86,7 @@ def create_user(
     password: NewPassword,
     *,
     email: str | None = None,
+    is_break_glass: bool = False,
 ) -> User:
     """Callers write the audit entry."""
     username = normalize_username(username)
@@ -95,6 +99,7 @@ def create_user(
         email=email,
         password_hash=hash_password(password.value),
         is_active=True,
+        is_break_glass=is_break_glass,
         failed_sign_ins=0,
         password_changed_at=now,
         created_at=now,

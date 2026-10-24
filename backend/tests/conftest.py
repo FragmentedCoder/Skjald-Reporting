@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app import clock
 from app.auth import pwned
+from app.auth.sessions import COOKIE_NAME, csrf_token_for, start_session
 from app.crypto.keys import generate_key
 from app.db import get_db, make_engine
 from app.main import app
@@ -81,6 +82,32 @@ def no_breach_service(monkeypatch):
     monkeypatch.setattr(
         pwned, "_client", lambda: httpx.Client(transport=httpx.MockTransport(refuse))
     )
+
+
+@pytest.fixture
+def no_breach_found(monkeypatch):
+    """A breach service that knows none of the passwords (padding entries only)."""
+
+    def answer(request):
+        return httpx.Response(200, text="\r\n".join(f"{i:035X}:0" for i in range(5)))
+
+    monkeypatch.setattr(
+        pwned, "_client", lambda: httpx.Client(transport=httpx.MockTransport(answer))
+    )
+
+
+@pytest.fixture
+def full_session(session):
+    """Sign a user in with both factors already passed; returns the headers to send."""
+
+    def sign_in(user):
+        token, record = start_session(session, user, SecurityPolicy(), ip="testclient",
+                                      user_agent=None)
+        record.mfa_verified_at = clock.utcnow()
+        session.commit()
+        return {"Cookie": f"{COOKIE_NAME}={token}", "X-CSRF-Token": csrf_token_for(token)}
+
+    return sign_in
 
 
 NO_BREACH_CHECK = SecurityPolicy(breach_check_enabled=False)
