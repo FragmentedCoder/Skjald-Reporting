@@ -1,0 +1,15 @@
+FROM python:3.13-slim AS base
+
+RUN groupadd --gid 10001 skjald \
+ && useradd --uid 10001 --gid skjald --no-create-home --shell /usr/sbin/nologin skjald
+
+WORKDIR /app
+COPY pyproject.toml ./
+COPY app ./app
+
+RUN pip install --no-cache-dir .
+
+USER skjald
+EXPOSE 8000
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
