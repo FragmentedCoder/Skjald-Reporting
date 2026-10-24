@@ -1,0 +1,34 @@
+{
+	# Caddy's own CA for development; replace with a real certificate for production (see docs/architecture.md, D8).
+	auto_https disable_redirects
+}
+
+{$SKJALD_ADDRESS:https://localhost} {
+	tls internal
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "same-origin"
+		-Server
+	}
+
+	request_body {
+		max_size 2GB
+	}
+
+	handle /api/* {
+		reverse_proxy app:8000 {
+			transport http {
+				read_timeout 60s
+			}
+		}
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}
