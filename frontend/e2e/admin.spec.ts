@@ -20,7 +20,7 @@ test("the admin panel, from adding a user to their first sign-in", async ({ brow
 
   await signIn(admin, "e2e-admin");
   await expect(admin).toHaveURL(/\/sign-in\/set-up$/);
-  await setUpAuthenticatorApp(admin);
+  const adminSecret = await setUpAuthenticatorApp(admin);
   await admin.getByRole("link", { name: "Admin", exact: true }).click();
 
   // Users: the list, then adding Bjørn as a technician and reviewer.
@@ -98,6 +98,26 @@ test("the admin panel, from adding a user to their first sign-in", async ({ brow
   await admin.getByLabel("Keep it locked for").fill("20");
   await admin.getByRole("button", { name: "Save settings" }).click();
   await expect(admin.getByText("Security settings saved.")).toBeVisible();
+
+  // Lowering security asks to confirm it's you, however recent the sign-in.
+  const everyone = admin.getByRole("switch", { name: /Required for everyone/ });
+  await everyone.uncheck();
+  await admin.getByRole("button", { name: "Save settings" }).click();
+  const confirm = admin.getByRole("dialog", { name: "Confirm it's you" });
+  await expect(confirm).toBeVisible();
+  await expect(confirm.getByLabel("Code from your authenticator app")).toBeFocused();
+  await shot(admin, "8-step-up");
+  await confirm.getByLabel("Code from your authenticator app").fill(totp(adminSecret, 1));
+  await confirm.getByRole("button", { name: "Verify code" }).click();
+  await expect(confirm).toBeHidden();
+  await admin.reload();
+  await expect(everyone).not.toBeChecked();
+  // Raising it again needs no new confirmation.
+  await everyone.check();
+  await admin.getByRole("button", { name: "Save settings" }).click();
+  await expect(admin.getByRole("dialog", { name: "Confirm it's you" })).toBeHidden();
+  await admin.reload();
+  await expect(everyone).toBeChecked();
   await admin.getByRole("switch", { name: /Only open the admin panel/ }).check();
   await admin.getByLabel("Admin panel allowlist").fill("10.99.0.0/24");
   await admin.getByRole("button", { name: "Save settings" }).click();
@@ -143,15 +163,26 @@ test("the admin panel, from adding a user to their first sign-in", async ({ brow
   );
   expect(csv).toContain("admin.user_created");
 
-  // Your account: the theme follows the choice at once.
+  // Your account: light or dark and the colours apply at once and are kept;
+  // the button in the top bar switches between light and dark too.
+  const link = () =>
+    admin.evaluate(() => document.documentElement.style.getPropertyValue("--link"));
   await admin.getByRole("link", { name: "Your account" }).click();
-  await admin.getByLabel("Dark").check();
-  await admin.getByRole("button", { name: "Save", exact: true }).click();
+  await admin.getByRole("radio", { name: "Dark", exact: true }).check();
   await expect(admin.locator("html")).toHaveAttribute("data-theme", "dark");
+  await admin.getByRole("radio", { name: "Pine" }).check();
+  await expect.poll(link).toBe("#5FBF84");
   await shot(admin, "12-account-dark");
-  await admin.getByLabel("Same as this device").check();
-  await admin.getByRole("button", { name: "Save", exact: true }).click();
+  await admin.getByRole("button", { name: "Switch to light mode" }).click();
+  await expect(admin.locator("html")).toHaveAttribute("data-theme", "light");
+  await expect.poll(link).toBe("#2F6B47");
+  await admin.reload();
+  await expect(admin.locator("html")).toHaveAttribute("data-theme", "light");
+  await expect.poll(link).toBe("#2F6B47");
+  await admin.getByRole("radio", { name: "Same as this device" }).check();
+  await admin.getByRole("radio", { name: "Site's (Fjord)" }).check();
   await expect(admin.locator("html")).not.toHaveAttribute("data-theme", /.+/);
+  await expect.poll(link).toBe("");
 
   expect(violations).toEqual([]);
   await adminContext.close();

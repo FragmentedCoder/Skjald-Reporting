@@ -65,6 +65,8 @@ test("first sign-in with an authenticator app, then a recovery code, then the ap
   await signOut(page);
 
   await signIn(page, "e2e-app");
+  // The code field has the focus, so the code can be typed straight away.
+  await expect(page.getByLabel("Code from your authenticator app")).toBeFocused();
   await page.getByLabel("Code from your authenticator app").fill(totp(secret, 1));
   await page.getByRole("button", { name: "Verify code" }).click();
   await expect(page.getByRole("heading", { name: /Welcome/ })).toBeVisible();
