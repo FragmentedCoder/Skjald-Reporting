@@ -2,16 +2,16 @@
   import { goto } from "$app/navigation";
   import { resolve } from "$app/paths";
   import { onMount } from "svelte";
-  import { pageTitle } from "$lib/branding.svelte";
-  import AuthLayout from "$lib/components/AuthLayout.svelte";
-  import VerifySecondFactor from "$lib/components/VerifySecondFactor.svelte";
+  import { pageTitle } from "#lib/branding.svelte.js";
+  import AuthLayout from "#lib/components/AuthLayout.svelte";
+  import VerifySecondFactor from "#lib/components/VerifySecondFactor.svelte";
   import {
     settle,
     signOut,
     useSession,
     type SecondFactorResult,
     type SessionInfo,
-  } from "$lib/session.svelte";
+  } from "#lib/session.svelte.js";
 
   let info = $state<SessionInfo | null>(null);
 

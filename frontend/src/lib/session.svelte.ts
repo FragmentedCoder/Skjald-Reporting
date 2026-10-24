@@ -108,7 +108,7 @@ export async function settle(here: Place | "app"): Promise<SessionInfo | null> {
   const info = session.loaded ? session.current : await loadSession();
   const place = placeFor(info);
   const belongs = here === "app" ? place === "/" : place === here;
-  if (!belongs) await goto(resolve(place), { replaceState: true });
+  if (!belongs) await goto(resolve(place), { replace: true });
   return belongs ? info : null;
 }
 
@@ -127,7 +127,7 @@ export async function sessionEnded(message: string): Promise<void> {
   useSession(null);
   toast(message, "warning", { key: "session" });
   if (page.url?.pathname === "/sign-in") return;
-  leaving ??= goto(resolve("/sign-in"), { replaceState: true }).finally(() => (leaving = null));
+  leaving ??= goto(resolve("/sign-in"), { replace: true }).finally(() => (leaving = null));
   await leaving;
 }
 
@@ -139,7 +139,7 @@ export async function signOut(): Promise<void> {
   }
   useSession(null);
   clearToasts();
-  await goto(resolve(placeFor(null)), { replaceState: true });
+  await goto(resolve(placeFor(null)), { replace: true });
 }
 
 let refreshing: Promise<void> | null = null;
@@ -159,7 +159,7 @@ async function reload(): Promise<void> {
     page.url?.pathname.startsWith("/admin") &&
     !can(info, "administer") &&
     !can(info, "read_audit_log");
-  if (place !== "/" || adminGone) await goto(resolve(place), { replaceState: true });
+  if (place !== "/" || adminGone) await goto(resolve(place), { replace: true });
 }
 
 // Every page gets the same answer to a refusal: an ended session goes to the

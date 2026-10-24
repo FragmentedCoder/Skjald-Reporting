@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from "svelte";
-  import { customSwatch, isCustom, type Swatch } from "$lib/colours";
+  import { customSwatch, isCustom, type Swatch } from "#lib/colours.js";
 
   // Pick one colour from a short, contrast-checked list. With `siteName`, a first
   // option follows the site's colour (bound as ""). With `custom` (the site's

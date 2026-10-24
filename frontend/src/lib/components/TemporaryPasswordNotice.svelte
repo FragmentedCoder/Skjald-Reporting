@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { dateTime } from "$lib/format";
+  import { dateTime } from "#lib/format.js";
 
   let {
     name,

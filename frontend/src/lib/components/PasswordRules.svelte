@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { api } from "$lib/api";
+  import { api } from "#lib/api.js";
 
   // What a new password must meet, from the current security settings.
   // "their" when an administrator sets someone else's password.

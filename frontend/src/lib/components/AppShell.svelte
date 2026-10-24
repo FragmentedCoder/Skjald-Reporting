@@ -7,11 +7,11 @@
   import Shield from "@lucide/svelte/icons/shield-check";
   import Sun from "@lucide/svelte/icons/sun";
   import { onMount, type Snippet } from "svelte";
-  import { api } from "$lib/api";
+  import { api } from "#lib/api.js";
   import Avatar from "./Avatar.svelte";
   import Brand from "./Brand.svelte";
-  import { applyTheme, can, session, signOut, type SessionInfo } from "$lib/session.svelte";
-  import { toast } from "$lib/toast.svelte";
+  import { applyTheme, can, session, signOut, type SessionInfo } from "#lib/session.svelte.js";
+  import { toast } from "#lib/toast.svelte.js";
 
   let { info, children }: { info: SessionInfo; children: Snippet } = $props();
 

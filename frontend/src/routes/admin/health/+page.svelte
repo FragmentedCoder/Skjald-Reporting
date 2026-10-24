@@ -1,10 +1,10 @@
 <script lang="ts">
   import RefreshCw from "@lucide/svelte/icons/refresh-cw";
   import { onMount } from "svelte";
-  import { api, ApiError } from "$lib/api";
-  import { pageTitle } from "$lib/branding.svelte";
-  import Pill from "$lib/components/Pill.svelte";
-  import { bytes, dateTime, since } from "$lib/format";
+  import { api, ApiError } from "#lib/api.js";
+  import { pageTitle } from "#lib/branding.svelte.js";
+  import Pill from "#lib/components/Pill.svelte";
+  import { bytes, dateTime, since } from "#lib/format.js";
 
   type Status = "ok" | "warning" | "problem" | "off";
 

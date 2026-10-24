@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { paletteFor } from "$lib/colours";
+  import { paletteFor } from "#lib/colours.js";
 
   // How the colours will look in light and in dark mode, before saving them.
   let { primary, accent }: { primary: string; accent: string } = $props();

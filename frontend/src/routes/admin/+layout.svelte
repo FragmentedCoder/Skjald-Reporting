@@ -7,9 +7,9 @@
   import ShieldCheck from "@lucide/svelte/icons/shield-check";
   import Users from "@lucide/svelte/icons/users";
   import { onMount, type Component, type Snippet } from "svelte";
-  import AppShell from "$lib/components/AppShell.svelte";
-  import type { Capability } from "$lib/roles";
-  import { can, session, settle, type SessionInfo } from "$lib/session.svelte";
+  import AppShell from "#lib/components/AppShell.svelte";
+  import type { Capability } from "#lib/roles.js";
+  import { can, session, settle, type SessionInfo } from "#lib/session.svelte.js";
 
   let { children }: { children: Snippet } = $props();
   let info = $state<SessionInfo | null>(null);

@@ -1,11 +1,11 @@
 <script lang="ts">
   import KeyRound from "@lucide/svelte/icons/key-round";
   import Smartphone from "@lucide/svelte/icons/smartphone";
-  import { api, ApiError } from "$lib/api";
+  import { api, ApiError } from "#lib/api.js";
   import CodeInput from "./CodeInput.svelte";
-  import { browserSupportsWebAuthn, passkeyErrorMessage, registerPasskey } from "$lib/passkeys";
-  import { groupSecret, qrPath } from "$lib/qr";
-  import { sessionEnded, type SecondFactorResult } from "$lib/session.svelte";
+  import { browserSupportsWebAuthn, passkeyErrorMessage, registerPasskey } from "#lib/passkeys.js";
+  import { groupSecret, qrPath } from "#lib/qr.js";
+  import { sessionEnded, type SecondFactorResult } from "#lib/session.svelte.js";
 
   let { onDone }: { onDone: (result: SecondFactorResult) => void } = $props();
   const uid = $props.id();

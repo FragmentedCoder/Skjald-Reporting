@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { branding } from "$lib/branding.svelte";
+  import { branding } from "#lib/branding.svelte.js";
   import Mark from "./Mark.svelte";
 
   // The company's logo and site name when an Administrator set them, else Skjald's.

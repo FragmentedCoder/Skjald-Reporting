@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { PasswordChoice } from "$lib/admin";
+  import type { PasswordChoice } from "#lib/admin.js";
   import PasswordRules from "./PasswordRules.svelte";
 
   let { choice = $bindable() }: { choice: PasswordChoice } = $props();

@@ -1,9 +1,9 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { branding } from "$lib/branding.svelte";
-  import AppShell from "$lib/components/AppShell.svelte";
-  import { roleName } from "$lib/roles";
-  import { settle, type SessionInfo } from "$lib/session.svelte";
+  import { branding } from "#lib/branding.svelte.js";
+  import AppShell from "#lib/components/AppShell.svelte";
+  import { roleName } from "#lib/roles.js";
+  import { settle, type SessionInfo } from "#lib/session.svelte.js";
 
   let info = $state<SessionInfo | null>(null);
 

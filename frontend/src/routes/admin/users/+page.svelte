@@ -11,16 +11,16 @@
   import UserPlus from "@lucide/svelte/icons/user-plus";
   import UserX from "@lucide/svelte/icons/user-x";
   import { onMount } from "svelte";
-  import { api, ApiError } from "$lib/api";
-  import { userStatus, type UserDetail, type UserSummary } from "$lib/admin";
-  import { pageTitle } from "$lib/branding.svelte";
-  import Avatar from "$lib/components/Avatar.svelte";
-  import Pill from "$lib/components/Pill.svelte";
-  import RowMenu, { type MenuItem } from "$lib/components/RowMenu.svelte";
-  import UserActions from "$lib/components/UserActions.svelte";
-  import { dateTime } from "$lib/format";
-  import { roleName } from "$lib/roles";
-  import { session } from "$lib/session.svelte";
+  import { api, ApiError } from "#lib/api.js";
+  import { userStatus, type UserDetail, type UserSummary } from "#lib/admin.js";
+  import { pageTitle } from "#lib/branding.svelte.js";
+  import Avatar from "#lib/components/Avatar.svelte";
+  import Pill from "#lib/components/Pill.svelte";
+  import RowMenu, { type MenuItem } from "#lib/components/RowMenu.svelte";
+  import UserActions from "#lib/components/UserActions.svelte";
+  import { dateTime } from "#lib/format.js";
+  import { roleName } from "#lib/roles.js";
+  import { session } from "#lib/session.svelte.js";
 
   let users = $state<UserSummary[] | null>(null);
   let error = $state<string | null>(null);

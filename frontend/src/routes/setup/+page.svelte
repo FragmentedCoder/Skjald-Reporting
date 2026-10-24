@@ -2,23 +2,23 @@
   import { goto } from "$app/navigation";
   import { resolve } from "$app/paths";
   import { onMount } from "svelte";
-  import { api, ApiError } from "$lib/api";
-  import AuthLayout from "$lib/components/AuthLayout.svelte";
-  import PolicyFields from "$lib/components/PolicyFields.svelte";
-  import SaveSecrets from "$lib/components/SaveSecrets.svelte";
-  import SecondFactorSetup from "$lib/components/SecondFactorSetup.svelte";
-  import VerifySecondFactor from "$lib/components/VerifySecondFactor.svelte";
-  import type { SecuritySettings } from "$lib/policy";
-  import { branding } from "$lib/branding.svelte";
-  import Command from "$lib/components/Command.svelte";
-  import { recoveryCodesText, recoveryKitText, type RecoveryKit } from "$lib/secrets";
+  import { api, ApiError } from "#lib/api.js";
+  import AuthLayout from "#lib/components/AuthLayout.svelte";
+  import PolicyFields from "#lib/components/PolicyFields.svelte";
+  import SaveSecrets from "#lib/components/SaveSecrets.svelte";
+  import SecondFactorSetup from "#lib/components/SecondFactorSetup.svelte";
+  import VerifySecondFactor from "#lib/components/VerifySecondFactor.svelte";
+  import type { SecuritySettings } from "#lib/policy.js";
+  import { branding } from "#lib/branding.svelte.js";
+  import Command from "#lib/components/Command.svelte";
+  import { recoveryCodesText, recoveryKitText, type RecoveryKit } from "#lib/secrets.js";
   import {
     session,
     settle,
     useSession,
     type SecondFactorResult,
     type SessionInfo,
-  } from "$lib/session.svelte";
+  } from "#lib/session.svelte.js";
 
   type Step =
     | "token"

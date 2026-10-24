@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { api, ApiError } from "$lib/api";
-  import { session, useSession, type SecondFactorResult } from "$lib/session.svelte";
-  import { finishStepUp, stepUp } from "$lib/stepUp.svelte";
+  import { api, ApiError } from "#lib/api.js";
+  import { session, useSession, type SecondFactorResult } from "#lib/session.svelte.js";
+  import { finishStepUp, stepUp } from "#lib/stepUp.svelte.js";
   import Dialog from "./Dialog.svelte";
   import VerifySecondFactor from "./VerifySecondFactor.svelte";
 

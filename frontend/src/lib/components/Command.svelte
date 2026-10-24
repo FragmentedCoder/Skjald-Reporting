@@ -1,6 +1,6 @@
 <script lang="ts">
   import Copy from "@lucide/svelte/icons/copy";
-  import { toast } from "$lib/toast.svelte";
+  import { toast } from "#lib/toast.svelte.js";
 
   // A shell command to run on the server, set apart so it can't be missed, with a
   // button that copies it.

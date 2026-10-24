@@ -2,22 +2,22 @@
   import { resolve } from "$app/paths";
   import { page } from "$app/state";
   import { onMount } from "svelte";
-  import { api, ApiError } from "$lib/api";
+  import { api, ApiError } from "#lib/api.js";
   import {
     PROFILE_FIELDS,
     profileForm,
     userStatus,
     type ProfileForm,
     type UserDetail,
-  } from "$lib/admin";
-  import { pageTitle } from "$lib/branding.svelte";
-  import Avatar from "$lib/components/Avatar.svelte";
-  import Pill from "$lib/components/Pill.svelte";
-  import UserActions, { type UserAction } from "$lib/components/UserActions.svelte";
-  import { browserName, date, dateTime } from "$lib/format";
-  import { ROLES, type Role } from "$lib/roles";
-  import { session } from "$lib/session.svelte";
-  import { toast } from "$lib/toast.svelte";
+  } from "#lib/admin.js";
+  import { pageTitle } from "#lib/branding.svelte.js";
+  import Avatar from "#lib/components/Avatar.svelte";
+  import Pill from "#lib/components/Pill.svelte";
+  import UserActions, { type UserAction } from "#lib/components/UserActions.svelte";
+  import { browserName, date, dateTime } from "#lib/format.js";
+  import { ROLES, type Role } from "#lib/roles.js";
+  import { session } from "#lib/session.svelte.js";
+  import { toast } from "#lib/toast.svelte.js";
 
   const KIND_NAMES = { totp: "Authenticator app", webauthn: "Passkey or security key" };
 

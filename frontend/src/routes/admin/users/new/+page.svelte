@@ -1,17 +1,17 @@
 <script lang="ts">
   import { resolve } from "$app/paths";
-  import { api, ApiError } from "$lib/api";
+  import { api, ApiError } from "#lib/api.js";
   import {
     newPasswordChoice,
     passwordFields,
     PROFILE_FIELDS,
     type PasswordResult,
     type ProfileForm,
-  } from "$lib/admin";
-  import { pageTitle } from "$lib/branding.svelte";
-  import PasswordChoiceFields from "$lib/components/PasswordChoiceFields.svelte";
-  import TemporaryPasswordNotice from "$lib/components/TemporaryPasswordNotice.svelte";
-  import { ROLES, type Role } from "$lib/roles";
+  } from "#lib/admin.js";
+  import { pageTitle } from "#lib/branding.svelte.js";
+  import PasswordChoiceFields from "#lib/components/PasswordChoiceFields.svelte";
+  import TemporaryPasswordNotice from "#lib/components/TemporaryPasswordNotice.svelte";
+  import { ROLES, type Role } from "#lib/roles.js";
 
   let profile = $state<ProfileForm>({
     display_name: "", first_name: "", middle_name: "", last_name: "", job_title: "",

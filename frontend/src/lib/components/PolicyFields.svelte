@@ -1,6 +1,6 @@
 <script lang="ts">
   // The security policy's fields, shared by the setup wizard and the admin panel.
-  import type { SecuritySettings } from "$lib/policy";
+  import type { SecuritySettings } from "#lib/policy.js";
   import Switch from "./Switch.svelte";
 
   type NumberField = Exclude<

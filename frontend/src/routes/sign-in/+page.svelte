@@ -2,11 +2,11 @@
   import { goto } from "$app/navigation";
   import { resolve } from "$app/paths";
   import { onMount } from "svelte";
-  import { api, ApiError } from "$lib/api";
-  import { pageTitle } from "$lib/branding.svelte";
-  import AuthLayout from "$lib/components/AuthLayout.svelte";
-  import { placeFor, settle, useSession, type SessionInfo } from "$lib/session.svelte";
-  import { dismissKey } from "$lib/toast.svelte";
+  import { api, ApiError } from "#lib/api.js";
+  import { pageTitle } from "#lib/branding.svelte.js";
+  import AuthLayout from "#lib/components/AuthLayout.svelte";
+  import { placeFor, settle, useSession, type SessionInfo } from "#lib/session.svelte.js";
+  import { dismissKey } from "#lib/toast.svelte.js";
 
   let username = $state("");
   let password = $state("");

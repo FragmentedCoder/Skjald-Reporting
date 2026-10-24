@@ -1,18 +1,18 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { api, ApiError } from "$lib/api";
-  import { pageTitle } from "$lib/branding.svelte";
-  import Command from "$lib/components/Command.svelte";
-  import PolicyFields from "$lib/components/PolicyFields.svelte";
-  import Switch from "$lib/components/Switch.svelte";
+  import { api, ApiError } from "#lib/api.js";
+  import { pageTitle } from "#lib/branding.svelte.js";
+  import Command from "#lib/components/Command.svelte";
+  import PolicyFields from "#lib/components/PolicyFields.svelte";
+  import Switch from "#lib/components/Switch.svelte";
   import {
     parseAddresses,
     securitySettings,
     type AdminSecurity,
     type SecuritySettings,
-  } from "$lib/policy";
-  import { withStepUp } from "$lib/stepUp.svelte";
-  import { toast } from "$lib/toast.svelte";
+  } from "#lib/policy.js";
+  import { withStepUp } from "#lib/stepUp.svelte.js";
+  import { toast } from "#lib/toast.svelte.js";
 
   const RESET_COMMAND = "docker compose exec app python -m app.console reset-allowlist";
 

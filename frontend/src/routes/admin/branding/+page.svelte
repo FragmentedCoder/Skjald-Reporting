@@ -1,14 +1,14 @@
 <script lang="ts">
   import ImageIcon from "@lucide/svelte/icons/image";
   import { onMount } from "svelte";
-  import { api, ApiError } from "$lib/api";
-  import { branding, loadBranding, pageTitle, useBranding, type Branding } from "$lib/branding.svelte";
-  import { ACCENT, PRIMARY } from "$lib/colours";
-  import Brand from "$lib/components/Brand.svelte";
-  import ColourPreview from "$lib/components/ColourPreview.svelte";
-  import Switch from "$lib/components/Switch.svelte";
-  import SwatchPicker from "$lib/components/SwatchPicker.svelte";
-  import { toast } from "$lib/toast.svelte";
+  import { api, ApiError } from "#lib/api.js";
+  import { branding, loadBranding, pageTitle, useBranding, type Branding } from "#lib/branding.svelte.js";
+  import { ACCENT, PRIMARY } from "#lib/colours.js";
+  import Brand from "#lib/components/Brand.svelte";
+  import ColourPreview from "#lib/components/ColourPreview.svelte";
+  import Switch from "#lib/components/Switch.svelte";
+  import SwatchPicker from "#lib/components/SwatchPicker.svelte";
+  import { toast } from "#lib/toast.svelte.js";
 
   let form = $state({
     site_name: "",

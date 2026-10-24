@@ -7,7 +7,7 @@
   import { onMount } from "svelte";
   import { flip } from "svelte/animate";
   import { fade, fly } from "svelte/transition";
-  import { announcement, dismiss, hold, release, toasts, type Toast } from "$lib/toast.svelte";
+  import { announcement, dismiss, hold, release, toasts, type Toast } from "#lib/toast.svelte.js";
 
   let toaster: HTMLElement;
   // Toasts glide into place, unless the person asked their system for less motion.

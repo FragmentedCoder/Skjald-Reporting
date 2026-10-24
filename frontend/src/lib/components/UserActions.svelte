@@ -5,15 +5,15 @@
 <script lang="ts">
   // What an administrator can do to someone else's account, with the confirmation
   // each needs. Used by the users list's row menus and by the user's own page.
-  import { api, ApiError } from "$lib/api";
+  import { api, ApiError } from "#lib/api.js";
   import {
     newPasswordChoice,
     passwordFields,
     type PasswordResult,
     type UserDetail,
     type UserSummary,
-  } from "$lib/admin";
-  import { toast } from "$lib/toast.svelte";
+  } from "#lib/admin.js";
+  import { toast } from "#lib/toast.svelte.js";
   import Dialog from "./Dialog.svelte";
   import PasswordChoiceFields from "./PasswordChoiceFields.svelte";
   import TemporaryPasswordNotice from "./TemporaryPasswordNotice.svelte";

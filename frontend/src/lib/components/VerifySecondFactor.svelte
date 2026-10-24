@@ -1,9 +1,9 @@
 <script lang="ts">
   import KeyRound from "@lucide/svelte/icons/key-round";
-  import { api, ApiError } from "$lib/api";
+  import { api, ApiError } from "#lib/api.js";
   import CodeInput from "./CodeInput.svelte";
-  import { passkeyErrorMessage, verifyWithPasskey } from "$lib/passkeys";
-  import { sessionEnded, type SecondFactorResult, type SessionInfo } from "$lib/session.svelte";
+  import { passkeyErrorMessage, verifyWithPasskey } from "#lib/passkeys.js";
+  import { sessionEnded, type SecondFactorResult, type SessionInfo } from "#lib/session.svelte.js";
 
   let {
     info,

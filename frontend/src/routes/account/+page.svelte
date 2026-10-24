@@ -1,27 +1,27 @@
 <script lang="ts">
   import ImageIcon from "@lucide/svelte/icons/image";
   import { onMount } from "svelte";
-  import { api, ApiError, sessionGone } from "$lib/api";
+  import { api, ApiError, sessionGone } from "#lib/api.js";
   import {
     PROFILE_FIELDS,
     profileForm,
     variableFor,
     type Profile,
     type ProfileForm,
-  } from "$lib/admin";
-  import { branding, pageTitle } from "$lib/branding.svelte";
-  import { ACCENT, PRIMARY, swatchFor } from "$lib/colours";
-  import PasswordRules from "$lib/components/PasswordRules.svelte";
-  import SwatchPicker from "$lib/components/SwatchPicker.svelte";
-  import AppShell from "$lib/components/AppShell.svelte";
-  import Avatar from "$lib/components/Avatar.svelte";
-  import Dialog from "$lib/components/Dialog.svelte";
-  import Pill from "$lib/components/Pill.svelte";
-  import SaveSecrets from "$lib/components/SaveSecrets.svelte";
-  import SecondFactorSetup from "$lib/components/SecondFactorSetup.svelte";
-  import { browserName, date, dateTime } from "$lib/format";
-  import { recoveryCodesText } from "$lib/secrets";
-  import { toast } from "$lib/toast.svelte";
+  } from "#lib/admin.js";
+  import { branding, pageTitle } from "#lib/branding.svelte.js";
+  import { ACCENT, PRIMARY, swatchFor } from "#lib/colours.js";
+  import PasswordRules from "#lib/components/PasswordRules.svelte";
+  import SwatchPicker from "#lib/components/SwatchPicker.svelte";
+  import AppShell from "#lib/components/AppShell.svelte";
+  import Avatar from "#lib/components/Avatar.svelte";
+  import Dialog from "#lib/components/Dialog.svelte";
+  import Pill from "#lib/components/Pill.svelte";
+  import SaveSecrets from "#lib/components/SaveSecrets.svelte";
+  import SecondFactorSetup from "#lib/components/SecondFactorSetup.svelte";
+  import { browserName, date, dateTime } from "#lib/format.js";
+  import { recoveryCodesText } from "#lib/secrets.js";
+  import { toast } from "#lib/toast.svelte.js";
   import {
     applyTheme,
     session,
@@ -31,7 +31,7 @@
     type SecondFactorResult,
     type SessionInfo,
     type Theme,
-  } from "$lib/session.svelte";
+  } from "#lib/session.svelte.js";
 
   interface Factor {
     id: number;

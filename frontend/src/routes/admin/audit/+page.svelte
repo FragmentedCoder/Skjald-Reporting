@@ -1,17 +1,17 @@
 <script lang="ts">
   import Download from "@lucide/svelte/icons/download";
   import { onMount } from "svelte";
-  import { pageTitle } from "$lib/branding.svelte";
-  import { api, ApiError } from "$lib/api";
+  import { pageTitle } from "#lib/branding.svelte.js";
+  import { api, ApiError } from "#lib/api.js";
   import {
     ACTION_GROUPS,
     describe,
     filterParams,
     type AuditEntry,
     type AuditFilters,
-  } from "$lib/audit";
-  import Pill from "$lib/components/Pill.svelte";
-  import { dateTime, time } from "$lib/format";
+  } from "#lib/audit.js";
+  import Pill from "#lib/components/Pill.svelte";
+  import { dateTime, time } from "#lib/format.js";
 
   interface ChainStatus {
     ok: boolean;

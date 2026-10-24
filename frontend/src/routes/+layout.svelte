@@ -1,11 +1,11 @@
 <script lang="ts">
-  import "$lib/styles/app.css";
+  import "#lib/styles/app.css";
   import { onMount, type Snippet } from "svelte";
-  import StepUpDialog from "$lib/components/StepUpDialog.svelte";
-  import Toaster from "$lib/components/Toaster.svelte";
-  import { branding, loadBranding } from "$lib/branding.svelte";
-  import { applyColours, effectiveColours } from "$lib/colours";
-  import { session } from "$lib/session.svelte";
+  import StepUpDialog from "#lib/components/StepUpDialog.svelte";
+  import Toaster from "#lib/components/Toaster.svelte";
+  import { branding, loadBranding } from "#lib/branding.svelte.js";
+  import { applyColours, effectiveColours } from "#lib/colours.js";
+  import { session } from "#lib/session.svelte.js";
 
   let { children }: { children: Snippet } = $props();
 

@@ -2,10 +2,10 @@
   import { goto } from "$app/navigation";
   import { resolve } from "$app/paths";
   import { onMount } from "svelte";
-  import { pageTitle } from "$lib/branding.svelte";
-  import { api, ApiError } from "$lib/api";
-  import AuthLayout from "$lib/components/AuthLayout.svelte";
-  import PasswordRules from "$lib/components/PasswordRules.svelte";
+  import { pageTitle } from "#lib/branding.svelte.js";
+  import { api, ApiError } from "#lib/api.js";
+  import AuthLayout from "#lib/components/AuthLayout.svelte";
+  import PasswordRules from "#lib/components/PasswordRules.svelte";
   import {
     placeFor,
     sessionEnded,
@@ -13,7 +13,7 @@
     signOut,
     useSession,
     type SessionInfo,
-  } from "$lib/session.svelte";
+  } from "#lib/session.svelte.js";
 
   let info = $state<SessionInfo | null>(null);
   let password = $state("");
