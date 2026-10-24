@@ -41,10 +41,13 @@ with Session(get_engine()) as db:
 PY
 
 "${COMPOSE[@]}" exec -T caddy cat /data/caddy/pki/authorities/local/root.crt >"$WORK/caddy-root.crt"
+# A fresh setup token for the wizard test (this replaces the one printed at start).
+SETUP_TOKEN=$("${COMPOSE[@]}" exec -T app python -m app.setup | sed -n 's/.*Setup token: //p')
 
 status=0
 docker run --rm --network host \
 	-e E2E_PASSWORD="$E2E_PASSWORD" \
+	-e E2E_SETUP_TOKEN="$SETUP_TOKEN" \
 	-e HOST_UID="$(id -u)" \
 	-e NODE_EXTRA_CA_CERTS=/work/caddy-root.crt \
 	-v "$ROOT/frontend":/src:ro \

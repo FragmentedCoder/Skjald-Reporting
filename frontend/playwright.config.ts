@@ -12,6 +12,11 @@ export default defineConfig({
     baseURL: process.env.SKJALD_URL ?? "https://localhost",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
+    ...devices["Desktop Chrome"],
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    // A fresh install sends every page to the setup wizard, so it runs first.
+    { name: "setup", testMatch: /setup\.spec\.ts/ },
+    { name: "chromium", testIgnore: /setup\.spec\.ts/, dependencies: ["setup"] },
+  ],
 });
