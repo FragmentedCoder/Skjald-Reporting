@@ -17,6 +17,7 @@ from typing import Any
 from sqlalchemy import Integer, String, Text, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
+from app import clock
 from app.db import Base
 
 GENESIS_HASH = "0" * 64
@@ -59,6 +60,11 @@ class ChainCheck:
     problem: str | None = None
 
 
+def timestamp(moment: datetime) -> str:
+    """The form occurred_at is stored in. It sorts as text, so time ranges compare as strings."""
+    return moment.astimezone(UTC).isoformat(timespec="microseconds")
+
+
 def _dumps(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
@@ -89,7 +95,7 @@ def append(
     ).first()
     values: dict[str, Any] = {
         "seq": last.seq + 1 if last else 1,
-        "occurred_at": datetime.now(UTC).isoformat(timespec="microseconds"),
+        "occurred_at": timestamp(clock.utcnow()),
         "actor_id": actor_id,
         "actor_name": actor_name,
         "action": action,

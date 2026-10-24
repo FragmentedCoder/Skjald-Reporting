@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 from collections.abc import Generator
+from datetime import UTC, datetime
 from pathlib import Path
 
 import sqlcipher3
-from sqlalchemy import create_engine, event
-from sqlalchemy.engine import Connection, Engine
+from sqlalchemy import DateTime, create_engine, event
+from sqlalchemy.engine import Connection, Dialect, Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from sqlalchemy.pool import QueuePool
+from sqlalchemy.types import TypeDecorator
 
 from app.crypto.database_key import load_or_create_database_key
 from app.settings import settings
@@ -15,6 +17,23 @@ from app.settings import settings
 
 class Base(DeclarativeBase):
     pass
+
+
+class UTCDateTime(TypeDecorator[datetime]):
+    """Stores UTC without an offset (SQLite has no time zones) and returns aware datetimes."""
+
+    impl = DateTime
+    cache_ok = True
+
+    def process_bind_param(self, value: datetime | None, dialect: Dialect) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            raise ValueError("Naive datetime: use clock.utcnow().")
+        return value.astimezone(UTC).replace(tzinfo=None)
+
+    def process_result_value(self, value: datetime | None, dialect: Dialect) -> datetime | None:
+        return None if value is None else value.replace(tzinfo=UTC)
 
 
 def _connect(db_path: Path, key: bytes) -> sqlcipher3.Connection:
@@ -76,10 +95,12 @@ def get_engine() -> Engine:
     return _engine
 
 
-def get_session() -> Generator[Session]:
+def get_db() -> Generator[Session]:
     global _session_factory
     if _session_factory is None:
-        _session_factory = sessionmaker(bind=get_engine(), autoflush=False, autocommit=False)
+        _session_factory = sessionmaker(
+            bind=get_engine(), autoflush=False, autocommit=False, expire_on_commit=False
+        )
     session = _session_factory()
     try:
         yield session
