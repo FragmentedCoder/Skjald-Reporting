@@ -28,8 +28,24 @@ def logo(fmt="PNG") -> bytes:
 def test_branding_starts_with_the_defaults_and_needs_no_sign_in(client) -> None:
     assert client.get("/api/branding").json() == {
         "site_name": "Skjald", "tagline": "Reports worth keeping.", "company_name": None,
-        "logo_url": None,
+        "logo_url": None, "primary_colour": "fjord", "accent_colour": "rav",
+        "enforce_colours": False,
     }
+
+
+def test_an_administrator_can_set_and_enforce_the_colours(client, admin, session) -> None:
+    _, headers = admin
+    saved = client.put("/api/admin/branding", headers=headers, json={
+        "site_name": "Skjald", "company_name": "Nordlys IT ApS", "primary_colour": "pine",
+        "accent_colour": "sky", "enforce_colours": True,
+    }).json()
+    assert (saved["primary_colour"], saved["accent_colour"], saved["enforce_colours"]) == (
+        "pine", "sky", True
+    )
+    unknown = client.put("/api/admin/branding", headers=headers, json={
+        "site_name": "Skjald", "company_name": "Nordlys IT ApS", "primary_colour": "#ff00ff",
+    })
+    assert unknown.status_code == 422
 
 
 def test_an_administrator_can_rename_the_site(client, admin, session) -> None:
@@ -84,8 +100,11 @@ def server(monkeypatch, data_dir, master_key_path):
 
 
 def health_checks(client, headers):
-    health = client.get("/api/admin/health", headers=headers).json()
-    return {check["key"]: check for check in health["checks"]}
+    keys = client.get("/api/admin/health", headers=headers).json()["checks"]
+    return {
+        key: client.get(f"/api/admin/health/checks/{key}", headers=headers).json()
+        for key in keys
+    }
 
 
 @pytest.fixture
@@ -98,13 +117,13 @@ def reachable(monkeypatch):
 def test_the_health_page_checks_everything_that_matters(client, admin, reachable) -> None:
     _, headers = admin
     health = client.get("/api/admin/health", headers=headers).json()
-    checks = {check["key"]: check for check in health["checks"]}
+    checks = health_checks(client, headers)
     assert set(checks) == {"database", "audit_chain", "keys", "disk", "breach_check"}
     assert checks["database"]["status"] == "ok"
     assert checks["audit_chain"]["status"] == "ok"
     assert checks["audit_chain"]["detail"].startswith("Chain intact")
     assert checks["breach_check"]["status"] == "ok" and reachable == [1]
-    assert health["versions"]["schema_version"] == "0006"
+    assert health["versions"]["schema_version"] == "0007"
     assert health["versions"]["sqlcipher"]
     assert any(p["name"] == "fastapi" for p in health["packages"])
     assert health["usage"]["users"] == 1 and health["usage"]["sessions"] == 1
@@ -148,4 +167,11 @@ def test_only_administrators_see_server_health(client, make_user, session, full_
     auditor = make_user()
     grant_role(session, auditor, Role.AUDITOR, actor=None, ip=None)
     session.commit()
-    assert client.get("/api/admin/health", headers=full_session(auditor)).status_code == 403
+    headers = full_session(auditor)
+    assert client.get("/api/admin/health", headers=headers).status_code == 403
+    assert client.get("/api/admin/health/checks/database", headers=headers).status_code == 403
+
+
+def test_an_unknown_check_is_not_found(client, admin) -> None:
+    _, headers = admin
+    assert client.get("/api/admin/health/checks/everything", headers=headers).status_code == 404

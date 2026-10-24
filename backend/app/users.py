@@ -57,6 +57,9 @@ class User(Base):
     password_expires_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     last_sign_in_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     theme: Mapped[str] = mapped_column(String(10), default="system", server_default="system")
+    # The person's own colours; None follows the site's (see app/colours.py).
+    primary_colour: Mapped[str | None] = mapped_column(String(20))
+    accent_colour: Mapped[str | None] = mapped_column(String(20))
     created_at: Mapped[datetime] = mapped_column(UTCDateTime)
     # Random, not the user id: passkeys store it, and it shouldn't identify anyone.
     webauthn_handle: Mapped[bytes | None] = mapped_column(LargeBinary, unique=True, index=True)

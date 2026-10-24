@@ -219,3 +219,32 @@ def test_pictures_need_a_signed_in_user(astrid, new_client) -> None:
                       headers=csrf | {"Content-Type": "application/octet-stream"}
                       ).json()["avatar_url"]
     assert new_client().get(url).status_code == 401
+
+
+# Colours and password rules
+
+
+def test_colours_can_be_chosen_and_reset_to_the_sites(astrid) -> None:
+    browser, csrf = astrid
+    chosen = browser.patch("/api/account", headers=csrf,
+                           json={"primary_colour": "teal", "accent_colour": "moss"}).json()
+    assert (chosen["primary_colour"], chosen["accent_colour"]) == ("teal", "moss")
+    assert browser.get("/api/auth/session").json()["user"]["colours"] == {
+        "primary": "teal", "accent": "moss",
+    }
+    reset = browser.patch("/api/account", headers=csrf, json={"primary_colour": None}).json()
+    assert (reset["primary_colour"], reset["accent_colour"]) == (None, "moss")
+    made_up = browser.patch("/api/account", headers=csrf, json={"accent_colour": "neon"})
+    assert made_up.status_code == 422
+
+
+def test_the_password_rules_are_there_for_the_help_text(astrid, session) -> None:
+    browser, _ = astrid
+    assert browser.get("/api/auth/password-rules").json() == {
+        "min_length": 12, "breach_check": True,
+    }
+    save_policy(session, SecurityPolicy(min_password_length=16, breach_check_enabled=False))
+    session.commit()
+    assert browser.get("/api/auth/password-rules").json() == {
+        "min_length": 16, "breach_check": False,
+    }

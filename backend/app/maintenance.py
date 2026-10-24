@@ -1,8 +1,9 @@
 """Server health for Administrators: checks, space used, software versions.
 
-The slow parts (the database's integrity check, re-hashing the audit chain, the
-call to Have I Been Pwned) run outside any write transaction, so the rest of
-Skjald carries on meanwhile.
+Each check is its own request, so the page fills in as they finish. The slow
+ones (the database's integrity check, re-hashing the audit chain, the call to
+Have I Been Pwned) run outside any write transaction, so the rest of Skjald
+carries on meanwhile.
 """
 
 from __future__ import annotations
@@ -10,13 +11,15 @@ from __future__ import annotations
 import importlib.metadata
 import platform
 import shutil
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import func, select, text
+from sqlalchemy.orm import Session
 
 from app import audit, clock
 from app.admin import Admin
@@ -80,7 +83,8 @@ class ServerHealth(BaseModel):
     started_at: datetime
     address: str
     setup_completed_at: str | None
-    checks: list[Check]
+    # The keys of the checks to run, one request each (see run_check).
+    checks: list[str]
     usage: Usage
     versions: Versions
     packages: list[Package]
@@ -165,9 +169,46 @@ def _breach_check(enabled: bool) -> Check:
                  "until it can.")
 
 
+def _run_database(db: Session) -> Check:
+    db.commit()  # the check reads every page: hold no write lock meanwhile
+    return _database_check(check_integrity(engine_of(db)))
+
+
+def _run_audit_chain(db: Session) -> Check:
+    db.commit()
+    with reading(engine_of(db)) as reader:
+        return _audit_check(audit.verify(reader))
+
+
+def _run_keys(db: Session) -> Check:
+    return _keys_check()
+
+
+def _run_disk(db: Session) -> Check:
+    disk = shutil.disk_usage(Path(settings.data_dir))
+    return _disk_check(disk.total, disk.free)
+
+
+def _run_breach_check(db: Session) -> Check:
+    enabled = load_policy(db).breach_check_enabled
+    db.commit()  # a network call follows
+    return _breach_check(enabled)
+
+
+# Each check has its own request, so the page fills in as answers arrive and a
+# slow one (the integrity check, the network) holds up nothing else.
+CHECKS: dict[str, Callable[[Session], Check]] = {
+    "database": _run_database,
+    "audit_chain": _run_audit_chain,
+    "keys": _run_keys,
+    "disk": _run_disk,
+    "breach_check": _run_breach_check,
+}
+
+
 @router.get("/health")
 def server_health(_: Admin, db: DB) -> ServerHealth:
-    policy = load_policy(db)
+    """Everything quick: usage, versions, and which checks there are to run."""
     completed = setup_completed_at(db)
     counts = {
         "users": db.scalar(select(func.count()).select_from(User)) or 0,
@@ -183,11 +224,8 @@ def server_health(_: Admin, db: DB) -> ServerHealth:
     schema = db.execute(text("SELECT version_num FROM alembic_version")).scalar()
     sqlite_version = str(db.execute(text("SELECT sqlite_version()")).scalar())
     sqlcipher_version = str(db.execute(text("PRAGMA cipher_version")).scalar())
-    db.commit()  # everything below is slow: hold no write lock
+    db.commit()
 
-    engine = engine_of(db)
-    with reading(engine) as reader:
-        chain = audit.verify(reader)
     data_dir = Path(settings.data_dir)
     disk = shutil.disk_usage(data_dir)
     database_bytes = sum(
@@ -198,13 +236,7 @@ def server_health(_: Admin, db: DB) -> ServerHealth:
         started_at=STARTED_AT,
         address=settings.address,
         setup_completed_at=completed,
-        checks=[
-            _database_check(check_integrity(engine)),
-            _audit_check(chain),
-            _keys_check(),
-            _disk_check(disk.total, disk.free),
-            _breach_check(policy.breach_check_enabled),
-        ],
+        checks=list(CHECKS),
         usage=Usage(disk_total_bytes=disk.total, disk_free_bytes=disk.free,
                     database_bytes=database_bytes, **counts),
         versions=Versions(
@@ -218,3 +250,11 @@ def server_health(_: Admin, db: DB) -> ServerHealth:
         ),
         packages=_packages(),
     )
+
+
+@router.get("/health/checks/{key}")
+def run_check(key: str, _: Admin, db: DB) -> Check:
+    check = CHECKS.get(key)
+    if check is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "There's no such check.")
+    return check(db)

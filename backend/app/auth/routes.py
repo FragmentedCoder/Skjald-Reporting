@@ -53,11 +53,18 @@ class SignInRequest(BaseModel):
     password: str = Field(min_length=1, max_length=1024)
 
 
+class Colours(BaseModel):
+    # None follows the site's colours.
+    primary: str | None
+    accent: str | None
+
+
 class UserInfo(BaseModel):
     id: int
     username: str
     display_name: str
     theme: str
+    colours: Colours
     avatar_url: str | None
     roles: list[Role]
     # What the roles allow from this address, worked out here so the frontend never
@@ -95,6 +102,7 @@ def session_info(db: Session, record: UserSession, token: str, request: Request)
             username=user.username,
             display_name=user.display_name,
             theme=user.theme,
+            colours=Colours(primary=user.primary_colour, accent=user.accent_colour),
             avatar_url=avatar_url(db, user.id),
             roles=sorted(roles_of(db, user.id)),
             capabilities=sorted(effective_capabilities(db, record, request)),
