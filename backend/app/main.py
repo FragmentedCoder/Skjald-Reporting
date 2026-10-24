@@ -3,6 +3,7 @@ from collections.abc import Awaitable, Callable
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 
+from app import setup_routes
 from app.api import health
 from app.auth import mfa_routes
 from app.auth import routes as auth_routes
@@ -29,3 +30,4 @@ async def refuse_cross_site_writes(
 app.include_router(health.router, prefix="/api")
 app.include_router(auth_routes.router, prefix="/api")
 app.include_router(mfa_routes.router, prefix="/api")
+app.include_router(setup_routes.router, prefix="/api")

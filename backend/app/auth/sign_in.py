@@ -80,16 +80,21 @@ def _record_failure(db: Session, user: User, policy: SecurityPolicy) -> SignInOu
     return SignInOutcome(False, user, "wrong_password")
 
 
-def too_many_failures_from(db: Session, ip: str | None) -> bool:
-    """Throttle by address too, so one machine can't try many usernames below each lockout."""
+def too_many_failures_from(
+    db: Session, ip: str | None, action: str = FAILED_ACTION, limit: int | None = None
+) -> bool:
+    """Throttle by address too, so one machine can't try many usernames below each lockout.
+
+    Counts the address's `action` entries in the audit log over the last 15 minutes.
+    """
     since = timestamp(clock.utcnow() - ADDRESS_WINDOW)
     failures = db.scalar(
         select(func.count())
         .select_from(AuditEntry)
         .where(
-            AuditEntry.action == FAILED_ACTION,
+            AuditEntry.action == action,
             AuditEntry.ip == ip,
             AuditEntry.occurred_at >= since,
         )
     )
-    return (failures or 0) >= ADDRESS_MAX_FAILURES
+    return (failures or 0) >= (limit if limit is not None else ADDRESS_MAX_FAILURES)

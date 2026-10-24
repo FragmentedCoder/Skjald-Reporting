@@ -1,7 +1,14 @@
 import pytest
 from cryptography.exceptions import InvalidTag
 
-from app.crypto.keys import generate_key, load_master_key, unwrap_key, wrap_key
+from app.crypto.keys import (
+    from_kit_text,
+    generate_key,
+    load_master_key,
+    to_kit_text,
+    unwrap_key,
+    wrap_key,
+)
 
 CONTEXT = b"skjald/test-key"
 
@@ -37,6 +44,14 @@ def test_a_key_wrapped_for_one_customer_does_not_open_for_another() -> None:
     wrapped = wrap_key(master_key, generate_key(), context=b"skjald/customer-key/1")
     with pytest.raises(InvalidTag):
         unwrap_key(master_key, wrapped, context=b"skjald/customer-key/2")
+
+
+def test_recovery_kit_text_round_trips_and_forgives_typing() -> None:
+    key = generate_key()
+    text = to_kit_text(key)
+    assert len(text.split()) == 13 and all(len(g) <= 4 for g in text.split())
+    assert from_kit_text(text) == key
+    assert from_kit_text(text.lower().replace(" ", "-")) == key
 
 
 def test_load_master_key_round_trips_from_disk(tmp_path) -> None:

@@ -11,7 +11,7 @@ from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from sqlalchemy.pool import QueuePool
 from sqlalchemy.types import TypeDecorator
 
-from app.crypto.database_key import load_or_create_database_key
+from app.crypto.key_files import load_or_create_database_key
 from app.settings import settings
 
 

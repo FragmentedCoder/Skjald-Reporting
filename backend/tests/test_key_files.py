@@ -1,6 +1,6 @@
 import multiprocessing
 
-from app.crypto.database_key import load_or_create_database_key
+from app.crypto.key_files import load_or_create_database_key
 from app.crypto.keys import generate_key
 
 
