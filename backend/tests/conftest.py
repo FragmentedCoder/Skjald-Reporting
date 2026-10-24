@@ -110,6 +110,32 @@ def full_session(session):
     return sign_in
 
 
+@pytest.fixture
+def new_client(client):
+    """More browsers, sharing the test database but not each other's cookies."""
+    opened = []
+
+    def make():
+        browser = TestClient(app, base_url="https://testserver")
+        opened.append(browser)
+        return browser
+
+    yield make
+    for browser in opened:
+        browser.close()
+
+
+@pytest.fixture
+def admin(make_user, session, full_session):
+    """An active Administrator, fully signed in. Yields (user, request headers)."""
+    from app.roles import Role, grant_role
+
+    user = make_user("admin", display_name="Ingrid Admin")
+    grant_role(session, user, Role.ADMINISTRATOR, actor=None, ip=None)
+    session.commit()
+    return user, full_session(user)
+
+
 NO_BREACH_CHECK = SecurityPolicy(breach_check_enabled=False)
 
 

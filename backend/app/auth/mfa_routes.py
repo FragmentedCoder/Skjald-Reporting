@@ -81,6 +81,8 @@ def _actor(record: UserSession) -> dict[str, Any]:
 
 
 def _require_enrolment_allowed(db: Session, record: UserSession) -> None:
+    if record.user.must_change_password:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Choose a new password first.")
     if not may_enrol(db, record):
         raise HTTPException(
             status.HTTP_403_FORBIDDEN, "Finish signing in with your second factor first."

@@ -14,7 +14,7 @@ from sqlalchemy import ForeignKey, LargeBinary, String, delete, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app import clock
-from app.auth.sessions import UserSession, hash_token
+from app.auth.sessions import UserSession, rotate_token
 from app.db import Base, UTCDateTime
 from app.policy import SecurityPolicy
 
@@ -103,8 +103,11 @@ def second_factor_state(
 def may_enrol(db: Session, record: UserSession) -> bool:
     """A new factor needs both factors passed first, unless the account has none yet.
 
-    Otherwise someone holding only the password could add their own factor.
+    Otherwise someone holding only the password could add their own factor. A
+    temporary password must be replaced before any factor is set up.
     """
+    if record.user.must_change_password:
+        return False
     return record.mfa_verified_at is not None or not confirmed_factors(db, record.user_id)
 
 
@@ -114,10 +117,10 @@ def upgrade_session(db: Session, record: UserSession) -> str:
     The new token means a token planted or seen before this point (session
     fixation) is worthless. Returns the new token for the cookie.
     """
-    token = secrets.token_urlsafe(32)
+    token = rotate_token(record)
     now = clock.utcnow()
-    record.token_hash = hash_token(token)
     record.mfa_verified_at = now
+    record.user.last_sign_in_at = now
     record.last_seen_at = now
     record.challenge = None
     record.challenge_purpose = None

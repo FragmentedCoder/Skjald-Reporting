@@ -3,7 +3,7 @@ from collections.abc import Awaitable, Callable
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 
-from app import setup_routes
+from app import account, admin, audit_routes, setup_routes
 from app.api import health
 from app.auth import mfa_routes
 from app.auth import routes as auth_routes
@@ -31,3 +31,6 @@ app.include_router(health.router, prefix="/api")
 app.include_router(auth_routes.router, prefix="/api")
 app.include_router(mfa_routes.router, prefix="/api")
 app.include_router(setup_routes.router, prefix="/api")
+app.include_router(account.router, prefix="/api")
+app.include_router(admin.router, prefix="/api")
+app.include_router(audit_routes.router, prefix="/api")

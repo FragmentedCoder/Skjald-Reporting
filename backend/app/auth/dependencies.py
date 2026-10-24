@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app import audit
 from app.auth.sessions import COOKIE_NAME, UserSession, csrf_token_for, find_live_session
 from app.db import get_db
-from app.policy import load_policy
+from app.policy import admin_allowed_from, load_policy
 from app.roles import Capability, can, roles_of
 
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
@@ -51,6 +51,8 @@ def require_full_session(record: AnySession) -> UserSession:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN, "Finish signing in with your second factor first."
         )
+    if record.user.must_change_password:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Choose a new password first.")
     return record
 
 
@@ -58,20 +60,28 @@ FullSession = Annotated[UserSession, Depends(require_full_session)]
 
 
 def require(capability: Capability) -> Callable[..., UserSession]:
-    """A dependency that lets through only signed-in users whose roles grant capability."""
+    """A dependency that lets through only signed-in users whose roles grant capability.
+
+    The admin panel (ADMINISTER) also answers only from the admin IP allowlist.
+    """
 
     def check(request: Request, record: FullSession, db: DB) -> UserSession:
-        if can(roles_of(db, record.user_id), capability):
+        ip = client_ip(request)
+        if not can(roles_of(db, record.user_id), capability):
+            refusal = "You don't have access to this."
+        elif capability is Capability.ADMINISTER and not admin_allowed_from(load_policy(db), ip):
+            refusal = "The admin panel isn't available from this address."
+        else:
             return record
         audit.append(
             db,
             "auth.access_denied",
             actor_id=record.user.id,
             actor_name=record.user.username,
-            ip=client_ip(request),
+            ip=ip,
             details={"capability": capability.value, "path": request.url.path},
         )
         db.commit()
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "You don't have access to this.")
+        raise HTTPException(status.HTTP_403_FORBIDDEN, refusal)
 
     return check

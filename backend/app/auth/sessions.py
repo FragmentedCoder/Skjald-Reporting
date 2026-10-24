@@ -7,7 +7,7 @@ import hmac
 import secrets
 from datetime import datetime, timedelta
 
-from sqlalchemy import ForeignKey, LargeBinary, String, select
+from sqlalchemy import ForeignKey, LargeBinary, String, delete, select
 from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
 
 from app import clock
@@ -76,6 +76,26 @@ def start_session(
     db.add(record)
     db.flush()
     return token, record
+
+
+def rotate_token(record: UserSession) -> str:
+    """Give the session a new token, so one seen before this point is worthless.
+
+    Done whenever the session gains rights (second factor) or the credentials
+    behind it change (new password). Returns the new token for the cookie.
+    """
+    token = secrets.token_urlsafe(32)
+    record.token_hash = hash_token(token)
+    return token
+
+
+def end_sessions(db: Session, user_id: int, *, keep: UserSession | None = None) -> int:
+    """Sign a user out everywhere (except `keep`). Returns how many sessions ended."""
+    query = delete(UserSession).where(UserSession.user_id == user_id)
+    if keep is not None:
+        query = query.where(UserSession.id != keep.id)
+    result = db.execute(query)
+    return int(getattr(result, "rowcount", 0) or 0)
 
 
 def find_live_session(db: Session, token: str, policy: SecurityPolicy) -> UserSession | None:

@@ -84,6 +84,26 @@ def can(roles: set[Role], capability: Capability) -> bool:
     return bool(roles & GRANTS[capability])
 
 
+def revoke_role(
+    db: Session, user: User, role: Role, *, actor: User | None, ip: str | None
+) -> None:
+    """Take a role away, and log who did it. Does nothing if they don't have it."""
+    held = db.get(UserRole, (user.id, role.value))
+    if held is None:
+        return
+    db.delete(held)
+    audit.append(
+        db,
+        "auth.role.revoked",
+        actor_id=actor.id if actor else None,
+        actor_name=actor.username if actor else None,
+        target_type="user",
+        target_id=str(user.id),
+        ip=ip,
+        details={"role": role.value, "user": user.username},
+    )
+
+
 def grant_role(
     db: Session, user: User, role: Role, *, actor: User | None, ip: str | None
 ) -> None:

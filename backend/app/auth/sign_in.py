@@ -55,9 +55,12 @@ def authenticate(
         return SignInOutcome(False, user, "locked")
 
     if not verify_password(user.password_hash, password):
-        return _record_failure(db, user, policy)
+        return record_password_failure(db, user, policy)
     if not user.is_active:
         return SignInOutcome(False, user, "inactive")
+    expires = user.password_expires_at
+    if user.must_change_password and expires is not None and expires <= clock.utcnow():
+        return SignInOutcome(False, user, "temporary_password_expired")
 
     # The failure count is not reset here but once both factors pass
     # (mfa.upgrade_session), so wrong codes and wrong passwords share one lockout.
@@ -68,7 +71,8 @@ def authenticate(
     return SignInOutcome(True, user)
 
 
-def _record_failure(db: Session, user: User, policy: SecurityPolicy) -> SignInOutcome:
+def record_password_failure(db: Session, user: User, policy: SecurityPolicy) -> SignInOutcome:
+    """Count a wrong password towards the lockout (sign-in, or re-entering it to confirm)."""
     # Re-read under the write lock, so attempts running side by side all count.
     db.refresh(user)
     now: datetime = clock.utcnow()

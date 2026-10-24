@@ -17,7 +17,7 @@ from app.auth.sign_in import (
     too_many_failures_from,
 )
 from app.policy import load_policy
-from app.roles import Role, roles_of
+from app.roles import Capability, Role, can, roles_of
 
 router = APIRouter(prefix="/auth")
 
@@ -35,7 +35,10 @@ class UserInfo(BaseModel):
     id: int
     username: str
     display_name: str
+    theme: str
     roles: list[Role]
+    # What the roles allow, worked out here so the frontend never re-derives it.
+    capabilities: list[Capability]
 
 
 class SessionInfo(BaseModel):
@@ -43,21 +46,27 @@ class SessionInfo(BaseModel):
     # enrol: set up a second factor now. verify: use one of `methods`. done: signed in.
     second_factor: SecondFactorState
     methods: list[Method]
+    # A temporary password must be replaced before the app opens.
+    password_change_required: bool
     csrf_token: str
     expires_at: datetime
 
 
 def session_info(db: Session, record: UserSession, token: str) -> SessionInfo:
     state, methods = second_factor_state(db, record)
+    roles = roles_of(db, record.user_id)
     return SessionInfo(
         user=UserInfo(
             id=record.user.id,
             username=record.user.username,
             display_name=record.user.display_name,
-            roles=sorted(roles_of(db, record.user_id)),
+            theme=record.user.theme,
+            roles=sorted(roles),
+            capabilities=sorted(c for c in Capability if can(roles, c)),
         ),
         second_factor=state,
         methods=methods,
+        password_change_required=record.user.must_change_password,
         csrf_token=csrf_token_for(token),
         expires_at=record.expires_at,
     )
