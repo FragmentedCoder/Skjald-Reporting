@@ -4,7 +4,7 @@ import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from sqlalchemy import String, select
+from sqlalchemy import LargeBinary, String, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app import clock
@@ -21,6 +21,8 @@ from app.policy import SecurityPolicy
 
 class User(Base):
     __tablename__ = "users"
+    # IDs appear in the audit log, so one must never be reused for someone else.
+    __table_args__ = {"sqlite_autoincrement": True}
 
     id: Mapped[int] = mapped_column(primary_key=True)
     username: Mapped[str] = mapped_column(String(150), unique=True)
@@ -33,6 +35,8 @@ class User(Base):
     locked_until: Mapped[datetime | None] = mapped_column(UTCDateTime)
     password_changed_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    # Random, not the user id: passkeys store it, and it shouldn't identify anyone.
+    webauthn_handle: Mapped[bytes | None] = mapped_column(LargeBinary, unique=True, index=True)
 
 
 def normalize_username(username: str) -> str:

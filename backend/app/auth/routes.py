@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
 from app import audit
 from app.auth.dependencies import DB, AnySession, client_ip
+from app.auth.mfa import Method, SecondFactorState, second_factor_state
 from app.auth.sessions import COOKIE_NAME, UserSession, csrf_token_for, start_session
 from app.auth.sign_in import (
     ADDRESS_WINDOW,
@@ -37,21 +38,31 @@ class UserInfo(BaseModel):
 
 class SessionInfo(BaseModel):
     user: UserInfo
-    second_factor: Literal["enrol", "done"]
+    # enrol: set up a second factor now. verify: use one of `methods`. done: signed in.
+    second_factor: SecondFactorState
+    methods: list[Method]
     csrf_token: str
     expires_at: datetime
 
 
-def _session_info(record: UserSession, token: str) -> SessionInfo:
+def session_info(db: Session, record: UserSession, token: str) -> SessionInfo:
+    state, methods = second_factor_state(db, record)
     return SessionInfo(
         user=UserInfo(
             id=record.user.id,
             username=record.user.username,
             display_name=record.user.display_name,
         ),
-        second_factor="done" if record.mfa_verified_at else "enrol",
+        second_factor=state,
+        methods=methods,
         csrf_token=csrf_token_for(token),
         expires_at=record.expires_at,
+    )
+
+
+def set_session_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        COOKIE_NAME, token, httponly=True, secure=True, samesite="strict", path="/"
     )
 
 
@@ -96,15 +107,13 @@ def sign_in(body: SignInRequest, request: Request, response: Response, db: DB) -
         details={"session": record.id},
     )
     db.commit()
-    response.set_cookie(
-        COOKIE_NAME, token, httponly=True, secure=True, samesite="strict", path="/"
-    )
-    return _session_info(record, token)
+    set_session_cookie(response, token)
+    return session_info(db, record, token)
 
 
 @router.get("/session")
-def get_current_session(request: Request, record: AnySession) -> SessionInfo:
-    return _session_info(record, request.cookies[COOKIE_NAME])
+def get_current_session(request: Request, record: AnySession, db: DB) -> SessionInfo:
+    return session_info(db, record, request.cookies[COOKIE_NAME])
 
 
 @router.post("/sign-out", status_code=status.HTTP_204_NO_CONTENT)

@@ -7,7 +7,7 @@ import hmac
 import secrets
 from datetime import datetime, timedelta
 
-from sqlalchemy import ForeignKey, String, select
+from sqlalchemy import ForeignKey, LargeBinary, String, select
 from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
 
 from app import clock
@@ -24,6 +24,8 @@ TOUCH_INTERVAL = timedelta(minutes=1)
 
 class UserSession(Base):
     __tablename__ = "user_sessions"
+    # IDs appear in the audit log, so a new session must never reuse an old one's.
+    __table_args__ = {"sqlite_autoincrement": True}
 
     id: Mapped[int] = mapped_column(primary_key=True)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
@@ -34,6 +36,10 @@ class UserSession(Base):
     mfa_verified_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     ip: Mapped[str | None] = mapped_column(String(45))
     user_agent: Mapped[str | None] = mapped_column(String(255))
+    # A passkey ceremony in progress: one challenge at a time, used once.
+    challenge: Mapped[bytes | None] = mapped_column(LargeBinary)
+    challenge_purpose: Mapped[str | None] = mapped_column(String(20))
+    challenge_expires_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
 
     user: Mapped[User] = relationship(lazy="joined")
 

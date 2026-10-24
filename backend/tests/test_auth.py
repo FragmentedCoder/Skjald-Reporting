@@ -125,17 +125,18 @@ def test_an_account_locks_after_repeated_failures_and_unlocks_later(
     assert _sign_in(client).status_code == 200
 
 
-def test_a_successful_sign_in_resets_the_failure_count(client, make_user, session) -> None:
+def test_a_password_alone_does_not_reset_the_failure_count(client, make_user, session) -> None:
+    # Otherwise someone with the password could guess second-factor codes forever,
+    # a few at a time between sign-ins. Only a full sign-in resets it (test_mfa.py).
     make_user()
     save_policy(session, SecurityPolicy(lockout_threshold=3))
     session.commit()
 
     for password in ("wrong one, long enough", "wrong two, long enough", PASSWORD):
         _sign_in(client, password=password)
-    for _ in range(2):
-        _sign_in(client, password="wrong again, long enough")
+    _sign_in(client, password="wrong three, long enough")
 
-    assert _sign_in(client).status_code == 200
+    assert _sign_in(client).status_code == 401
 
 
 def test_one_address_trying_many_usernames_is_throttled(client, monkeypatch) -> None:
@@ -230,6 +231,16 @@ def test_a_password_alone_does_not_open_protected_routes(
     response = client.get(full_session_route)
     assert response.status_code == 403
     assert "second factor" in response.json()["detail"]
+
+
+def test_a_new_session_never_reuses_an_old_ones_id(client, make_user, session) -> None:
+    # The audit log refers to sessions by ID; a reused ID would blur whose actions were whose.
+    make_user()
+    for _ in range(2):
+        csrf = _sign_in(client).json()["csrf_token"]
+        client.post("/api/auth/sign-out", headers={"X-CSRF-Token": csrf})
+    sessions = [e.details for e in _audit(session, "auth.sign_in.succeeded")]
+    assert sessions == ['{"session":1}', '{"session":2}']
 
 
 def test_sign_ins_and_sign_outs_are_audited_in_an_unbroken_chain(

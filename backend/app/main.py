@@ -4,6 +4,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 
 from app.api import health
+from app.auth import mfa_routes
 from app.auth import routes as auth_routes
 from app.auth.dependencies import SAFE_METHODS
 
@@ -27,3 +28,4 @@ async def refuse_cross_site_writes(
 
 app.include_router(health.router, prefix="/api")
 app.include_router(auth_routes.router, prefix="/api")
+app.include_router(mfa_routes.router, prefix="/api")

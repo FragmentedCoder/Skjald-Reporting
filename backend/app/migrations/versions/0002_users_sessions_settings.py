@@ -28,6 +28,7 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("username"),
+        sqlite_autoincrement=True,
     )
     op.create_table(
         "user_sessions",
@@ -43,6 +44,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("token_hash"),
+        sqlite_autoincrement=True,
     )
     op.create_index("ix_user_sessions_user_id", "user_sessions", ["user_id"])
     op.create_table(

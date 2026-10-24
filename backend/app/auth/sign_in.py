@@ -59,11 +59,11 @@ def authenticate(
     if not user.is_active:
         return SignInOutcome(False, user, "inactive")
 
-    new_hash = hash_password(password) if needs_rehash(user.password_hash) else None
-    db.refresh(user)
-    user.failed_sign_ins = 0
-    user.locked_until = None
-    if new_hash:
+    # The failure count is not reset here but once both factors pass
+    # (mfa.upgrade_session), so wrong codes and wrong passwords share one lockout.
+    if needs_rehash(user.password_hash):
+        new_hash = hash_password(password)
+        db.refresh(user)
         user.password_hash = new_hash
     return SignInOutcome(True, user)
 
