@@ -1,4 +1,4 @@
-"""Your own account: password, second factors, recovery codes, theme, sessions.
+"""Your own account: profile, password, multifactor, recovery codes, theme, sessions.
 
 Also the forced password change after an Administrator hands out a temporary
 password. Changing what proves who you are (removing a factor, new recovery
@@ -8,26 +8,46 @@ codes) asks for your password again; a wrong one counts towards the lockout.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal, NoReturn
+from typing import Annotated, Any, Literal, NoReturn
 
-from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi import APIRouter, Body, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import audit
-from app.auth.dependencies import DB, AnySession, FullSession, client_ip
-from app.auth.mfa import confirmed_factors, issue_recovery_codes, unused_recovery_codes
+from app import audit, clock
+from app.auth.dependencies import DB, AnySession, FullSession, client_ip, refuse
+from app.auth.mfa import (
+    confirmed_factors,
+    issue_recovery_codes,
+    mfa_required,
+    unused_recovery_codes,
+)
 from app.auth.mfa_routes import FactorInfo
 from app.auth.passwords import PasswordRejected, verify_password
 from app.auth.pwned import BreachCheckUnavailable
 from app.auth.routes import SessionInfo, session_info, set_session_cookie
-from app.auth.sessions import UserSession, end_sessions, rotate_token
+from app.auth.sessions import UserSession, end_sessions, live_sessions, rotate_token
 from app.auth.sign_in import record_password_failure
+from app.images import (
+    AVATAR_SIZE,
+    IMAGE_HEADERS,
+    ImageRejected,
+    avatar_key,
+    avatar_url,
+    clean_image,
+    load_image,
+    remove_image,
+    store_image,
+)
 from app.policy import load_policy
-from app.users import set_password, vet_new_password
+from app.users import User, set_password, vet_new_password
 
 router = APIRouter()
+
+PROFILE_FIELDS = (
+    "display_name", "first_name", "middle_name", "last_name", "job_title", "department",
+    "email", "phone",
+)
 
 
 class SessionSummary(BaseModel):
@@ -40,20 +60,42 @@ class SessionSummary(BaseModel):
     current: bool = False
 
 
-class AccountInfo(BaseModel):
-    username: str
+class Profile(BaseModel):
+    """Business details reports and templates can use."""
+
     display_name: str
+    first_name: str | None
+    middle_name: str | None
+    last_name: str | None
+    job_title: str | None
+    department: str | None
     email: str | None
+    phone: str | None
+
+
+class ProfileUpdate(BaseModel):
+    display_name: str | None = Field(default=None, min_length=1, max_length=200)
+    first_name: str | None = Field(default=None, max_length=100)
+    middle_name: str | None = Field(default=None, max_length=100)
+    last_name: str | None = Field(default=None, max_length=100)
+    job_title: str | None = Field(default=None, max_length=150)
+    department: str | None = Field(default=None, max_length=150)
+    email: str | None = Field(default=None, max_length=254, pattern=r"^([^@\s]+@[^@\s]+)?$")
+    phone: str | None = Field(default=None, max_length=50, pattern=r"^[0-9+()\-. ]*$")
+
+
+class AccountInfo(Profile):
+    username: str
     theme: str
+    avatar_url: str | None
     password_changed_at: datetime | None
+    mfa_required: bool
     factors: list[FactorInfo]
     recovery_codes_left: int
     sessions: list[SessionSummary]
 
 
-class AccountUpdate(BaseModel):
-    display_name: str | None = Field(default=None, min_length=1, max_length=200)
-    email: str | None = Field(default=None, max_length=254, pattern=r"^([^@\s]+@[^@\s]+)?$")
+class AccountUpdate(ProfileUpdate):
     theme: Literal["system", "light", "dark"] | None = None
 
 
@@ -73,6 +115,26 @@ class RecoveryCodes(BaseModel):
     recovery_codes: list[str]
 
 
+def profile_of(user: User) -> dict[str, Any]:
+    return {name: getattr(user, name) for name in PROFILE_FIELDS}
+
+
+def apply_profile(user: User, update: ProfileUpdate) -> list[str]:
+    """Copy the fields that were sent onto user. Returns the names that changed."""
+    changed = []
+    for name in update.model_fields_set & set(PROFILE_FIELDS):
+        value = getattr(update, name)
+        value = value.strip() if isinstance(value, str) else value
+        if name != "display_name":
+            value = value or None
+        elif not value:
+            continue
+        if getattr(user, name) != value:
+            setattr(user, name, value)
+            changed.append(name)
+    return sorted(changed)
+
+
 def factor_infos(db: Session, user_id: int) -> list[FactorInfo]:
     return [
         FactorInfo(id=f.id, kind=f.kind, label=f.label, created_at=f.created_at,
@@ -84,9 +146,7 @@ def factor_infos(db: Session, user_id: int) -> list[FactorInfo]:
 def session_summaries(
     db: Session, user_id: int, current: UserSession | None = None
 ) -> list[SessionSummary]:
-    records = db.scalars(
-        select(UserSession).where(UserSession.user_id == user_id).order_by(UserSession.id)
-    )
+    records = db.scalars(live_sessions(user_id).order_by(UserSession.id))
     return [
         SessionSummary(
             id=r.id, created_at=r.created_at, last_seen_at=r.last_seen_at, ip=r.ip,
@@ -122,9 +182,8 @@ def _confirm_password(db: Session, request: Request, record: UserSession, passwo
                      ip=ip, details={"minutes": policy.lockout_minutes})
         db.delete(record)
         db.commit()
-        raise HTTPException(
-            status.HTTP_401_UNAUTHORIZED, "Too many wrong attempts. Sign in again in a few minutes."
-        )
+        raise refuse(status.HTTP_401_UNAUTHORIZED,
+                     "Too many wrong attempts. Sign in again in a few minutes.", "session_locked")
     db.commit()
     raise HTTPException(status.HTTP_400_BAD_REQUEST, "That's not your password.")
 
@@ -157,38 +216,52 @@ def _change_password(
     except (PasswordRejected, BreachCheckUnavailable) as exc:
         _refuse_password(exc)
     set_password(db, user, vetted, temporary=False)
-    ended = end_sessions(db, user.id, keep=record)
+    ended = end_sessions(db, user.id, "password_changed", keep=record)
     token = rotate_token(record)
     _log(db, request, record, "auth.password.changed",
          {"was_temporary": was_temporary, "other_sessions_ended": ended})
     db.commit()
     set_session_cookie(response, token)
-    return session_info(db, record, token)
+    return session_info(db, record, token, request)
 
 
 @router.post("/auth/new-password")
 def choose_new_password(
     body: NewPasswordRequest, request: Request, response: Response, record: AnySession, db: DB
 ) -> SessionInfo:
-    """Replace a temporary password. If the account has a second factor, it comes first."""
+    """Replace a temporary password. If the account has multifactor, that comes first."""
     if not record.user.must_change_password:
         raise HTTPException(status.HTTP_409_CONFLICT, "Your password doesn't need changing.")
     if record.mfa_verified_at is None and confirmed_factors(db, record.user_id):
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN, "Finish signing in with your second factor first."
-        )
+        raise refuse(status.HTTP_403_FORBIDDEN,
+                     "Finish signing in with multifactor authentication first.", "mfa_required")
     return _change_password(db, request, response, record, body.new_password)
+
+
+@router.post("/auth/confirm-password", status_code=status.HTTP_204_NO_CONTENT)
+def confirm_with_password(
+    body: PasswordConfirmation, request: Request, record: FullSession, db: DB
+) -> None:
+    """Step-up for people without multifactor. Anyone who has it must use it instead."""
+    if confirmed_factors(db, record.user_id):
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            "Confirm it's you with multifactor authentication.")
+    _confirm_password(db, request, record, body.password)
+    record.confirmed_at = clock.utcnow()
+    _log(db, request, record, "auth.confirmed", {"method": "password"})
+    db.commit()
 
 
 @router.get("/account")
 def get_account(record: FullSession, db: DB) -> AccountInfo:
     user = record.user
     return AccountInfo(
+        **profile_of(user),
         username=user.username,
-        display_name=user.display_name,
-        email=user.email,
         theme=user.theme,
+        avatar_url=avatar_url(db, user.id),
         password_changed_at=user.password_changed_at,
+        mfa_required=mfa_required(db, user.id, load_policy(db)),
         factors=factor_infos(db, user.id),
         recovery_codes_left=len(unused_recovery_codes(db, user.id)),
         sessions=session_summaries(db, user.id, current=record),
@@ -199,17 +272,45 @@ def get_account(record: FullSession, db: DB) -> AccountInfo:
 def update_account(body: AccountUpdate, request: Request, record: FullSession, db: DB
                    ) -> AccountInfo:
     user = record.user
-    changed = body.model_dump(exclude_unset=True)
-    if "display_name" in changed and body.display_name:
-        user.display_name = body.display_name.strip()
-    if "email" in changed:
-        user.email = body.email or None
-    if "theme" in changed and body.theme:
+    changed = apply_profile(user, body)
+    if body.theme and body.theme != user.theme:
         user.theme = body.theme
+        changed.append("theme")
     if changed:
         _log(db, request, record, "account.updated", {"fields": sorted(changed)})
     db.commit()
     return get_account(record, db)
+
+
+@router.put("/account/avatar")
+def upload_avatar(
+    data: Annotated[bytes, Body(media_type="application/octet-stream")],
+    request: Request, record: FullSession, db: DB,
+) -> AccountInfo:
+    try:
+        png = clean_image(data, max_size=AVATAR_SIZE)
+    except ImageRejected as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    store_image(db, avatar_key(record.user_id), png)
+    _log(db, request, record, "account.avatar_changed")
+    db.commit()
+    return get_account(record, db)
+
+
+@router.delete("/account/avatar")
+def remove_avatar(request: Request, record: FullSession, db: DB) -> AccountInfo:
+    if remove_image(db, avatar_key(record.user_id)):
+        _log(db, request, record, "account.avatar_removed")
+    db.commit()
+    return get_account(record, db)
+
+
+@router.get("/users/{user_id}/avatar")
+def get_avatar(user_id: int, _: FullSession, db: DB) -> Response:
+    image = load_image(db, avatar_key(user_id))
+    if image is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No profile picture.")
+    return Response(image.data, media_type=image.content_type, headers=IMAGE_HEADERS)
 
 
 @router.post("/account/password")
@@ -229,11 +330,12 @@ def remove_my_factor(
     factors = confirmed_factors(db, record.user_id)
     factor = next((f for f in factors if f.id == factor_id), None)
     if factor is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "That second factor doesn't exist.")
-    if len(factors) == 1:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "That factor doesn't exist.")
+    if len(factors) == 1 and mfa_required(db, record.user_id, load_policy(db)):
         raise HTTPException(
             status.HTTP_409_CONFLICT,
-            "Every account needs a second factor. Add another before removing this one.",
+            "Your account needs multifactor authentication. Add another factor before "
+            "removing this one.",
         )
     db.delete(factor)
     _log(db, request, record, "auth.mfa.removed", {"method": factor.kind, "label": factor.label})
@@ -254,8 +356,22 @@ def new_recovery_codes(
 
 @router.post("/account/sessions/end-others")
 def end_my_other_sessions(request: Request, record: FullSession, db: DB) -> AccountInfo:
-    ended = end_sessions(db, record.user_id, keep=record)
+    ended = end_sessions(db, record.user_id, "by_you", keep=record)
     _log(db, request, record, "auth.sessions.ended", {"count": ended, "by": "self"})
     db.commit()
     return get_account(record, db)
 
+
+@router.post("/account/sessions/{session_id}/end")
+def end_my_session(session_id: int, request: Request, record: FullSession, db: DB
+                   ) -> AccountInfo:
+    """Sign out one other browser. To sign out this one, use Sign out."""
+    other = db.get(UserSession, session_id)
+    if (other is None or other.user_id != record.user_id or other.id == record.id
+            or other.ended_reason is not None):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "That session doesn't exist.")
+    other.ended_reason = "by_you"
+    _log(db, request, record, "auth.sessions.ended",
+         {"count": 1, "by": "self", "session": session_id})
+    db.commit()
+    return get_account(record, db)

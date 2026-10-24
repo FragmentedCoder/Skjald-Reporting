@@ -35,6 +35,13 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(150), unique=True)
     display_name: Mapped[str] = mapped_column(String(200))
     email: Mapped[str | None] = mapped_column(String(254))
+    # Business details reports and templates can use. Nothing private.
+    first_name: Mapped[str | None] = mapped_column(String(100))
+    middle_name: Mapped[str | None] = mapped_column(String(100))
+    last_name: Mapped[str | None] = mapped_column(String(100))
+    job_title: Mapped[str | None] = mapped_column(String(150))
+    department: Mapped[str | None] = mapped_column(String(150))
+    phone: Mapped[str | None] = mapped_column(String(50))
     # None for accounts that sign in through a directory (release 1.2), never locally.
     password_hash: Mapped[str | None] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(default=True)

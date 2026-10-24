@@ -1,5 +1,8 @@
+import io
+
 import pyotp
 import pytest
+from PIL import Image
 from sqlalchemy import select
 
 from app.audit import AuditEntry
@@ -72,7 +75,9 @@ def test_changing_the_password_ends_other_sessions_and_rotates_this_one(
                            json={"current_password": PASSWORD, "new_password": NEW_PASSWORD})
     assert changed.status_code == 200
     assert browser.cookies.get("__Host-skjald_session") != old_cookie
-    assert other.get("/api/auth/session").status_code == 401
+    ended = other.get("/api/auth/session")
+    assert ended.status_code == 401
+    assert ended.headers["X-Skjald-Reason"] == "session_password_changed"
     assert sign_in(new_client(), NEW_PASSWORD).status_code == 200
     assert sign_in(new_client(), PASSWORD).status_code == 401
     assert "auth.password.changed" in actions(session)
@@ -128,4 +133,89 @@ def test_other_sessions_can_be_ended(astrid, new_client) -> None:
     sign_in(other)
     account = browser.post("/api/account/sessions/end-others", headers=csrf).json()
     assert [s["current"] for s in account["sessions"]] == [True]
-    assert other.get("/api/auth/session").status_code == 401
+    assert other.get("/api/auth/session").headers["X-Skjald-Reason"] == "session_by_you"
+
+
+def test_one_other_session_can_be_ended(astrid, new_client) -> None:
+    browser, csrf = astrid
+    other = new_client()
+    sign_in(other)
+    sessions = browser.get("/api/account").json()["sessions"]
+    mine = next(s["id"] for s in sessions if s["current"])
+    theirs = next(s["id"] for s in sessions if not s["current"])
+    assert browser.post(f"/api/account/sessions/{mine}/end", headers=csrf).status_code == 404
+    left = browser.post(f"/api/account/sessions/{theirs}/end", headers=csrf).json()
+    assert [s["id"] for s in left["sessions"]] == [mine]
+    assert other.get("/api/auth/session").headers["X-Skjald-Reason"] == "session_by_you"
+
+
+# Profile
+
+
+def test_business_details_can_be_filled_in_and_cleared(astrid, session) -> None:
+    browser, csrf = astrid
+    filled = browser.patch("/api/account", headers=csrf, json={
+        "first_name": "Astrid", "middle_name": "Marie", "last_name": "Fjeld",
+        "job_title": "Senior technician", "department": "Field service",
+        "phone": "+45 12 34 56 78",
+    }).json()
+    assert (filled["first_name"], filled["last_name"], filled["phone"]) == (
+        "Astrid", "Fjeld", "+45 12 34 56 78"
+    )
+    cleared = browser.patch("/api/account", headers=csrf, json={"middle_name": "  "}).json()
+    assert cleared["middle_name"] is None and cleared["first_name"] == "Astrid"
+    letters = browser.patch("/api/account", headers=csrf, json={"phone": "call me maybe"})
+    assert letters.status_code == 422
+
+
+def picture(size=(800, 600), fmt="JPEG", **save_options) -> bytes:
+    out = io.BytesIO()
+    Image.new("RGB", size, (200, 80, 40)).save(out, format=fmt, **save_options)
+    return out.getvalue()
+
+
+def test_a_profile_picture_is_cleaned_scaled_and_served(astrid, session) -> None:
+    browser, csrf = astrid
+    exif = Image.Exif()
+    exif[0x010F] = "Camera maker that says where you were"
+    uploaded = browser.put("/api/account/avatar", content=picture(exif=exif.tobytes()),
+                           headers=csrf | {"Content-Type": "application/octet-stream"})
+    assert uploaded.status_code == 200
+    url = uploaded.json()["avatar_url"]
+    assert url.startswith("/api/users/") and "?v=" in url
+    assert browser.get("/api/auth/session").json()["user"]["avatar_url"] == url
+
+    served = browser.get(url)
+    assert served.headers["content-type"] == "image/png"
+    assert served.headers["x-content-type-options"] == "nosniff"
+    with Image.open(io.BytesIO(served.content)) as image:
+        assert image.format == "PNG" and max(image.size) <= 256
+        assert not image.getexif()
+    assert "account.avatar_changed" in actions(session)
+
+    removed = browser.delete("/api/account/avatar", headers=csrf).json()
+    assert removed["avatar_url"] is None
+    assert browser.get(url).status_code == 404
+
+
+@pytest.mark.parametrize("data", [b"not an image at all", b"<svg onload='alert(1)'/>"])
+def test_only_real_images_are_accepted(astrid, data) -> None:
+    browser, csrf = astrid
+    refused = browser.put("/api/account/avatar", content=data,
+                          headers=csrf | {"Content-Type": "application/octet-stream"})
+    assert refused.status_code == 400
+
+
+def test_a_huge_picture_is_refused(astrid) -> None:
+    browser, csrf = astrid
+    big = browser.put("/api/account/avatar", content=b"\0" * (2 * 1024 * 1024 + 1),
+                      headers=csrf | {"Content-Type": "application/octet-stream"})
+    assert big.status_code == 400 and "2 MB" in big.json()["detail"]
+
+
+def test_pictures_need_a_signed_in_user(astrid, new_client) -> None:
+    browser, csrf = astrid
+    url = browser.put("/api/account/avatar", content=picture(fmt="PNG"),
+                      headers=csrf | {"Content-Type": "application/octet-stream"}
+                      ).json()["avatar_url"]
+    assert new_client().get(url).status_code == 401
