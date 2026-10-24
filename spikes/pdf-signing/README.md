@@ -15,12 +15,24 @@ This is throw-away spike code that proves the approach. It is not product code.
 | Three signatures in a row: technician, reviewer, company seal (ECDSA P-256, built-in test CA) | All three valid, intact and trusted |
 | Trusted timestamp (RFC 3161) on every signature | Valid on all three |
 | Validate offline, using only the revocation data embedded in the PDF | All three valid |
-| PDF/A markers after signing: XMP part 3 / conformance B, output intent, printable signature widgets, embedded fonts in the signature stamps, no encryption | All present |
+| PDF/A markers after signing: XMP part 3 / conformance B, output intent, printable signature widgets, embedded fonts in the signature appearances, no encryption | All present |
 | Last signature locks the document; a real edit afterwards | Edit detected; all signatures report the document as modified |
 | One byte changed inside the signed content | Detected; all signatures fail |
 | `qpdf --check` on the signed file | Passes |
-| Signing time | 0.08–0.13 s per signature |
-| File size | 26 KB unsigned, 94 KB with three signatures and embedded validation data |
+| Visible signatures: handwritten style for technician and reviewer, company stamp for the seal | Works; appearances are tiny HTML pages rendered by the same renderer, so they use the brand fonts and colours and keep PDF/A intact |
+| Signing time | 0.14–0.24 s per signature, including rendering its appearance |
+| File size | 26 KB unsigned, 111 KB with three signatures, their appearances and embedded validation data |
+
+## Signature appearances
+
+Each template sets, per signer, how the visible signature looks. `appearances.py` renders the appearance as a one-page PDF exactly the size of the sign-off box, and pyHanko places it as the signature's appearance.
+
+| Style | Looks like | Used for in the spike |
+| --- | --- | --- |
+| Handwritten | The signature in Midnat ink above a hairline, with name, role and signing time underneath | Technician and reviewer |
+| Stamp | A Fjord-blue double-framed company stamp with company name, role, signing time and report number | Company seal |
+
+In the product the handwritten signature comes from the user's profile: drawn in the browser (stored as an SVG path), uploaded as a scan, or generated from their name in a handwriting-style font. The spike uses the generated version, set in Mr Dafoe (SIL OFL). The picture only shows who signed; the cryptographic signature underneath is what proves it.
 
 ## Password-protected delivery copy
 
@@ -35,7 +47,6 @@ So the design changes: when a report enters Signing and its template allows pass
 
 - **Create every signature field before the first signature.** The lock on the last field has to exist from the start; adding fields later counts as a change to signed content.
 - **Timestamps in production need an independent TSA.** The spike used pyHanko's in-process test TSA (RSA only). Skjald should call a public RFC 3161 service, configured per install, so timestamps don't depend on Skjald's own clock.
-- **Signature stamps need a design pass.** The stamp text uses an embedded IBM Plex subset, so PDF/A holds, but layout and styling are still plain.
 - **Bundle the full fonts.** The spike uses the Latin subsets from Fontsource, which cover Danish but little beyond it.
 
 ## Still to check
