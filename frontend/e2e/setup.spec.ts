@@ -19,7 +19,7 @@ test("the setup wizard, start to finish", async ({ page }) => {
   await addVirtualPasskey(page);
   await page.goto("/setup");
 
-  await expect(page.getByText("Step 1 of 5")).toBeVisible();
+  await expect(page.getByText("Step 1 of 6")).toBeVisible();
   await shot(page, "1-token");
   await page.getByLabel("Setup token").fill("AAAA-AAAA-AAAA-AAAA-AAAA-AAAA");
   await page.getByRole("button", { name: "Continue" }).click();
@@ -27,9 +27,16 @@ test("the setup wizard, start to finish", async ({ page }) => {
   await page.getByLabel("Setup token").fill(SETUP_TOKEN.toLowerCase());
   await page.getByRole("button", { name: "Continue" }).click();
 
-  await expect(page.getByRole("heading", { name: "Your company" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Company and server" })).toBeVisible();
+  await expect(page.getByText("https://localhost", { exact: true })).toBeVisible();
   await shot(page, "2-company");
   await page.getByLabel("Company name").fill("Nordlys IT ApS");
+  await page.getByRole("button", { name: "Continue" }).click();
+
+  await expect(page.getByRole("heading", { name: "Security settings" })).toBeVisible();
+  await expect(page.getByLabel("Minimum password length")).toHaveValue("12");
+  await page.getByLabel("Lock an account after").fill("8");
+  await shot(page, "3-security");
   await page.getByRole("button", { name: "Continue" }).click();
 
   await expect(page.getByRole("heading", { name: "Create the administrator" })).toBeVisible();
@@ -40,7 +47,7 @@ test("the setup wizard, start to finish", async ({ page }) => {
   await page.getByRole("button", { name: "Create administrator" }).click();
   await expect(page.getByRole("alert")).toContainText("don't match");
   await page.getByLabel("Repeat password").fill(PASSWORD);
-  await shot(page, "3-administrator");
+  await shot(page, "4-administrator");
   await page.getByRole("button", { name: "Create administrator" }).click();
 
   // The breach check calls api.pwnedpasswords.com; if it can't be reached, the
@@ -51,7 +58,7 @@ test("the setup wizard, start to finish", async ({ page }) => {
   if (await offline.isVisible()) await offline.click();
 
   await expect(protect).toBeVisible();
-  await shot(page, "4-second-factor");
+  await shot(page, "5-second-factor");
   await page.getByRole("button", { name: /Passkey or security key/ }).click();
   await saveRecoveryCodes(page);
 
@@ -60,7 +67,7 @@ test("the setup wizard, start to finish", async ({ page }) => {
     const value = page.locator("dt", { hasText: key }).locator("+ dd");
     await expect(value).toHaveText(/^([A-Z2-7]{4} ){12}[A-Z2-7]{4}$/);
   }
-  await shot(page, "5-recovery-kit");
+  await shot(page, "6-recovery-kit");
   const finish = page.getByRole("button", { name: "Finish setup" });
   await expect(finish).toBeDisabled();
   await page.getByLabel(/I have saved the recovery kit/).check();
@@ -68,7 +75,7 @@ test("the setup wizard, start to finish", async ({ page }) => {
 
   await expect(page.getByRole("heading", { name: "Welcome, Ingrid Admin" })).toBeVisible();
   await expect(page.getByText("Administrator", { exact: true })).toBeVisible();
-  await shot(page, "6-done");
+  await shot(page, "7-done");
   expect(violations).toEqual([]);
 });
 

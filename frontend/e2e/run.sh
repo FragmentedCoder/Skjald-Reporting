@@ -30,6 +30,7 @@ import os
 from sqlalchemy.orm import Session
 from app.db import get_engine
 from app.policy import SecurityPolicy
+from app.roles import Role, grant_role
 from app.users import create_user, vet_new_password
 
 policy = SecurityPolicy(breach_check_enabled=False)
@@ -37,6 +38,10 @@ with Session(get_engine()) as db:
     for username in os.environ["USERS"].split():
         password = vet_new_password(os.environ["E2E_PASSWORD"], policy, username=username)
         create_user(db, username, "Astrid Fjeld", password)
+    # An Administrator for the admin panel tests (the wizard's has a passkey only).
+    password = vet_new_password(os.environ["E2E_PASSWORD"], policy, username="e2e-admin")
+    admin = create_user(db, "e2e-admin", "Eir Admin", password)
+    grant_role(db, admin, Role.ADMINISTRATOR, actor=None, ip=None)
     db.commit()
 PY
 

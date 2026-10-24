@@ -64,6 +64,16 @@ export async function saveRecoveryCodes(page: Page): Promise<string[]> {
   return codes;
 }
 
+/** From the set-up page: add an authenticator app, save the codes. Returns the app's secret. */
+export async function setUpAuthenticatorApp(page: Page): Promise<string> {
+  await page.getByRole("button", { name: /Authenticator app/ }).click();
+  const secret = (await page.locator(".secret").textContent()) ?? "";
+  await page.getByLabel("6-digit code").fill(totp(secret));
+  await page.getByRole("button", { name: "Confirm" }).click();
+  await saveRecoveryCodes(page);
+  return secret;
+}
+
 export async function signOut(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/sign-in$/);
