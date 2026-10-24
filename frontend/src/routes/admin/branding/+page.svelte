@@ -5,6 +5,7 @@
   import { branding, loadBranding, pageTitle, useBranding, type Branding } from "$lib/branding.svelte";
   import { ACCENT, PRIMARY } from "$lib/colours";
   import Brand from "$lib/components/Brand.svelte";
+  import ColourPreview from "$lib/components/ColourPreview.svelte";
   import Switch from "$lib/components/Switch.svelte";
   import SwatchPicker from "$lib/components/SwatchPicker.svelte";
   import { toast } from "$lib/toast.svelte";
@@ -113,14 +114,16 @@
   <section class="section" aria-labelledby="colours-title">
     <h2 class="section-title" id="colours-title">Colours</h2>
     <p class="small muted">
-      The site's colours. People can pick their own in Your account, unless you set these for
-      everyone. Every choice is checked to stay readable in light and dark mode.
+      The site's colours. Pick from the list or choose any colour with Custom. People can pick
+      their own in Your account, unless you set these for everyone. Every colour is checked to
+      stay readable in light and dark mode; a custom one is shaded only as far as that needs.
     </p>
     <form class="stack" onsubmit={(event) => save(event, "Colours saved.")}>
       <SwatchPicker legend="Primary colour" hint="Links, buttons, switches and focus outlines."
-        swatches={PRIMARY} bind:value={form.primary_colour} />
+        swatches={PRIMARY} custom="primary" bind:value={form.primary_colour} />
       <SwatchPicker legend="Accent colour" hint="Marks where you are in the menus, and commands to copy."
-        swatches={ACCENT} bind:value={form.accent_colour} />
+        swatches={ACCENT} custom="accent" bind:value={form.accent_colour} />
+      <ColourPreview primary={form.primary_colour} accent={form.accent_colour} />
       <Switch title="Use these colours for everyone" bind:checked={form.enforce_colours}>
         People's own colour choices are kept, but don't apply while this is on.
       </Switch>

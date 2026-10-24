@@ -49,7 +49,7 @@ from app.auth.passwords import PasswordRejected
 from app.auth.pwned import BreachCheckUnavailable
 from app.auth.sessions import UserSession, end_sessions
 from app.branding import LOGO_KEY, Branding, branding, save_branding
-from app.colours import DEFAULT_ACCENT, DEFAULT_PRIMARY, AccentColour, PrimaryColour
+from app.colours import DEFAULT_ACCENT, DEFAULT_PRIMARY, SiteAccent, SitePrimary
 from app.images import LOGO_SIZE, ImageRejected, avatar_url, clean_image, remove_image, store_image
 from app.policy import (
     LIMITS,
@@ -159,8 +159,8 @@ class BrandingUpdate(BaseModel):
     site_name: str = Field(min_length=1, max_length=60)
     tagline: str = Field(default="", max_length=120)
     company_name: str = Field(min_length=1, max_length=200)
-    primary_colour: PrimaryColour = DEFAULT_PRIMARY
-    accent_colour: AccentColour = DEFAULT_ACCENT
+    primary_colour: SitePrimary = DEFAULT_PRIMARY
+    accent_colour: SiteAccent = DEFAULT_ACCENT
     enforce_colours: bool = False
 
 

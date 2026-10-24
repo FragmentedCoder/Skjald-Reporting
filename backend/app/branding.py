@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import DB
-from app.colours import DEFAULT_ACCENT, DEFAULT_PRIMARY, AccentColour, PrimaryColour
+from app.colours import DEFAULT_ACCENT, DEFAULT_PRIMARY, SiteAccent, SitePrimary
 from app.images import IMAGE_HEADERS, image_version, load_image
 from app.policy import Setting
 from app.setup import company_name
@@ -33,8 +33,8 @@ class Branding(BaseModel):
     company_name: str | None
     logo_url: str | None
     # The site's colours, which people may change for themselves unless enforced.
-    primary_colour: PrimaryColour
-    accent_colour: AccentColour
+    primary_colour: SitePrimary
+    accent_colour: SiteAccent
     enforce_colours: bool
 
 
@@ -44,8 +44,8 @@ def _stored(db: Session) -> dict[str, Any]:
 
 
 def save_branding(
-    db: Session, *, site_name: str, tagline: str, primary_colour: PrimaryColour,
-    accent_colour: AccentColour, enforce_colours: bool,
+    db: Session, *, site_name: str, tagline: str, primary_colour: str,
+    accent_colour: str, enforce_colours: bool,
 ) -> None:
     db.merge(Setting(key=BRANDING_KEY, value=json.dumps({
         "site_name": site_name.strip(), "tagline": tagline.strip(),

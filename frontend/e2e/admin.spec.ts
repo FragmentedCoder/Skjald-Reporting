@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
+import { customSwatch } from "../src/lib/colours";
 import { setUpAuthenticatorApp, signIn, toastWith, totp, watchForCspViolations } from "./helpers";
 
 const BJORN_PASSWORD = "bjørns egen lange adgangssætning";
@@ -136,6 +137,24 @@ test("the admin panel, from adding a user to their first sign-in", async ({ brow
   // However many have piled up, at most three toasts show at once.
   const shown = admin.getByRole("region", { name: "Notifications" }).getByRole("listitem");
   expect(await shown.count()).toBeLessThanOrEqual(3);
+
+  // A custom colour: one too light to read in light mode is shaded just enough.
+  const primaryPicker = admin.getByRole("group", { name: "Primary colour" });
+  await primaryPicker.getByRole("radio", { name: "Custom" }).check();
+  await admin.getByLabel("Your colour").fill("#ffd700");
+  const gold = customSwatch("#FFD700", "primary");
+  await expect(primaryPicker).toContainText(`Skjald uses ${gold.light} in light mode`);
+  await shot(admin, "9b-custom-colour");
+  await admin.getByRole("button", { name: "Save colours" }).click();
+  await expect(toastWith(admin, "Colours saved.")).toBeVisible();
+  await expect
+    .poll(() => admin.evaluate(() => document.documentElement.style.getPropertyValue("--link")))
+    .toBe(gold.light);
+  await primaryPicker.getByRole("radio", { name: "Fjord" }).check();
+  await admin.getByRole("button", { name: "Save colours" }).click();
+  await expect
+    .poll(() => admin.evaluate(() => document.documentElement.style.getPropertyValue("--link")))
+    .toBe("");
   await expect(admin.getByRole("banner")).toContainText("Nordlys Rapport");
   await expect(admin).toHaveTitle(/Nordlys Rapport/);
   await shot(admin, "9-branding");

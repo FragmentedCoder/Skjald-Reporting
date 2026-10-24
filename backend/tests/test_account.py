@@ -236,6 +236,9 @@ def test_colours_can_be_chosen_and_reset_to_the_sites(astrid) -> None:
     assert (reset["primary_colour"], reset["accent_colour"]) == (None, "moss")
     made_up = browser.patch("/api/account", headers=csrf, json={"accent_colour": "neon"})
     assert made_up.status_code == 422
+    # Any colour is for the site's colours only; people pick from the checked list.
+    custom = browser.patch("/api/account", headers=csrf, json={"primary_colour": "#FF8800"})
+    assert custom.status_code == 422
 
 
 def test_the_password_rules_are_there_for_the_help_text(astrid, session) -> None:

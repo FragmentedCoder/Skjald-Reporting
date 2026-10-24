@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ACCENT, effectiveColours, PRIMARY } from "./colours";
+import { ACCENT, customSwatch, effectiveColours, PRIMARY } from "./colours";
 
 // Skjald's surfaces (docs/brand/tokens.json): page, card and subtle backgrounds.
 const LIGHT = ["#FFFFFF", "#F7F7F7", "#EFEFEF"];
@@ -30,6 +30,36 @@ describe("accent colours", () => {
   it.each(ACCENT)("$name stands out from the card, light and dark", (swatch) => {
     expect(contrast(swatch.light, "#FFFFFF")).toBeGreaterThanOrEqual(3);
     expect(contrast(swatch.dark, "#13202F")).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe("custom colours", () => {
+  // Hard cases (pure yellow, navy, white, black, mid grey) and an even spread of hues.
+  const picks = ["#FFFF00", "#000080", "#FFFFFF", "#000000", "#777777", "#FF8800", "#00FF00"];
+  for (let i = 0; i < 60; i++) {
+    const channel = (n: number) => ((i * n * 37) % 256).toString(16).padStart(2, "0");
+    picks.push(`#${channel(3)}${channel(5)}${channel(7)}`.toUpperCase());
+  }
+
+  it.each(picks)("%s as a primary stays readable in light and dark mode", (pick) => {
+    const swatch = customSwatch(pick, "primary");
+    for (const surface of LIGHT) expect(contrast(swatch.light, surface)).toBeGreaterThanOrEqual(4.5);
+    for (const surface of DARK) expect(contrast(swatch.dark, surface)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast("#FFFFFF", swatch.light)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast("#0B1420", swatch.dark)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it.each(picks)("%s as an accent stands out in light and dark mode", (pick) => {
+    const swatch = customSwatch(pick, "accent");
+    expect(contrast(swatch.light, "#FFFFFF")).toBeGreaterThanOrEqual(3);
+    expect(contrast(swatch.dark, "#13202F")).toBeGreaterThanOrEqual(3);
+  });
+
+  it("keeps a colour that already passes, and changes one that doesn't only as needed", () => {
+    expect(customSwatch("#2b5d8a", "primary").light).toBe("#2B5D8A");
+    const yellow = customSwatch("#FFFF00", "primary").light;
+    expect(yellow).not.toBe("#FFFF00");
+    expect(contrast(yellow, "#EFEFEF")).toBeLessThan(5); // just past 4.5, not black
   });
 });
 

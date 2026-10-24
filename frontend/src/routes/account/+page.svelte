@@ -10,7 +10,7 @@
     type ProfileForm,
   } from "$lib/admin";
   import { branding, pageTitle } from "$lib/branding.svelte";
-  import { ACCENT, PRIMARY } from "$lib/colours";
+  import { ACCENT, PRIMARY, swatchFor } from "$lib/colours";
   import PasswordRules from "$lib/components/PasswordRules.svelte";
   import SwatchPicker from "$lib/components/SwatchPicker.svelte";
   import AppShell from "$lib/components/AppShell.svelte";
@@ -158,8 +158,8 @@
     }
   }
 
-  const sitePrimary = $derived(PRIMARY.find((s) => s.key === branding.current.primary_colour)?.name ?? "");
-  const siteAccent = $derived(ACCENT.find((s) => s.key === branding.current.accent_colour)?.name ?? "");
+  const sitePrimary = $derived(swatchFor(branding.current.primary_colour, "primary")?.name ?? "");
+  const siteAccent = $derived(swatchFor(branding.current.accent_colour, "accent")?.name ?? "");
 
   function changePassword(event: SubmitEvent) {
     event.preventDefault();

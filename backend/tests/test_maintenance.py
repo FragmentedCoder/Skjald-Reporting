@@ -43,9 +43,24 @@ def test_an_administrator_can_set_and_enforce_the_colours(client, admin, session
         "pine", "sky", True
     )
     unknown = client.put("/api/admin/branding", headers=headers, json={
-        "site_name": "Skjald", "company_name": "Nordlys IT ApS", "primary_colour": "#ff00ff",
+        "site_name": "Skjald", "company_name": "Nordlys IT ApS", "primary_colour": "neon",
     })
     assert unknown.status_code == 422
+
+
+def test_an_administrator_can_pick_any_colour_for_the_site(client, admin) -> None:
+    _, headers = admin
+    saved = client.put("/api/admin/branding", headers=headers, json={
+        "site_name": "Skjald", "company_name": "Nordlys IT ApS", "primary_colour": "#ff8800",
+        "accent_colour": "#1a2B3c",
+    }).json()
+    assert (saved["primary_colour"], saved["accent_colour"]) == ("#FF8800", "#1A2B3C")
+    assert client.get("/api/branding").json()["primary_colour"] == "#FF8800"
+    for bad in ("#ff880", "#ff88000", "ff8800", "#gg8800", "url(x)"):
+        refused = client.put("/api/admin/branding", headers=headers, json={
+            "site_name": "Skjald", "company_name": "Nordlys IT ApS", "primary_colour": bad,
+        })
+        assert refused.status_code == 422, bad
 
 
 def test_an_administrator_can_rename_the_site(client, admin, session) -> None:
