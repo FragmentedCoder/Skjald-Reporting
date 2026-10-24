@@ -33,3 +33,34 @@ export function browserName(userAgent: string | null): string {
             : null;
   return system ? `${name} on ${system}` : name;
 }
+
+const UNITS = ["bytes", "KB", "MB", "GB", "TB"];
+
+/** "1.4 GB": sizes in powers of 1024, with one decimal from KB up. */
+export function bytes(size: number): string {
+  let value = size;
+  let unit = 0;
+  while (value >= 1024 && unit < UNITS.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return unit === 0 ? `${value} ${UNITS[0]}` : `${value.toFixed(1)} ${UNITS[unit]}`;
+}
+
+/** "3 days, 4 hours": how long since a moment, roughly. */
+export function since(iso: string, now = Date.now()): string {
+  const minutes = Math.max(0, Math.floor((now - Date.parse(iso)) / 60_000));
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  if (days) return `${plural(days, "day")}, ${plural(hours, "hour")}`;
+  if (hours) return `${plural(hours, "hour")}, ${plural(minutes % 60, "minute")}`;
+  return plural(minutes, "minute");
+}
+
+const TIME = new Intl.DateTimeFormat("en-GB", { timeStyle: "medium" });
+
+/** "14:05:09" in the viewer's time zone. */
+export function time(iso: string): string {
+  return TIME.format(new Date(iso));
+}

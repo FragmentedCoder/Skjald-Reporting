@@ -1,0 +1,130 @@
+<script lang="ts">
+  import ImageIcon from "@lucide/svelte/icons/image";
+  import { onMount } from "svelte";
+  import { api, ApiError } from "$lib/api";
+  import { branding, loadBranding, pageTitle, useBranding, type Branding } from "$lib/branding.svelte";
+  import Brand from "$lib/components/Brand.svelte";
+  import { toast } from "$lib/toast.svelte";
+
+  let form = $state({ site_name: "", tagline: "", company_name: "" });
+  let loaded = $state(false);
+  let error = $state<string | null>(null);
+  let busy = $state(false);
+  let fileInput = $state<HTMLInputElement>();
+
+  onMount(async () => {
+    await loadBranding();
+    const current = branding.current;
+    form = {
+      site_name: current.site_name,
+      tagline: current.tagline,
+      company_name: current.company_name ?? "",
+    };
+    loaded = true;
+  });
+
+  async function run(action: () => Promise<Branding>, done: string) {
+    busy = true;
+    error = null;
+    try {
+      useBranding(await action());
+      toast(done, "ok", { key: "saved" });
+    } catch (e) {
+      error = e instanceof ApiError ? e.message : "Something went wrong. Try again.";
+    } finally {
+      busy = false;
+    }
+  }
+
+  function save(event: SubmitEvent) {
+    event.preventDefault();
+    run(() => api<Branding>("PUT", "/admin/branding", form), "Branding saved.");
+  }
+
+  function upload() {
+    const file = fileInput?.files?.[0];
+    if (fileInput) fileInput.value = "";
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      error = "The image is larger than 2 MB.";
+      return;
+    }
+    run(() => api<Branding>("PUT", "/admin/branding/logo", file), "Logo uploaded.");
+  }
+</script>
+
+<svelte:head><title>{pageTitle("Branding · Admin")}</title></svelte:head>
+
+<div class="page-header">
+  <div>
+    <h1 class="title">Branding</h1>
+    <p class="small muted">The name, tag line and logo people see when they sign in and work.</p>
+  </div>
+</div>
+
+{#if error}<p class="alert alert-critical" role="alert">{error}</p>{/if}
+
+{#if loaded}
+  <section class="section" aria-labelledby="preview-title">
+    <h2 class="section-title" id="preview-title">Preview</h2>
+    <div class="preview">
+      <Brand size={40} tagline />
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="names-title">
+    <h2 class="section-title" id="names-title">Names</h2>
+    <form class="stack form-narrow" onsubmit={save}>
+      <div class="field">
+        <label for="site-name">Site name</label>
+        <input id="site-name" class="input" required maxlength="60" bind:value={form.site_name} />
+        <span class="hint">Shown in the top bar, on the sign-in page and in browser tabs.</span>
+      </div>
+      <div class="field">
+        <label for="tagline">Tag line</label>
+        <input id="tagline" class="input" maxlength="120" bind:value={form.tagline} />
+        <span class="hint">Shown beside the name on the sign-in page. Leave it empty for none.</span>
+      </div>
+      <div class="field">
+        <label for="company-name">Company name</label>
+        <input id="company-name" class="input" required maxlength="200" autocomplete="organization"
+          bind:value={form.company_name} />
+        <span class="hint">Your company's legal name, as it appears on reports.</span>
+      </div>
+      <div><button class="button button-primary" type="submit" disabled={busy}>Save</button></div>
+    </form>
+  </section>
+
+  <section class="section" aria-labelledby="logo-title">
+    <h2 class="section-title" id="logo-title">Logo</h2>
+    <p class="small muted">
+      A PNG, JPEG, WebP or GIF up to 2 MB. Skjald scales it to fit 512 × 512 pixels and removes
+      any hidden data. A wide logo on a transparent background works best.
+    </p>
+    <input bind:this={fileInput} id="logo-file" class="visually-hidden" type="file"
+      accept="image/png,image/jpeg,image/webp,image/gif" onchange={upload} />
+    <div class="button-row">
+      <button class="button button-secondary" type="button" disabled={busy}
+        onclick={() => fileInput?.click()}>
+        <ImageIcon size={16} aria-hidden="true" />
+        {branding.current.logo_url ? "Replace logo" : "Upload a logo"}
+      </button>
+      {#if branding.current.logo_url}
+        <button class="button button-secondary" type="button" disabled={busy}
+          onclick={() => run(() => api<Branding>("DELETE", "/admin/branding/logo"), "Logo removed.")}>
+          Use Skjald's mark instead
+        </button>
+      {/if}
+    </div>
+  </section>
+{/if}
+
+<style>
+  .preview {
+    display: flex;
+    padding: var(--space-6);
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+  }
+</style>

@@ -1,18 +1,35 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { api, ApiError } from "$lib/api";
+  import { pageTitle } from "$lib/branding.svelte";
+  import Command from "$lib/components/Command.svelte";
   import PolicyFields from "$lib/components/PolicyFields.svelte";
-  import { securitySettings, type AdminSecurity, type SecuritySettings } from "$lib/policy";
+  import Switch from "$lib/components/Switch.svelte";
+  import {
+    parseAddresses,
+    securitySettings,
+    type AdminSecurity,
+    type SecuritySettings,
+  } from "$lib/policy";
+  import { withStepUp } from "$lib/stepUp.svelte";
+  import { toast } from "$lib/toast.svelte";
+
+  const RESET_COMMAND = "docker compose exec app python -m app.console reset-allowlist";
 
   let values = $state<SecuritySettings | null>(null);
-  let allowlist = $state("");
+  let lists = $state({ admin: "", login: "", adminOn: false, loginOn: false });
   let yourAddress = $state<string | null>(null);
-  let notice = $state<{ tone: "ok" | "critical"; text: string } | null>(null);
+  let error = $state<string | null>(null);
   let busy = $state(false);
 
   function use(security: AdminSecurity) {
     values = securitySettings(security);
-    allowlist = security.admin_allowlist.join("\n");
+    lists = {
+      admin: security.admin_allowlist.join("\n"),
+      login: security.login_allowlist.join("\n"),
+      adminOn: security.admin_allowlist_enabled,
+      loginOn: security.login_allowlist_enabled,
+    };
     yourAddress = security.your_address;
   }
 
@@ -20,7 +37,7 @@
     try {
       use(await api<AdminSecurity>("GET", "/admin/security"));
     } catch (e) {
-      notice = { tone: "critical", text: e instanceof ApiError ? e.message : "Not available." };
+      error = e instanceof ApiError ? e.message : "Not available.";
     }
   });
 
@@ -28,67 +45,88 @@
     event.preventDefault();
     if (!values) return;
     busy = true;
-    notice = null;
+    error = null;
+    const body = {
+      ...values,
+      admin_allowlist_enabled: lists.adminOn,
+      admin_allowlist: parseAddresses(lists.admin),
+      login_allowlist_enabled: lists.loginOn,
+      login_allowlist: parseAddresses(lists.login),
+    };
     try {
-      use(await api<AdminSecurity>("PUT", "/admin/security", {
-        ...values,
-        admin_allowlist: allowlist.split(/\s+/).filter(Boolean),
-      }));
-      notice = { tone: "ok", text: "Saved. The new settings apply from the next sign-in." };
+      use(await withStepUp(() => api<AdminSecurity>("PUT", "/admin/security", body)));
+      toast("Security settings saved.", "ok", { key: "saved" });
     } catch (e) {
-      notice = {
-        tone: "critical",
-        text: e instanceof ApiError ? e.message : "The settings could not be saved.",
-      };
+      if (e instanceof ApiError && e.reason === "step_up_cancelled") return;
+      error = e instanceof ApiError ? e.message : "The settings could not be saved.";
     } finally {
       busy = false;
     }
   }
 </script>
 
-<svelte:head><title>Security · Admin · Skjald</title></svelte:head>
+<svelte:head><title>{pageTitle("Security · Admin")}</title></svelte:head>
 
 <div class="page-header">
   <div>
     <h1 class="title">Security</h1>
-    <p class="small muted">Passwords, lockout, sessions, and where the admin panel answers from.</p>
+    <p class="small muted">Multifactor, passwords, sessions, and where people can sign in from.</p>
   </div>
 </div>
 
-{#if notice}
-  <p class="alert alert-{notice.tone}" role={notice.tone === "critical" ? "alert" : "status"}>
-    {notice.text}
-  </p>
-{/if}
+{#if error}<p class="alert alert-critical" role="alert">{error}</p>{/if}
 
 {#if values}
   <form class="stack" onsubmit={save}>
     <section class="section">
-      <h2 class="section-title">Passwords, lockout and sessions</h2>
+      <h2 class="section-title">Sign-in and sessions</h2>
       <div class="stack form-narrow">
         <PolicyFields bind:values />
       </div>
     </section>
 
     <section class="section">
-      <h2 class="section-title">Admin panel allowlist</h2>
-      <p class="small muted">
-        Addresses or ranges the admin panel answers from, one per line, such as 10.20.0.0/24.
-        Leave it empty to allow every address on your network. If it ever locks everyone out,
-        run <span class="mono">docker compose exec app python -m app.console reset-allowlist</span>
-        on the server.
-      </p>
+      <h2 class="section-title">Where people can sign in from</h2>
+      <Switch title="Only allow sign-in from these addresses" bind:checked={lists.loginOn}>
+        Off: people can sign in from anywhere. On: only from the addresses below, and anyone
+        signed in elsewhere is signed out at their next click.
+      </Switch>
       <div class="field form-narrow">
-        <label for="allowlist">Allowed addresses</label>
-        <textarea id="allowlist" class="input mono" rows="4" spellcheck="false"
-          aria-describedby="allowlist-hint" bind:value={allowlist}></textarea>
-        <span class="hint" id="allowlist-hint">
-          Your address right now: <span class="mono">{yourAddress ?? "unknown"}</span>. Skjald
-          won't save a list that leaves it out.
-        </span>
+        <label for="login-allowlist">Sign-in allowlist</label>
+        <textarea id="login-allowlist" class="input mono" rows="4" spellcheck="false"
+          aria-describedby="address-hint" bind:value={lists.login}></textarea>
       </div>
     </section>
 
-    <div><button class="button button-primary" type="submit" disabled={busy}>Save settings</button></div>
+    <section class="section">
+      <h2 class="section-title">Where the admin panel answers from</h2>
+      <Switch title="Only open the admin panel from these addresses" bind:checked={lists.adminOn}>
+        Administrators elsewhere can still sign in and work, but the admin panel and its link
+        are hidden from them.
+      </Switch>
+      <div class="field form-narrow">
+        <label for="admin-allowlist">Admin panel allowlist</label>
+        <textarea id="admin-allowlist" class="input mono" rows="4" spellcheck="false"
+          aria-describedby="address-hint" bind:value={lists.admin}></textarea>
+      </div>
+      <div class="stack form-narrow">
+        <p class="small">
+          If an allowlist ever locks every administrator out, run this on the server, in the
+          folder with Skjald's <span class="mono">docker-compose.yml</span>. It switches both
+          allowlists off and keeps their addresses.
+        </p>
+        <Command command={RESET_COMMAND} />
+      </div>
+    </section>
+
+    <p class="hint small muted form-narrow" id="address-hint">
+      Addresses or ranges, one per line, such as 10.20.0.0/24. Your address right now:
+      <span class="mono">{yourAddress ?? "unknown"}</span>; Skjald won't save a list that leaves
+      it out.
+    </p>
+
+    <div>
+      <button class="button button-primary" type="submit" disabled={busy}>Save settings</button>
+    </div>
   </form>
 {/if}

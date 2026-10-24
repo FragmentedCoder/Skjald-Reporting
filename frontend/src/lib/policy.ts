@@ -5,10 +5,15 @@ export interface SecuritySettings {
   lockout_minutes: number;
   idle_timeout_minutes: number;
   max_session_hours: number;
+  require_mfa_everyone: boolean;
+  require_mfa_administrators: boolean;
 }
 
 export interface AdminSecurity extends SecuritySettings {
+  admin_allowlist_enabled: boolean;
   admin_allowlist: string[];
+  login_allowlist_enabled: boolean;
+  login_allowlist: string[];
   your_address: string | null;
 }
 
@@ -21,5 +26,12 @@ export function securitySettings(values: SecuritySettings): SecuritySettings {
     lockout_minutes: values.lockout_minutes,
     idle_timeout_minutes: values.idle_timeout_minutes,
     max_session_hours: values.max_session_hours,
+    require_mfa_everyone: values.require_mfa_everyone,
+    require_mfa_administrators: values.require_mfa_administrators,
   };
+}
+
+/** One address or range per line (or separated by spaces or commas). */
+export function parseAddresses(text: string): string[] {
+  return text.split(/[\s,]+/).filter(Boolean);
 }

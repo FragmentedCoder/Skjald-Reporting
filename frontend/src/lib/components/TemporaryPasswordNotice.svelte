@@ -10,8 +10,12 @@
   let copied = $state(false);
 
   async function copy() {
-    await navigator.clipboard.writeText(password);
-    copied = true;
+    try {
+      await navigator.clipboard.writeText(password);
+      copied = true;
+    } catch {
+      copied = false;
+    }
   }
 </script>
 

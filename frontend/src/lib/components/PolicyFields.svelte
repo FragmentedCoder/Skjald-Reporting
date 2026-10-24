@@ -1,8 +1,12 @@
 <script lang="ts">
   // The security policy's fields, shared by the setup wizard and the admin panel.
   import type { SecuritySettings } from "$lib/policy";
+  import Switch from "./Switch.svelte";
 
-  type NumberField = Exclude<keyof SecuritySettings, "breach_check_enabled">;
+  type NumberField = Exclude<
+    keyof SecuritySettings,
+    "breach_check_enabled" | "require_mfa_everyone" | "require_mfa_administrators"
+  >;
 
   // The same limits as backend/app/policy.py LIMITS; the server checks them too.
   const FIELDS: { key: NumberField; label: string; hint: string; min: number; max: number }[] = [
@@ -44,52 +48,71 @@
   ];
 
   let { values = $bindable() }: { values: SecuritySettings } = $props();
+  const uid = $props.id();
 </script>
 
-<label class="toggle">
-  <input type="checkbox" bind:checked={values.breach_check_enabled} />
-  <span>
-    <span class="toggle-title">Check new passwords against known data breaches</span>
-    <span class="small muted">
-      Uses Have I Been Pwned. Only the first 5 characters of a hash of the password leave the
-      server. Needs internet access to api.pwnedpasswords.com.
-    </span>
-  </span>
-</label>
+<fieldset class="group">
+  <legend class="check-title">Multifactor authentication</legend>
+  <Switch title="Required for everyone" bind:checked={values.require_mfa_everyone}>
+    Everyone sets up an authenticator app, a passkey or a security key at their next sign-in.
+  </Switch>
+  <Switch
+    title="Required for administrators"
+    disabled={values.require_mfa_everyone}
+    bind:checked={() => values.require_mfa_everyone || values.require_mfa_administrators,
+      (on) => (values.require_mfa_administrators = on)}
+  >
+    {values.require_mfa_everyone
+      ? "Included while everyone needs it."
+      : "Administrators need it even when others don't."}
+  </Switch>
+  {#if !values.require_mfa_everyone}
+    <p class="alert alert-warning">
+      Skjald holds customer data: OWASP ASVS Level 2 expects multifactor for everyone. The
+      administrator made during setup always needs it.
+    </p>
+  {/if}
+</fieldset>
 
-{#each FIELDS as field (field.key)}
-  <div class="field">
-    <label for={field.key}>{field.label}</label>
-    <input
-      id={field.key}
-      class="input number"
-      type="number"
-      min={field.min}
-      max={field.max}
-      required
-      aria-describedby="{field.key}-hint"
-      bind:value={values[field.key]}
-    />
-    <span class="hint" id="{field.key}-hint">{field.hint} From {field.min} to {field.max}.</span>
-  </div>
-{/each}
+<fieldset class="group">
+  <legend class="check-title">Passwords, lockout and sessions</legend>
+  <Switch title="Check new passwords against known data breaches"
+    bind:checked={values.breach_check_enabled}>
+    Uses Have I Been Pwned. Only the first 5 characters of a hash of the password leave the
+    server. Needs internet access to api.pwnedpasswords.com.
+  </Switch>
+
+  {#each FIELDS as field (field.key)}
+    <div class="field">
+      <label for="{uid}-{field.key}">{field.label}</label>
+      <input
+        id="{uid}-{field.key}"
+        class="input number"
+        type="number"
+        min={field.min}
+        max={field.max}
+        required
+        aria-describedby="{uid}-{field.key}-hint"
+        bind:value={values[field.key]}
+      />
+      <span class="hint" id="{uid}-{field.key}-hint">
+        {field.hint} From {field.min} to {field.max}.
+      </span>
+    </div>
+  {/each}
+</fieldset>
 
 <style>
-  .toggle {
+  .group {
     display: flex;
-    align-items: flex-start;
-    gap: var(--space-3);
+    flex-direction: column;
+    gap: var(--space-4);
+    margin: 0;
+    padding: 0;
+    border: 0;
   }
-  .toggle input {
-    flex: none;
-    width: 18px;
-    height: 18px;
-    margin-top: 3px;
-    accent-color: var(--link);
-  }
-  .toggle-title {
-    display: block;
-    font: var(--type-label);
+  .group legend {
+    margin-bottom: var(--space-3);
   }
   .number {
     max-width: 10rem;

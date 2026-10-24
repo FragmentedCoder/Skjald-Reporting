@@ -1,6 +1,7 @@
 <script lang="ts">
   import Download from "@lucide/svelte/icons/download";
   import { onMount } from "svelte";
+  import { pageTitle } from "$lib/branding.svelte";
   import { api, ApiError } from "$lib/api";
   import {
     ACTION_GROUPS,
@@ -10,7 +11,7 @@
     type AuditFilters,
   } from "$lib/audit";
   import Pill from "$lib/components/Pill.svelte";
-  import { dateTime } from "$lib/format";
+  import { dateTime, time } from "$lib/format";
 
   interface ChainStatus {
     ok: boolean;
@@ -25,6 +26,8 @@
   let nextBefore = $state<number | null>(null);
   let actions = $state<string[]>([]);
   let chain = $state<ChainStatus | null>(null);
+  let checking = $state(false);
+  let checkedAt = $state<string | null>(null);
   let error = $state<string | null>(null);
   let busy = $state(false);
 
@@ -46,12 +49,16 @@
     }
   }
 
+  // The last result stays on screen while checking again, so nothing jumps.
   async function checkChain() {
-    chain = null;
+    checking = true;
     try {
       chain = await api<ChainStatus>("GET", "/audit/verify");
+      checkedAt = new Date().toISOString();
     } catch (e) {
       error = e instanceof ApiError ? e.message : "The chain could not be checked.";
+    } finally {
+      checking = false;
     }
   }
 
@@ -74,7 +81,7 @@
   }
 </script>
 
-<svelte:head><title>Audit log · Admin · Skjald</title></svelte:head>
+<svelte:head><title>{pageTitle("Audit log · Admin")}</title></svelte:head>
 
 <div class="page-header">
   <div>
@@ -90,17 +97,23 @@
   </a>
 </div>
 
-<div class="chain">
+<div class="chain" aria-live="polite">
   {#if chain === null}
     <span class="small muted">Checking the chain…</span>
   {:else if chain.ok}
     <Pill tone="ok" text="Chain intact" />
-    <span class="small muted">All {chain.entries_checked} entries check out.</span>
+    <span class="small muted">
+      All {chain.entries_checked.toLocaleString("en-GB")} entries check out{checkedAt
+        ? ` (checked ${time(checkedAt)})`
+        : ""}.
+    </span>
   {:else}
     <Pill tone="critical" text="Chain broken" />
     <span class="small">Entry {chain.first_bad_seq}: {chain.problem}.</span>
   {/if}
-  <button class="link-button" type="button" onclick={checkChain}>Check again</button>
+  <button class="link-button" type="button" disabled={checking} onclick={checkChain}>
+    {checking ? "Checking…" : "Check again"}
+  </button>
 </div>
 
 <form class="section filters" onsubmit={apply}>
