@@ -4,6 +4,8 @@
 !.env.example
 *.key
 *.pem
+*.crt
+*.cer
 *.pfx
 *.p12
 master.key
