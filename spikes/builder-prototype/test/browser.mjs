@@ -115,6 +115,12 @@ await page.waitForSelector('.sheet')
 await page.evaluate(() => document.fonts.ready)
 ok('the preview says it is the technician\'s screen', (await page.locator('.explain').innerText()).includes('This is what a technician sees'))
 ok('4 pages with the sample answers', (await page.locator('.sheet').count()) === 4)
+const fill = await page.locator('.sheet').first().evaluate((s) => {
+  const c = s.querySelector('.content').getBoundingClientRect().width / s.getBoundingClientRect().width
+  const p = [...s.querySelectorAll('.item > p, .answer > p')].map((e) => e.getBoundingClientRect().width / s.querySelector('.content').getBoundingClientRect().width)
+  return {c, p: Math.min(...p)}
+})
+ok('the text uses the full A4 width, with real margins', fill.c > 0.8 && fill.c < 0.9 && fill.p > 0.95, JSON.stringify(fill))
 ok('each major section starts its own page', JSON.stringify(await sectionsPerPage(page)) === JSON.stringify([['Summary'], ['Attacking addresses'], ['Actions taken', 'Sources'], ['Sign-off']]), JSON.stringify(await sectionsPerPage(page)))
 let text = await pdfText(page)
 ok('a renamed variable still fills the text and the cover', text.includes('Highest CVSS score 7.5') && text.includes('High · CVSS 7.5'))

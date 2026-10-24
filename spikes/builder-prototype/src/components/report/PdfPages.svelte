@@ -169,13 +169,16 @@
 
 <style>
   .pages { display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; justify-items: center; min-width: 0; }
-  .page-wrap { width: 100%; max-width: 640px; display: grid; gap: 6px; }
+  /* The page wrapper is the size container, so the sheet's own margins and type (in cqi) are measured against
+     the page's width. Units in an element's own styles refer to its parent container, never to itself. */
+  .page-wrap { width: 100%; max-width: 640px; display: grid; gap: 6px; container-type: inline-size; }
   .page-label { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
   .reason { font-size: 12px; color: var(--text-muted); }
 
   /* The sheet: A4 proportions, paper colours in both themes, type scaled with the page width.
-     min-width: 0 stops a tall page from widening itself through its aspect ratio; it grows taller instead. */
-  .sheet { container-type: inline-size; width: 100%; min-width: 0; aspect-ratio: 210 / 297; display: flex; flex-direction: column;
+     min-width: 0 stops a tall page from widening itself through its aspect ratio; it grows taller instead.
+     Margins of 8% each side are about 17 mm on A4, as in the rendered PDF. */
+  .sheet { width: 100%; min-width: 0; aspect-ratio: 210 / 297; display: flex; flex-direction: column;
     background: var(--paper); color: var(--paper-ink); border: 1px solid var(--border); border-radius: 4px;
     padding: 6cqi 8cqi 5cqi; font-size: clamp(8px, 1.75cqi, 12px); line-height: 1.5; --mark-frame: transparent; }
   .sheet.over { outline: 2px solid var(--warning-text); outline-offset: 3px; }
@@ -205,7 +208,7 @@
   .num { font-family: var(--font-mono); font-size: 0.6em; color: var(--fjord); }
   .intro { color: var(--paper-muted); }
   h3 { margin: 1cqi 0 0; font-family: var(--font-display); font-weight: 400; font-size: 1.25em; color: var(--paper-ink); }
-  .item p { margin: 0; max-width: 68ch; }
+  .item p { margin: 0; }
   .callout { display: grid; gap: 0.6cqi; padding: 2cqi 2.6cqi; border: 1px solid var(--c-border); border-radius: 6px; background: var(--c-bg); color: var(--c-fg); }
   .callout strong { font-weight: 600; }
   .answer { display: grid; gap: 0.6cqi; }
