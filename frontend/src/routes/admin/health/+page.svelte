@@ -20,7 +20,7 @@
     started_at: string;
     address: string;
     setup_completed_at: string | null;
-    checks: Check[];
+    checks: string[];
     usage: {
       disk_total_bytes: number;
       disk_free_bytes: number;
@@ -43,6 +43,16 @@
     packages: { name: string; version: string }[];
   }
 
+  // Shown at once; each fills in when its own request answers. "clock" is
+  // worked out here, from the server's time against this computer's.
+  const ROWS = [
+    { key: "database", label: "Database" },
+    { key: "audit_chain", label: "Audit log" },
+    { key: "keys", label: "Keys" },
+    { key: "disk", label: "Disk space" },
+    { key: "breach_check", label: "Breached-password check" },
+    { key: "clock", label: "Clock" },
+  ];
   const PILLS: Record<Status, { tone: "ok" | "warning" | "critical" | "neutral"; text: string }> = {
     ok: { tone: "ok", text: "OK" },
     warning: { tone: "warning", text: "Warning" },
@@ -53,52 +63,63 @@
   const CLOCK_TOLERANCE_S = 30;
 
   let health = $state<Health | null>(null);
-  let skewSeconds = $state(0);
+  let results = $state<Record<string, Check | { failed: string }>>({});
+  let pending = $state<Record<string, boolean>>({});
   let error = $state<string | null>(null);
-  let checking = $state(false);
 
-  // The server's checks, plus one only the browser can do: compare the clocks.
-  const checks = $derived.by((): Check[] => {
-    if (!health) return [];
-    const off = Math.abs(skewSeconds);
-    const clock: Check =
-      off > CLOCK_TOLERANCE_S
-        ? {
-            key: "clock",
-            label: "Clock",
-            status: "warning",
-            detail: `The server's clock and this computer's differ by ${off} seconds. Authenticator codes need the server's clock to be right.`,
-          }
-        : {
-            key: "clock",
-            label: "Clock",
-            status: "ok",
-            detail: "The server's clock matches this computer's.",
-          };
-    return [...health.checks, clock];
-  });
-  const worst = $derived(
-    checks.some((c) => c.status === "problem")
-      ? "problem"
-      : checks.some((c) => c.status === "warning")
-        ? "warning"
-        : "ok",
+  const checking = $derived(Object.values(pending).some(Boolean));
+  const statuses = $derived(
+    Object.values(results).flatMap((r) => ("status" in r ? [r.status] : ["problem"])),
   );
+  const summary = $derived.by(() => {
+    if (checking) return { tone: "neutral" as const, text: "Checking…" };
+    if (statuses.includes("problem")) return { tone: "critical" as const, text: "Needs action" };
+    if (statuses.includes("warning")) return { tone: "warning" as const, text: "Needs a look" };
+    return { tone: "ok" as const, text: "All OK" };
+  });
 
-  async function check() {
-    checking = true;
-    error = null;
+  function clockCheck(found: Health, asked: number, answered: number): Check {
+    const off = Math.abs(Math.round((Date.parse(found.checked_at) - (asked + answered) / 2) / 1000));
+    return off > CLOCK_TOLERANCE_S
+      ? {
+          key: "clock",
+          label: "Clock",
+          status: "warning",
+          detail: `The server's clock and this computer's differ by ${off} seconds. Authenticator codes need the server's clock to be right.`,
+        }
+      : { key: "clock", label: "Clock", status: "ok", detail: "The server's clock matches this computer's." };
+  }
+
+  async function runCheck(key: string) {
+    pending[key] = true;
+    try {
+      results[key] = await api<Check>("GET", `/admin/health/checks/${key}`);
+    } catch (e) {
+      results[key] = { failed: e instanceof ApiError ? e.message : "The check didn't answer." };
+    } finally {
+      pending[key] = false;
+    }
+  }
+
+  async function loadInfo() {
+    pending.clock = true;
     try {
       const asked = Date.now();
       const found = await api<Health>("GET", "/admin/health");
-      const answered = Date.now();
-      skewSeconds = Math.round((Date.parse(found.checked_at) - (asked + answered) / 2) / 1000);
+      results.clock = clockCheck(found, asked, Date.now());
       health = found;
     } catch (e) {
       error = e instanceof ApiError ? e.message : "The server could not be checked.";
     } finally {
-      checking = false;
+      pending.clock = false;
     }
+  }
+
+  // Everything starts at once; the last answers stay on screen until new ones arrive.
+  function check() {
+    error = null;
+    void loadInfo();
+    for (const row of ROWS) if (row.key !== "clock") void runCheck(row.key);
   }
 
   onMount(check);
@@ -106,11 +127,16 @@
 
 <svelte:head><title>{pageTitle("Server health · Admin")}</title></svelte:head>
 
+{#snippet value(text: string | number | null | undefined, mono = false)}
+  {#if health}<span class:mono>{text ?? "—"}</span>{:else}<span class="muted">…</span>{/if}
+{/snippet}
+
 <div class="page-header">
   <div>
     <h1 class="title">Server health</h1>
     <p class="small muted">
-      {#if health}Checked {dateTime(health.checked_at)}.{:else}Checking the server…{/if}
+      {health ? `Checked ${dateTime(health.checked_at)}.` : "Checking the server…"}
+      Each check runs on its own, so the slow ones hold up nothing.
     </p>
   </div>
   <button class="button button-secondary" type="button" disabled={checking} onclick={check}>
@@ -121,81 +147,114 @@
 
 {#if error}<p class="alert alert-critical" role="alert">{error}</p>{/if}
 
-{#if health}
-  <section class="section" aria-labelledby="checks-title">
-    <div class="heading-row">
-      <h2 class="section-title" id="checks-title">Checks</h2>
-      <Pill tone={PILLS[worst].tone}
-        text={worst === "ok" ? "All OK" : worst === "warning" ? "Needs a look" : "Needs action"} />
-    </div>
-    <ul class="checks-list">
-      {#each checks as item (item.key)}
-        <li>
-          <Pill tone={PILLS[item.status].tone} text={PILLS[item.status].text} />
-          <div>
-            <p class="check-label">{item.label}</p>
-            <p class="small muted">{item.detail}</p>
-          </div>
-        </li>
+<section class="section" aria-labelledby="checks-title">
+  <div class="heading-row">
+    <h2 class="section-title" id="checks-title">Checks</h2>
+    <Pill tone={summary.tone} text={summary.text} />
+  </div>
+  <p class="small muted">
+    Whether the database, the audit log and the keys are intact, and whether there's room and
+    a connection for what Skjald needs.
+  </p>
+  <table class="checks-table">
+    <tbody>
+      {#each ROWS as row (row.key)}
+        {@const result = results[row.key]}
+        <tr aria-busy={pending[row.key] ?? false}>
+          <th scope="row">
+            <span class="check-label">{row.label}</span>
+            <span class="small muted detail">
+              {#if result && "status" in result}
+                {result.detail}
+              {:else if result}
+                {result.failed}
+              {:else}
+                Checking…
+              {/if}
+            </span>
+          </th>
+          <td class="status">
+            {#if pending[row.key] || !result}
+              <Pill tone="neutral" text="Checking…" />
+            {:else if "status" in result}
+              <Pill tone={PILLS[result.status].tone} text={PILLS[result.status].text} />
+            {:else}
+              <Pill tone="critical" text="No answer" />
+            {/if}
+          </td>
+        </tr>
       {/each}
-    </ul>
-  </section>
+    </tbody>
+  </table>
+</section>
 
-  <section class="section" aria-labelledby="space-title">
-    <h2 class="section-title" id="space-title">Space</h2>
-    <div class="disk">
-      <label for="disk-meter" class="check-label">Disk</label>
-      <meter id="disk-meter" min="0" max={health.usage.disk_total_bytes}
+<section class="section" aria-labelledby="space-title">
+  <h2 class="section-title" id="space-title">Space</h2>
+  <p class="small muted">How full the server's disk is, and what Skjald keeps on it.</p>
+  <div class="disk">
+    <span class="check-label" id="disk-label">Disk</span>
+    {#if health}
+      <meter aria-labelledby="disk-label" min="0" max={health.usage.disk_total_bytes}
         value={health.usage.disk_total_bytes - health.usage.disk_free_bytes}
         high={health.usage.disk_total_bytes * 0.85} optimum="0"></meter>
       <p class="small muted">
         {bytes(health.usage.disk_free_bytes)} free of {bytes(health.usage.disk_total_bytes)}
       </p>
-    </div>
-    <dl class="facts">
-      <dt>Database</dt>
-      <dd>{bytes(health.usage.database_bytes)}</dd>
-      <dt>Pictures and logo</dt>
-      <dd>{bytes(health.usage.images_bytes)}</dd>
-      <dt>Audit log</dt>
-      <dd>{health.usage.audit_entries.toLocaleString("en-GB")} entries</dd>
-      <dt>Users</dt>
-      <dd>{health.usage.active_users} active of {health.usage.users}</dd>
-      <dt>Signed-in sessions</dt>
-      <dd>{health.usage.sessions}</dd>
-    </dl>
-  </section>
+    {:else}
+      <meter aria-labelledby="disk-label" min="0" max="1"></meter>
+      <p class="small muted">…</p>
+    {/if}
+  </div>
+  <dl class="facts">
+    <dt>Database</dt>
+    <dd>{@render value(health && bytes(health.usage.database_bytes))}</dd>
+    <dt>Pictures and logo</dt>
+    <dd>{@render value(health && bytes(health.usage.images_bytes))}</dd>
+    <dt>Audit log</dt>
+    <dd>{@render value(health && `${health.usage.audit_entries.toLocaleString("en-GB")} entries`)}</dd>
+    <dt>Users</dt>
+    <dd>{@render value(health && `${health.usage.active_users} active of ${health.usage.users}`)}</dd>
+    <dt>Signed-in sessions</dt>
+    <dd>{@render value(health?.usage.sessions)}</dd>
+  </dl>
+</section>
 
-  <section class="section" aria-labelledby="server-title">
-    <h2 class="section-title" id="server-title">Server</h2>
-    <dl class="facts">
-      <dt>Address</dt>
-      <dd class="mono">{health.address}</dd>
-      <dt>Running for</dt>
-      <dd>{since(health.started_at)} (since {dateTime(health.started_at)})</dd>
-      <dt>Set up</dt>
-      <dd>{dateTime(health.setup_completed_at, "Not finished")}</dd>
-    </dl>
-  </section>
+<section class="section" aria-labelledby="server-title">
+  <h2 class="section-title" id="server-title">Server</h2>
+  <dl class="facts">
+    <dt>Address</dt>
+    <dd>{@render value(health?.address, true)}</dd>
+    <dt>Running for</dt>
+    <dd>
+      {@render value(
+        health && `${since(health.started_at)} (since ${dateTime(health.started_at)})`,
+      )}
+    </dd>
+    <dt>Set up</dt>
+    <dd>{@render value(health && dateTime(health.setup_completed_at, "Not finished"))}</dd>
+  </dl>
+</section>
 
-  <section class="section" aria-labelledby="versions-title">
-    <h2 class="section-title" id="versions-title">Software</h2>
-    <dl class="facts">
-      <dt>Skjald</dt>
-      <dd class="mono">{health.versions.skjald}</dd>
-      <dt>Database schema</dt>
-      <dd class="mono">{health.versions.schema_version ?? "—"}</dd>
-      <dt>Python</dt>
-      <dd class="mono">{health.versions.python}</dd>
-      <dt>SQLite</dt>
-      <dd class="mono">{health.versions.sqlite}</dd>
-      <dt>SQLCipher</dt>
-      <dd class="mono">{health.versions.sqlcipher}</dd>
-      <dt>Operating system</dt>
-      <dd>{health.versions.operating_system}</dd>
-      <dt>Kernel</dt>
-      <dd class="mono">{health.versions.kernel}</dd>
-    </dl>
+<section class="section" aria-labelledby="versions-title">
+  <h2 class="section-title" id="versions-title">Software</h2>
+  <p class="small muted">The versions running now, for support questions and update checks.</p>
+  <dl class="facts">
+    <dt>Skjald</dt>
+    <dd>{@render value(health?.versions.skjald, true)}</dd>
+    <dt>Database schema</dt>
+    <dd>{@render value(health?.versions.schema_version, true)}</dd>
+    <dt>Python</dt>
+    <dd>{@render value(health?.versions.python, true)}</dd>
+    <dt>SQLite</dt>
+    <dd>{@render value(health?.versions.sqlite, true)}</dd>
+    <dt>SQLCipher</dt>
+    <dd>{@render value(health?.versions.sqlcipher, true)}</dd>
+    <dt>Operating system</dt>
+    <dd>{@render value(health?.versions.operating_system)}</dd>
+    <dt>Kernel</dt>
+    <dd>{@render value(health?.versions.kernel, true)}</dd>
+  </dl>
+  {#if health}
     <details>
       <summary>Python packages ({health.packages.length})</summary>
       <div class="table-wrap">
@@ -209,8 +268,8 @@
         </table>
       </div>
     </details>
-  </section>
-{/if}
+  {/if}
+</section>
 
 <style>
   .heading-row {
@@ -219,23 +278,36 @@
     align-items: center;
     gap: var(--space-3);
   }
-  .checks-list {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-    margin: 0;
-    padding: 0;
-    list-style: none;
+  .checks-table {
+    width: 100%;
+    border-collapse: collapse;
   }
-  .checks-list li {
-    display: grid;
-    grid-template-columns: 6.5rem minmax(0, 1fr);
-    align-items: start;
-    justify-items: start;
-    gap: var(--space-3);
+  .checks-table th,
+  .checks-table td {
+    padding: var(--space-3) 0;
+    border-top: 1px solid var(--border);
+    vertical-align: top;
+  }
+  .checks-table tr:first-child th,
+  .checks-table tr:first-child td {
+    border-top: 0;
+  }
+  .checks-table th {
+    font-weight: inherit;
+    text-align: left;
   }
   .check-label {
+    display: block;
     font: var(--type-label);
+  }
+  .detail {
+    display: block;
+  }
+  .status {
+    width: 1%;
+    padding-left: var(--space-4);
+    text-align: right;
+    white-space: nowrap;
   }
   .disk {
     display: flex;

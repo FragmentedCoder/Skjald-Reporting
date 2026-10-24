@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { onMount } from "svelte";
+
   // A six-digit code with a line under each digit, so it's plain a code goes here.
   // One real input underneath does the typing, pasting and autofill; the digits
   // on top are only drawn.
@@ -7,7 +9,21 @@
     value = $bindable(""),
     length = 6,
     describedby,
-  }: { id: string; value?: string; length?: number; describedby?: string } = $props();
+    autofocus = false,
+  }: {
+    id: string;
+    value?: string;
+    length?: number;
+    describedby?: string;
+    autofocus?: boolean;
+  } = $props();
+
+  let input: HTMLInputElement;
+
+  // So people can type the code straight away, without clicking first.
+  onMount(() => {
+    if (autofocus) input.focus();
+  });
 
   const digits = $derived(value.slice(0, length).split(""));
   const active = $derived(Math.min(value.length, length - 1));
@@ -15,6 +31,7 @@
 
 <div class="otp">
   <input
+    bind:this={input}
     {id}
     class="otp-input"
     inputmode="numeric"

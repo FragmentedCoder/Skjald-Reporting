@@ -70,7 +70,10 @@
 <div class="page-header">
   <div>
     <h1 class="title">Security</h1>
-    <p class="small muted">Multifactor, passwords, sessions, and where people can sign in from.</p>
+    <p class="small muted">
+      Multifactor, passwords, lockout, sessions, and where Skjald can be used from. Changes
+      apply straight away.
+    </p>
   </div>
 </div>
 
@@ -78,37 +81,55 @@
 
 {#if values}
   <form class="stack" onsubmit={save}>
-    <section class="section">
-      <h2 class="section-title">Sign-in and sessions</h2>
+    <section class="section" aria-labelledby="sign-in-title">
+      <h2 class="section-title" id="sign-in-title">Sign-in and sessions</h2>
+      <p class="small muted">
+        Who must use multifactor, what new passwords need, and how long people stay signed in.
+        Lowering any of these asks you to confirm it's you, every time.
+      </p>
       <div class="stack form-narrow">
         <PolicyFields bind:values />
       </div>
     </section>
 
-    <section class="section">
-      <h2 class="section-title">Where people can sign in from</h2>
-      <Switch title="Only allow sign-in from these addresses" bind:checked={lists.loginOn}>
-        Off: people can sign in from anywhere. On: only from the addresses below, and anyone
-        signed in elsewhere is signed out at their next click.
-      </Switch>
-      <div class="field form-narrow">
-        <label for="login-allowlist">Sign-in allowlist</label>
-        <textarea id="login-allowlist" class="input mono" rows="4" spellcheck="false"
-          aria-describedby="address-hint" bind:value={lists.login}></textarea>
-      </div>
-    </section>
+    <section class="section" aria-labelledby="network-title">
+      <h2 class="section-title" id="network-title">Network access</h2>
+      <p class="small muted">
+        Limit where Skjald can be used from, by IP address or range. Both lists stay off until
+        you switch them on.
+      </p>
+      <p class="small muted" id="address-hint">
+        One address or range per line, such as 10.20.0.0/24. Your address right now:
+        <span class="mono">{yourAddress ?? "unknown"}</span>. Skjald won't save a list that leaves
+        it out, so you can't lock yourself out.
+      </p>
 
-    <section class="section">
-      <h2 class="section-title">Where the admin panel answers from</h2>
-      <Switch title="Only open the admin panel from these addresses" bind:checked={lists.adminOn}>
-        Administrators elsewhere can still sign in and work, but the admin panel and its link
-        are hidden from them.
-      </Switch>
-      <div class="field form-narrow">
-        <label for="admin-allowlist">Admin panel allowlist</label>
-        <textarea id="admin-allowlist" class="input mono" rows="4" spellcheck="false"
-          aria-describedby="address-hint" bind:value={lists.admin}></textarea>
+      <div class="network stack form-narrow">
+        <h3 class="check-title">Signing in</h3>
+        <Switch title="Only allow sign-in from these addresses" bind:checked={lists.loginOn}>
+          Off: people can sign in from anywhere. On: only from these addresses, and anyone
+          signed in elsewhere is signed out at their next click.
+        </Switch>
+        <div class="field">
+          <label for="login-allowlist">Sign-in allowlist</label>
+          <textarea id="login-allowlist" class="input mono" rows="4" spellcheck="false"
+            aria-describedby="address-hint" bind:value={lists.login}></textarea>
+        </div>
       </div>
+
+      <div class="network stack form-narrow">
+        <h3 class="check-title">The admin panel</h3>
+        <Switch title="Only open the admin panel from these addresses" bind:checked={lists.adminOn}>
+          Administrators elsewhere can still sign in and work, but the admin panel and its link
+          are hidden from them.
+        </Switch>
+        <div class="field">
+          <label for="admin-allowlist">Admin panel allowlist</label>
+          <textarea id="admin-allowlist" class="input mono" rows="4" spellcheck="false"
+            aria-describedby="address-hint" bind:value={lists.admin}></textarea>
+        </div>
+      </div>
+
       <div class="stack form-narrow">
         <p class="small">
           If an allowlist ever locks every administrator out, run this on the server, in the
@@ -119,14 +140,15 @@
       </div>
     </section>
 
-    <p class="hint small muted form-narrow" id="address-hint">
-      Addresses or ranges, one per line, such as 10.20.0.0/24. Your address right now:
-      <span class="mono">{yourAddress ?? "unknown"}</span>; Skjald won't save a list that leaves
-      it out.
-    </p>
-
     <div>
       <button class="button button-primary" type="submit" disabled={busy}>Save settings</button>
     </div>
   </form>
 {/if}
+
+<style>
+  .network {
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--border);
+  }
+</style>

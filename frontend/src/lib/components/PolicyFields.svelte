@@ -53,6 +53,10 @@
 
 <fieldset class="group">
   <legend class="check-title">Multifactor authentication</legend>
+  <p class="small muted">
+    Something besides the password at every sign-in: an authenticator app, a passkey or a
+    security key. A stolen password alone then isn't enough.
+  </p>
   <Switch title="Required for everyone" bind:checked={values.require_mfa_everyone}>
     Everyone sets up an authenticator app, a passkey or a security key at their next sign-in.
   </Switch>
@@ -74,33 +78,59 @@
   {/if}
 </fieldset>
 
+{#snippet number(key: NumberField)}
+  {@const field = FIELDS.find((f) => f.key === key)!}
+  <div class="field">
+    <label for="{uid}-{field.key}">{field.label}</label>
+    <input
+      id="{uid}-{field.key}"
+      class="input number"
+      type="number"
+      min={field.min}
+      max={field.max}
+      required
+      aria-describedby="{uid}-{field.key}-hint"
+      bind:value={values[field.key]}
+    />
+    <span class="hint" id="{uid}-{field.key}-hint">
+      {field.hint} From {field.min} to {field.max}.
+    </span>
+  </div>
+{/snippet}
+
 <fieldset class="group">
-  <legend class="check-title">Passwords, lockout and sessions</legend>
+  <legend class="check-title">Passwords</legend>
+  <p class="small muted">
+    Rules for new passwords. Passwords people already have keep working until they change them.
+  </p>
   <Switch title="Check new passwords against known data breaches"
     bind:checked={values.breach_check_enabled}>
-    Uses Have I Been Pwned. Only the first 5 characters of a hash of the password leave the
-    server. Needs internet access to api.pwnedpasswords.com.
+    Uses Have I Been Pwned, free and without an account. Only the first 5 characters of a hash
+    of the password leave the server. Needs internet access to api.pwnedpasswords.com.
   </Switch>
-
-  {#each FIELDS as field (field.key)}
-    <div class="field">
-      <label for="{uid}-{field.key}">{field.label}</label>
-      <input
-        id="{uid}-{field.key}"
-        class="input number"
-        type="number"
-        min={field.min}
-        max={field.max}
-        required
-        aria-describedby="{uid}-{field.key}-hint"
-        bind:value={values[field.key]}
-      />
-      <span class="hint" id="{uid}-{field.key}-hint">
-        {field.hint} From {field.min} to {field.max}.
-      </span>
-    </div>
-  {/each}
+  {@render number("min_password_length")}
 </fieldset>
+
+<fieldset class="group">
+  <legend class="check-title">Lockout</legend>
+  <p class="small muted">
+    Stops anyone guessing passwords or codes: after too many wrong tries in a row, the account
+    is locked for a while.
+  </p>
+  {@render number("lockout_threshold")}
+  {@render number("lockout_minutes")}
+</fieldset>
+
+<fieldset class="group">
+  <legend class="check-title">Sessions</legend>
+  <p class="small muted">
+    How long people stay signed in. Shorter is safer on shared computers; people are warned
+    two minutes before an idle sign-out.
+  </p>
+  {@render number("idle_timeout_minutes")}
+  {@render number("max_session_hours")}
+</fieldset>
+
 
 <style>
   .group {

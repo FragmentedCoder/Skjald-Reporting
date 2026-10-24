@@ -11,6 +11,11 @@
   }: { info: SessionInfo; onDone: (result: SecondFactorResult) => void } = $props();
   const uid = $props.id();
 
+  // The field you just switched to gets the focus.
+  function focus(node: HTMLInputElement) {
+    node.focus();
+  }
+
   let useRecovery = $state(false);
   let code = $state("");
   let recoveryCode = $state("");
@@ -57,6 +62,7 @@
     <div class="field">
       <label for="recovery-code">Recovery code</label>
       <input
+        use:focus
         id="recovery-code"
         class="input code"
         autocomplete="off"
@@ -93,7 +99,7 @@
     <form class="stack" onsubmit={submitCode}>
       <div class="field">
         <label for="{uid}-code">Code from your authenticator app</label>
-        <CodeInput id="{uid}-code" bind:value={code} />
+        <CodeInput id="{uid}-code" bind:value={code} autofocus />
       </div>
       <button
         class="button button-block {hasPasskey ? 'button-secondary' : 'button-primary'}"
