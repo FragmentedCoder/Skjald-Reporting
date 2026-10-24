@@ -112,6 +112,10 @@
 
   <form class="section stack" onsubmit={save}>
     <h2 class="section-title">Profile and roles</h2>
+    <p class="small muted">
+      Work details reports can use, and the roles that decide what they can do. Roles add up: each
+      one gives its own rights, and nobody gets more by holding a "higher" one.
+    </p>
     <div class="columns">
       <div class="stack">
         <div class="field">
@@ -149,6 +153,10 @@
 
   <section class="section">
     <h2 class="section-title">Sign-in</h2>
+    <p class="small muted">
+      How they sign in, and what to do when they're stuck: a forgotten password, a lost phone or
+      key, or a locked account. Each action ends their sessions where it makes sense.
+    </p>
     <dl class="facts">
       <dt>Account</dt>
       <dd>{user.is_active ? "Active" : "Disabled: can't sign in"}</dd>
@@ -221,6 +229,10 @@
 
   <section class="section">
     <h2 class="section-title">Sessions</h2>
+    <p class="small muted">
+      Browsers signed in to this account. Ending one signs that browser out at once; it's told
+      an administrator did it.
+    </p>
     {#if user.sessions.length}
       <div class="table-wrap">
         <table class="table">

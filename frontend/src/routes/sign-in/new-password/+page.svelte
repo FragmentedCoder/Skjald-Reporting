@@ -5,6 +5,7 @@
   import { pageTitle } from "$lib/branding.svelte";
   import { api, ApiError } from "$lib/api";
   import AuthLayout from "$lib/components/AuthLayout.svelte";
+  import PasswordRules from "$lib/components/PasswordRules.svelte";
   import {
     placeFor,
     sessionEnded,
@@ -67,14 +68,12 @@
           class="input"
           type="password"
           autocomplete="new-password"
-          aria-describedby="new-password-hint"
+          aria-describedby="password-rules"
           required
           bind:value={password}
         />
-        <span class="hint" id="new-password-hint">
-          A few random words work well. It can't contain your username.
-        </span>
       </div>
+      <PasswordRules id="password-rules" />
       <div class="field">
         <label for="repeat-password">Repeat password</label>
         <input

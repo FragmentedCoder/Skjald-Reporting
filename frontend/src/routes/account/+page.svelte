@@ -2,8 +2,17 @@
   import ImageIcon from "@lucide/svelte/icons/image";
   import { onMount } from "svelte";
   import { api, ApiError, sessionGone } from "$lib/api";
-  import { PROFILE_FIELDS, profileForm, type Profile, type ProfileForm } from "$lib/admin";
-  import { pageTitle } from "$lib/branding.svelte";
+  import {
+    PROFILE_FIELDS,
+    profileForm,
+    variableFor,
+    type Profile,
+    type ProfileForm,
+  } from "$lib/admin";
+  import { branding, pageTitle } from "$lib/branding.svelte";
+  import { ACCENT, PRIMARY } from "$lib/colours";
+  import PasswordRules from "$lib/components/PasswordRules.svelte";
+  import SwatchPicker from "$lib/components/SwatchPicker.svelte";
   import AppShell from "$lib/components/AppShell.svelte";
   import Avatar from "$lib/components/Avatar.svelte";
   import Dialog from "$lib/components/Dialog.svelte";
@@ -42,6 +51,8 @@
   interface Account extends Profile {
     username: string;
     theme: Theme;
+    primary_colour: string | null;
+    accent_colour: string | null;
     avatar_url: string | null;
     password_changed_at: string | null;
     mfa_required: boolean;
@@ -56,6 +67,7 @@
   let account = $state<Account | null>(null);
   let profile = $state<ProfileForm | null>(null);
   let theme = $state<Theme>("system");
+  let colours = $state({ primary: "", accent: "" });
   let avatarInput = $state<HTMLInputElement>();
   let passwords = $state({ current: "", next: "", repeat: "" });
   let notice = $state<{ section: string; tone: "ok" | "critical"; text: string } | null>(null);
@@ -93,9 +105,11 @@
     account = found;
     profile = profileForm(found);
     theme = found.theme;
+    colours = { primary: found.primary_colour ?? "", accent: found.accent_colour ?? "" };
     if (session.current) {
       session.current.user.display_name = found.display_name;
       session.current.user.theme = found.theme;
+      session.current.user.colours = { primary: found.primary_colour, accent: found.accent_colour };
       session.current.user.avatar_url = found.avatar_url;
     }
   }
@@ -123,11 +137,29 @@
   function saveProfile(event: SubmitEvent) {
     event.preventDefault();
     guarded("profile", async () => {
-      use(await api<Account>("PATCH", "/account", { ...profile, theme }));
-      applyTheme(theme);
+      use(await api<Account>("PATCH", "/account", profile));
       toast("Your profile is saved.", "ok", { key: "saved" });
     });
   }
+
+  // Appearance applies at once, then saves; a failed save says so.
+  async function saveAppearance(fields: { theme?: Theme; primary_colour?: string | null; accent_colour?: string | null }) {
+    if (session.current) {
+      const user = session.current.user;
+      if (fields.theme) user.theme = fields.theme;
+      if ("primary_colour" in fields) user.colours.primary = fields.primary_colour ?? null;
+      if ("accent_colour" in fields) user.colours.accent = fields.accent_colour ?? null;
+    }
+    if (fields.theme) applyTheme(fields.theme);
+    try {
+      use(await api<Account>("PATCH", "/account", fields));
+    } catch (e) {
+      if (!sessionGone(e)) toast("Couldn't save your appearance. Try again.", "warning", { key: "appearance" });
+    }
+  }
+
+  const sitePrimary = $derived(PRIMARY.find((s) => s.key === branding.current.primary_colour)?.name ?? "");
+  const siteAccent = $derived(ACCENT.find((s) => s.key === branding.current.accent_colour)?.name ?? "");
 
   function changePassword(event: SubmitEvent) {
     event.preventDefault();
@@ -256,7 +288,10 @@
       <section class="section" aria-labelledby="profile-title">
         <h2 class="section-title" id="profile-title">Profile</h2>
         <p class="small muted">
-          Work details your reports and templates can use, such as for signing a report.
+          Work details only, nothing private. Report templates can use them: each field shows its
+          name, such as <span class="mono">{variableFor("author", "first_name")}</span> for the
+          first name of whoever wrote a report (<span class="mono">reviewer</span> instead of
+          <span class="mono">author</span> gives the reviewer's).
         </p>
         {@render message("profile")}
         <div class="picture">
@@ -284,34 +319,61 @@
               <label for="display-name">Display name</label>
               <input id="display-name" class="input" autocomplete="name" required maxlength="200"
                 bind:value={profile.display_name} />
-              <span class="hint">How Skjald shows your name to others.</span>
+              <span class="hint">
+                How Skjald shows your name to others.
+                <span class="mono">{variableFor("author", "display_name")}</span>
+              </span>
             </div>
             <div class="grid">
               {#each PROFILE_FIELDS as field (field.key)}
                 <div class="field">
                   <label for={field.key}>{field.label}</label>
                   <input id={field.key} class="input" type={field.type ?? "text"}
-                    autocomplete={field.autocomplete} bind:value={profile[field.key]} />
+                    autocomplete={field.autocomplete} aria-describedby="{field.key}-variable"
+                    bind:value={profile[field.key]} />
+                  <span class="hint mono" id="{field.key}-variable">{variableFor("author", field.key)}</span>
                 </div>
               {/each}
             </div>
-            <fieldset class="themes">
-              <legend class="check-title">Appearance</legend>
-              {#each [["system", "Same as this device"], ["light", "Light"], ["dark", "Dark"]] as [value, label] (value)}
-                <label class="check">
-                  <input type="radio" name="theme" {value} bind:group={theme} />
-                  <span>{label}</span>
-                </label>
-              {/each}
-            </fieldset>
             <div><button class="button button-primary" type="submit" disabled={busy}>Save</button></div>
           </form>
         {/if}
       </section>
 
+      <section class="section" aria-labelledby="appearance-title">
+        <h2 class="section-title" id="appearance-title">Appearance</h2>
+        <p class="small muted">
+          How Skjald looks for you, on every device you sign in on. Changes apply at once. The
+          button beside your name in the top bar switches between light and dark too.
+        </p>
+        <fieldset class="themes">
+          <legend class="check-title">Light or dark</legend>
+          {#each [["system", "Same as this device"], ["light", "Light"], ["dark", "Dark"]] as [value, label] (value)}
+            <label class="check">
+              <input type="radio" name="theme" {value} bind:group={theme}
+                onchange={(event) => saveAppearance({ theme: event.currentTarget.value as Theme })} />
+              <span>{label}</span>
+            </label>
+          {/each}
+        </fieldset>
+        {#if branding.current.enforce_colours}
+          <p class="alert alert-info">Your administrator has set the colours for everyone.</p>
+        {/if}
+        <SwatchPicker legend="Primary colour" hint="Links, buttons, switches and the outline around what has focus."
+          swatches={PRIMARY} siteName={sitePrimary} disabled={branding.current.enforce_colours}
+          bind:value={() => colours.primary, (next) => { colours.primary = next; saveAppearance({ primary_colour: next || null }); }} />
+        <SwatchPicker legend="Accent colour" hint="Marks where you are in the menus, and commands to copy."
+          swatches={ACCENT} siteName={siteAccent} disabled={branding.current.enforce_colours}
+          bind:value={() => colours.accent, (next) => { colours.accent = next; saveAppearance({ accent_colour: next || null }); }} />
+      </section>
+
       <section class="section" aria-labelledby="password-title">
         <h2 class="section-title" id="password-title">Password</h2>
-        <p class="small muted">Last changed {dateTime(account.password_changed_at)}.</p>
+        <p class="small muted">
+          Last changed {dateTime(account.password_changed_at)}. Changing it signs you out
+          everywhere else.
+        </p>
+        <PasswordRules id="password-rules" />
         {@render message("password")}
         <form class="stack form-narrow" onsubmit={changePassword}>
           <input type="text" class="visually-hidden" autocomplete="username"
@@ -324,7 +386,7 @@
           <div class="field">
             <label for="new-password">New password</label>
             <input id="new-password" class="input" type="password" autocomplete="new-password"
-              required bind:value={passwords.next} />
+              aria-describedby="password-rules" required bind:value={passwords.next} />
           </div>
           <div class="field">
             <label for="repeat-password">Repeat new password</label>
@@ -420,6 +482,10 @@
 
       <section class="section" aria-labelledby="sessions-title">
         <h2 class="section-title" id="sessions-title">Where you're signed in</h2>
+        <p class="small muted">
+          Every browser signed in to your account. If you see one you don't recognise, sign it
+          out and change your password.
+        </p>
         {@render message("sessions")}
         <div class="table-wrap">
           <table class="table">

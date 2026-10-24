@@ -332,6 +332,11 @@ a {
   color: var(--warning-text);
 }
 
+.alert-info {
+  background: var(--info-bg);
+  color: var(--info-text);
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;

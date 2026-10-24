@@ -13,6 +13,11 @@ export interface Profile {
   phone: string | null;
 }
 
+/** How a report template names a person's detail, e.g. author.first_name. */
+export function variableFor(role: "author" | "reviewer", key: keyof Profile): string {
+  return `{{${role}.${key}}}`;
+}
+
 export const PROFILE_FIELDS: {
   key: Exclude<keyof Profile, "display_name">;
   label: string;
@@ -92,7 +97,7 @@ type Tone = "ok" | "warning" | "critical" | "info" | "neutral";
 
 /** The one status that matters most, as a word and a tone. */
 export function userStatus(user: UserSummary): { tone: Tone; text: string } {
-  if (!user.is_active) return { tone: "neutral", text: "Disabled" };
+  if (!user.is_active) return { tone: "critical", text: "Disabled" };
   if (user.locked) return { tone: "critical", text: "Locked" };
   if (user.password_change_required) return { tone: "warning", text: "Awaiting first sign-in" };
   if (user.mfa_required && user.second_factors === 0) {

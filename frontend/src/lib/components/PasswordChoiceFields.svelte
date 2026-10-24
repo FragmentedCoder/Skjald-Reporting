@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { PasswordChoice } from "$lib/admin";
+  import PasswordRules from "./PasswordRules.svelte";
 
   let { choice = $bindable() }: { choice: PasswordChoice } = $props();
   const uid = $props.id();
@@ -25,10 +26,11 @@
   </label>
   {#if choice.mode === "chosen"}
     <div class="chosen stack">
+      <PasswordRules id="{uid}-rules" whose="their" />
       <div class="field">
         <label for="{uid}-password">New password</label>
         <input id="{uid}-password" class="input" type="password" autocomplete="new-password"
-          required bind:value={choice.password} />
+          aria-describedby="{uid}-rules" required bind:value={choice.password} />
       </div>
       <div class="field">
         <label for="{uid}-repeat">Repeat the password</label>

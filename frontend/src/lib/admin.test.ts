@@ -24,6 +24,10 @@ describe("userStatus", () => {
     mfa_required: true,
   } as UserSummary;
 
+  it("shows a disabled account in red", () => {
+    expect(userStatus({ ...base, is_active: false })).toEqual({ tone: "critical", text: "Disabled" });
+  });
+
   it("flags missing multifactor only when it's required", () => {
     expect(userStatus(base).text).toBe("Multifactor not set up");
     expect(userStatus({ ...base, mfa_required: false }).text).toBe("Active");
