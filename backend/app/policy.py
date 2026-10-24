@@ -23,6 +23,8 @@ class Setting(Base):
 @dataclass(frozen=True)
 class SecurityPolicy:
     min_password_length: int = 12
+    # Needs outbound HTTPS to api.pwnedpasswords.com; offline installs turn it off.
+    breach_check_enabled: bool = True
     lockout_threshold: int = 10
     lockout_minutes: int = 15
     idle_timeout_minutes: int = 30

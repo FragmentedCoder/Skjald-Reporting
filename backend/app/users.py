@@ -1,13 +1,20 @@
 from __future__ import annotations
 
 import unicodedata
+from dataclasses import dataclass, field
 from datetime import datetime
 
 from sqlalchemy import String, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app import clock
-from app.auth.passwords import check_password, hash_password
+from app.auth import pwned
+from app.auth.passwords import (
+    PasswordRejected,
+    check_password,
+    hash_password,
+    normalize_password,
+)
 from app.db import Base, UTCDateTime
 from app.policy import SecurityPolicy
 
@@ -36,24 +43,53 @@ def find_user(db: Session, username: str) -> User | None:
     return db.scalar(select(User).where(User.username == normalize_username(username)))
 
 
+@dataclass(frozen=True)
+class NewPassword:
+    """A password that passed every rule, the breach check included.
+
+    Only vet_new_password makes these, and create_user takes nothing else, so a
+    code path can't set a password without the checks.
+    """
+
+    value: str = field(repr=False)
+    username: str
+
+
+def vet_new_password(password: str, policy: SecurityPolicy, *, username: str) -> NewPassword:
+    """Check a new password against every rule.
+
+    Makes a network call when the breach check is on, so call it outside any
+    database transaction. Raises PasswordRejected, or pwned.BreachCheckUnavailable
+    when the breach check can't be reached.
+    """
+    username = normalize_username(username)
+    check_password(password, policy, username=username)
+    if policy.breach_check_enabled and pwned.times_breached(normalize_password(password)):
+        raise PasswordRejected(
+            "This password has appeared in a data breach, so attackers try it early. "
+            "Choose another."
+        )
+    return NewPassword(password, username)
+
+
 def create_user(
     db: Session,
     username: str,
     display_name: str,
-    password: str,
+    password: NewPassword,
     *,
-    policy: SecurityPolicy,
     email: str | None = None,
 ) -> User:
-    """Raises PasswordRejected if the password breaks the policy. Callers write the audit entry."""
+    """Callers write the audit entry."""
     username = normalize_username(username)
-    check_password(password, policy, username=username)
+    if password.username != username:
+        raise ValueError("The password was vetted for a different username.")
     now = clock.utcnow()
     user = User(
         username=username,
         display_name=display_name.strip(),
         email=email,
-        password_hash=hash_password(password),
+        password_hash=hash_password(password.value),
         is_active=True,
         failed_sign_ins=0,
         password_changed_at=now,

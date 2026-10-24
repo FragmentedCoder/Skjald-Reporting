@@ -23,18 +23,18 @@ class PasswordRejected(ValueError):
     """The password breaks a rule; the message is fit to show the user."""
 
 
-def _normalize(password: str) -> str:
+def normalize_password(password: str) -> str:
     # The same password typed on different keyboards or systems must match.
     return unicodedata.normalize("NFKC", password)
 
 
 def hash_password(password: str) -> str:
-    return _hasher.hash(_normalize(password))
+    return _hasher.hash(normalize_password(password))
 
 
 def verify_password(password_hash: str, password: str) -> bool:
     try:
-        return _hasher.verify(password_hash, _normalize(password))
+        return _hasher.verify(password_hash, normalize_password(password))
     except (VerificationError, InvalidHashError):
         return False
 
@@ -52,7 +52,8 @@ def burn_verify_time(password: str) -> None:
 
 
 def check_password(password: str, policy: SecurityPolicy, *, username: str) -> None:
-    normalized = _normalize(password)
+    """The local rules only; users.vet_new_password adds the breach check."""
+    normalized = normalize_password(password)
     if len(normalized) < policy.min_password_length:
         raise PasswordRejected(f"Use at least {policy.min_password_length} characters.")
     if len(normalized) > MAX_PASSWORD_LENGTH:

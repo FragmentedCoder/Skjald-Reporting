@@ -11,15 +11,17 @@ dependencies = [
   "alembic>=1.20,<1.21",
   "sqlcipher3-binary>=0.6,<0.7",
   "argon2-cffi>=25.1,<26",
-  "cryptography>=46,<47",
+  "cryptography>=49,<50",
   "pydantic>=2.11,<3",
   "pydantic-settings>=2.11,<3",
+  "httpx>=0.28,<0.29",
+  "pyotp>=2.10,<2.11",
+  "webauthn>=3.0,<3.1",
 ]
 
 [project.optional-dependencies]
 dev = [
   "pytest>=8.4,<9",
-  "httpx>=0.28,<0.29",
   "ruff>=0.14,<0.15",
   "mypy>=1.19,<2",
 ]

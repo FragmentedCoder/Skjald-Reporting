@@ -1,16 +1,18 @@
 from datetime import UTC, datetime, timedelta
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app import clock
+from app.auth import pwned
 from app.crypto.keys import generate_key
 from app.db import get_db, make_engine
 from app.main import app
 from app.migrate import upgrade
 from app.policy import SecurityPolicy
-from app.users import create_user
+from app.users import create_user, vet_new_password
 
 PASSWORD = "lang nok adgangskode til fjorden"
 
@@ -69,12 +71,27 @@ def frozen_clock(monkeypatch):
     return frozen
 
 
+@pytest.fixture(autouse=True)
+def no_breach_service(monkeypatch):
+    """Tests never reach api.pwnedpasswords.com; the ones that need it patch _client."""
+
+    def refuse(request):
+        raise AssertionError(f"Unexpected network call in a test: {request.url}")
+
+    monkeypatch.setattr(
+        pwned, "_client", lambda: httpx.Client(transport=httpx.MockTransport(refuse))
+    )
+
+
+NO_BREACH_CHECK = SecurityPolicy(breach_check_enabled=False)
+
+
 @pytest.fixture
 def make_user(session):
     def make(username="astrid", password=PASSWORD, **fields):
+        vetted = vet_new_password(password, NO_BREACH_CHECK, username=username)
         user = create_user(
-            session, username, fields.pop("display_name", "Astrid Fjeld"), password,
-            policy=SecurityPolicy(), **fields,
+            session, username, fields.pop("display_name", "Astrid Fjeld"), vetted, **fields
         )
         session.commit()
         return user
