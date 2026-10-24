@@ -40,19 +40,33 @@ class SecurityPolicy:
     lockout_minutes: int = 15
     idle_timeout_minutes: int = 30
     max_session_hours: int = 12
-    # Addresses (CIDR) the admin panel answers from; empty means any. Cleared from the
-    # VM console with `python -m app.console reset-allowlist` if it ever locks everyone out.
+    # Multifactor authentication. Turning either off drops below the OWASP ASVS
+    # Level 2 baseline; people who have set up a factor always use it regardless.
+    require_mfa_everyone: bool = True
+    require_mfa_administrators: bool = True
+    # Addresses (CIDR) the admin panel answers from, when switched on.
+    admin_allowlist_enabled: bool = False
     admin_allowlist: tuple[str, ...] = ()
+    # Addresses anyone may sign in and work from, when switched on.
+    login_allowlist_enabled: bool = False
+    login_allowlist: tuple[str, ...] = ()
+    # Both lists are switched off from the VM console with
+    # `python -m app.console reset-allowlist` if they ever lock everyone out.
 
 
 def load_policy(db: Session) -> SecurityPolicy:
     stored = db.get(Setting, POLICY_KEY)
     if stored is None:
         return SecurityPolicy()
+    raw = json.loads(stored.value)
     known = {field.name for field in fields(SecurityPolicy)}
-    values: dict[str, Any] = {k: v for k, v in json.loads(stored.value).items() if k in known}
-    if "admin_allowlist" in values:
-        values["admin_allowlist"] = tuple(values["admin_allowlist"])
+    values: dict[str, Any] = {k: v for k, v in raw.items() if k in known}
+    for name in ("admin_allowlist", "login_allowlist"):
+        if name in values:
+            values[name] = tuple(values[name])
+    # Saved before the switch existed: a non-empty list was in force, so keep it on.
+    if "admin_allowlist_enabled" not in raw and raw.get("admin_allowlist"):
+        values["admin_allowlist_enabled"] = True
     return SecurityPolicy(**values)
 
 
@@ -65,13 +79,19 @@ def normalize_networks(entries: list[str]) -> tuple[str, ...]:
     return tuple(str(ipaddress.ip_network(entry.strip(), strict=False)) for entry in entries)
 
 
-def admin_allowed_from(policy: SecurityPolicy, ip: str | None) -> bool:
-    if not policy.admin_allowlist:
-        return True
+def _in_networks(ip: str | None, networks: tuple[str, ...]) -> bool:
     if ip is None:
         return False
     try:
         address = ipaddress.ip_address(ip)
     except ValueError:
         return False
-    return any(address in ipaddress.ip_network(net) for net in policy.admin_allowlist)
+    return any(address in ipaddress.ip_network(net) for net in networks)
+
+
+def admin_allowed_from(policy: SecurityPolicy, ip: str | None) -> bool:
+    return not policy.admin_allowlist_enabled or _in_networks(ip, policy.admin_allowlist)
+
+
+def login_allowed_from(policy: SecurityPolicy, ip: str | None) -> bool:
+    return not policy.login_allowlist_enabled or _in_networks(ip, policy.login_allowlist)

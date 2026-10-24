@@ -2,21 +2,37 @@ from __future__ import annotations
 
 import hmac
 from collections.abc import Callable
+from datetime import timedelta
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from app import audit
-from app.auth.sessions import COOKIE_NAME, UserSession, csrf_token_for, find_live_session
+from app import audit, clock
+from app.auth.mfa import second_factor_state
+from app.auth.sessions import (
+    COOKIE_NAME,
+    UserSession,
+    check_session,
+    csrf_token_for,
+    ended_message,
+)
 from app.db import get_db
 from app.policy import admin_allowed_from, load_policy
 from app.roles import Capability, can, roles_of
 
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 CSRF_HEADER = "X-CSRF-Token"
+# Why a request was refused, for the frontend to act on (sign in again, finish
+# multifactor, confirm it's you); the detail text is for people.
+REASON_HEADER = "X-Skjald-Reason"
+STEP_UP_WINDOW = timedelta(minutes=5)
 
 DB = Annotated[Session, Depends(get_db)]
+
+
+def refuse(status_code: int, message: str, reason: str) -> HTTPException:
+    return HTTPException(status_code, message, headers={REASON_HEADER: reason})
 
 
 def client_ip(request: Request) -> str | None:
@@ -24,14 +40,17 @@ def client_ip(request: Request) -> str | None:
 
 
 def current_session(request: Request, db: DB) -> UserSession:
-    """Any live session, including one still waiting for its second factor."""
+    """Any live session, including one still waiting for multifactor authentication."""
     token = request.cookies.get(COOKIE_NAME)
     if not token:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Sign in to continue.")
-    record = find_live_session(db, token, load_policy(db))
+        raise refuse(status.HTTP_401_UNAUTHORIZED, "Sign in to continue.", "signed_out")
+    policy = load_policy(db)
+    record, reason = check_session(db, token, policy, ip=client_ip(request))
     db.commit()
     if record is None:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Your session has ended. Sign in again.")
+        raise refuse(
+            status.HTTP_401_UNAUTHORIZED, ended_message(reason or "", policy), f"session_{reason}"
+        )
     if request.method not in SAFE_METHODS:
         sent = request.headers.get(CSRF_HEADER, "")
         if not hmac.compare_digest(sent, csrf_token_for(token)):
@@ -45,18 +64,46 @@ def current_session(request: Request, db: DB) -> UserSession:
 AnySession = Annotated[UserSession, Depends(current_session)]
 
 
-def require_full_session(record: AnySession) -> UserSession:
-    """A session that has passed both factors. Every route that touches data depends on this."""
-    if record.mfa_verified_at is None:
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN, "Finish signing in with your second factor first."
+def require_full_session(record: AnySession, db: DB) -> UserSession:
+    """A completely signed-in session. Every route that touches data depends on this."""
+    if second_factor_state(db, record, load_policy(db)) != "done":
+        raise refuse(
+            status.HTTP_403_FORBIDDEN,
+            "Finish signing in with multifactor authentication first.",
+            "mfa_required",
         )
     if record.user.must_change_password:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Choose a new password first.")
+        raise refuse(
+            status.HTTP_403_FORBIDDEN, "Choose a new password first.", "password_change_required"
+        )
     return record
 
 
 FullSession = Annotated[UserSession, Depends(require_full_session)]
+
+
+def require_recent_confirmation(record: UserSession) -> None:
+    """Step-up: refuse unless the person proved it's them in the last few minutes."""
+    confirmed = record.confirmed_at
+    if confirmed is None or clock.utcnow() - confirmed > STEP_UP_WINDOW:
+        raise refuse(
+            status.HTTP_403_FORBIDDEN,
+            "Confirm it's you again before changing security settings.",
+            "step_up_required",
+        )
+
+
+def effective_capabilities(
+    db: Session, record: UserSession, request: Request
+) -> set[Capability]:
+    """What the roles allow from where this request comes from: the admin panel only
+    counts inside the admin IP allowlist."""
+    roles = roles_of(db, record.user_id)
+    allowed = admin_allowed_from(load_policy(db), client_ip(request))
+    return {
+        c for c in Capability
+        if can(roles, c) and (c is not Capability.ADMINISTER or allowed)
+    }
 
 
 def require(capability: Capability) -> Callable[..., UserSession]:
@@ -66,22 +113,21 @@ def require(capability: Capability) -> Callable[..., UserSession]:
     """
 
     def check(request: Request, record: FullSession, db: DB) -> UserSession:
-        ip = client_ip(request)
-        if not can(roles_of(db, record.user_id), capability):
-            refusal = "You don't have access to this."
-        elif capability is Capability.ADMINISTER and not admin_allowed_from(load_policy(db), ip):
-            refusal = "The admin panel isn't available from this address."
-        else:
+        if capability in effective_capabilities(db, record, request):
             return record
+        outside = can(roles_of(db, record.user_id), capability)
         audit.append(
             db,
             "auth.access_denied",
             actor_id=record.user.id,
             actor_name=record.user.username,
-            ip=ip,
+            ip=client_ip(request),
             details={"capability": capability.value, "path": request.url.path},
         )
         db.commit()
-        raise HTTPException(status.HTTP_403_FORBIDDEN, refusal)
+        if outside:
+            raise refuse(status.HTTP_403_FORBIDDEN,
+                         "The admin panel isn't available from this address.", "network")
+        raise refuse(status.HTTP_403_FORBIDDEN, "You don't have access to this.", "forbidden")
 
     return check

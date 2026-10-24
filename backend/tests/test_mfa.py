@@ -290,3 +290,78 @@ def test_a_cloned_passkey_is_refused(client, make_user, passkey) -> None:
     passkey.sign_count = 0  # a copy of the key, whose counter lags the original's
     sign_in(client)
     assert authenticate(client, passkey).status_code == 400
+
+
+# Who must use multifactor
+
+
+@pytest.mark.parametrize(("everyone", "administrators", "expected"), [
+    (True, True, {"tech": "enrol", "admin": "enrol", "glass": "enrol"}),
+    (False, True, {"tech": "done", "admin": "enrol", "glass": "enrol"}),
+    # The break-glass Administrator is the last way in: always protected.
+    (False, False, {"tech": "done", "admin": "done", "glass": "enrol"}),
+])
+def test_who_must_set_up_multifactor_follows_the_policy(
+    client, make_user, session, everyone, administrators, expected
+) -> None:
+    from app.roles import Role, grant_role
+
+    save_policy(session, SecurityPolicy(require_mfa_everyone=everyone,
+                                        require_mfa_administrators=administrators))
+    make_user("tech")
+    grant_role(session, make_user("admin"), Role.ADMINISTRATOR, actor=None, ip=None)
+    glass = make_user("glass")
+    glass.is_break_glass = True
+    grant_role(session, glass, Role.ADMINISTRATOR, actor=None, ip=None)
+    session.commit()
+    found = {}
+    for username in expected:
+        with TestClient(app, base_url="https://testserver") as browser:
+            found[username] = browser.post(
+                "/api/auth/sign-in", json={"username": username, "password": PASSWORD}
+            ).json()["second_factor"]
+    assert found == expected
+
+
+def test_the_recovery_code_option_stays_when_none_are_left(
+    client, enrolled, session, frozen_clock
+) -> None:
+    from app.auth.mfa import RecoveryCode
+
+    secret, codes = enrolled
+    for code in session.scalars(select(RecoveryCode)):
+        code.used_at = frozen_clock.now
+    session.commit()
+    info = sign_in(client).json()
+    # Hiding the option would tell an attacker the codes are used up.
+    assert "recovery_code" in info["methods"]
+    assert post(client, f"{MFA}/recovery-code/verify", {"code": codes[0]}).status_code == 400
+    done = post(client, f"{MFA}/totp/verify", {"code": code_at(secret, frozen_clock.now)})
+    assert done.json()["session"]["recovery_codes_left"] == 0
+
+
+def test_multifactor_confirms_it_is_you_for_security_changes(
+    client, enrolled, session, frozen_clock
+) -> None:
+    from app.roles import Role, grant_role
+    from app.users import find_user
+
+    secret, _ = enrolled
+    grant_role(session, find_user(session, "astrid"), Role.ADMINISTRATOR, actor=None, ip=None)
+    session.commit()
+    sign_in(client)
+    post(client, f"{MFA}/totp/verify", {"code": code_at(secret, frozen_clock.now)})
+    frozen_clock.advance(minutes=6)
+    weaker = {
+        "min_password_length": 12, "breach_check_enabled": False, "lockout_threshold": 10,
+        "lockout_minutes": 15, "idle_timeout_minutes": 30, "max_session_hours": 12,
+    }
+    csrf = {"X-CSRF-Token": client.get("/api/auth/session").json()["csrf_token"]}
+    refused = client.put("/api/admin/security", headers=csrf, json=weaker)
+    assert refused.headers["X-Skjald-Reason"] == "step_up_required"
+    # With a factor set up, the password alone won't do.
+    assert post(client, "/api/auth/confirm-password", {"password": PASSWORD}).status_code == 409
+
+    post(client, f"{MFA}/totp/verify", {"code": code_at(secret, frozen_clock.now)})
+    csrf = {"X-CSRF-Token": client.get("/api/auth/session").json()["csrf_token"]}
+    assert client.put("/api/admin/security", headers=csrf, json=weaker).status_code == 200

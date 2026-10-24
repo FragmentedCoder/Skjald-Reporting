@@ -230,7 +230,8 @@ def test_a_password_alone_does_not_open_protected_routes(
     _sign_in(client)
     response = client.get(full_session_route)
     assert response.status_code == 403
-    assert "second factor" in response.json()["detail"]
+    assert "multifactor" in response.json()["detail"]
+    assert response.headers["X-Skjald-Reason"] == "mfa_required"
 
 
 def test_a_new_session_never_reuses_an_old_ones_id(client, make_user, session) -> None:
@@ -254,3 +255,54 @@ def test_sign_ins_and_sign_outs_are_audited_in_an_unbroken_chain(
     assert (succeeded.actor_name, succeeded.ip) == ("astrid", "testclient")
     assert len(_audit(session, "auth.sign_out")) == 1
     assert verify(session).ok
+
+
+def test_the_status_check_does_not_keep_a_session_alive(
+    client, make_user, frozen_clock, session
+) -> None:
+    make_user()
+    save_policy(session, SecurityPolicy(require_mfa_everyone=False,
+                                        require_mfa_administrators=False))
+    session.commit()
+    _sign_in(client)
+    first = client.get("/api/auth/session/status").json()
+    frozen_clock.advance(minutes=20)
+    assert client.get("/api/auth/session/status").json() == first
+    frozen_clock.advance(minutes=11)
+    ended = client.get("/api/auth/session/status")
+    assert ended.status_code == 401
+    assert ended.headers["X-Skjald-Reason"] == "session_timed_out"
+    assert "30 minutes without activity" in ended.json()["detail"]
+
+
+def test_the_sign_in_allowlist_keeps_other_addresses_out(client, make_user, session) -> None:
+    make_user()
+    _sign_in(client)
+    save_policy(session, SecurityPolicy(login_allowlist_enabled=True,
+                                        login_allowlist=("10.0.0.0/24",)))
+    session.commit()
+    # The test client's address is "testclient", outside every range.
+    signed_in = client.get("/api/auth/session")
+    assert signed_in.status_code == 401
+    assert signed_in.headers["X-Skjald-Reason"] == "session_network"
+    refused = _sign_in(client)
+    assert refused.status_code == 403 and refused.headers["X-Skjald-Reason"] == "network"
+    assert len(_audit(session, "auth.sign_in.refused_network")) == 1
+
+
+def test_an_allowlist_that_is_switched_off_lets_everyone_in(client, make_user, session) -> None:
+    make_user()
+    save_policy(session, SecurityPolicy(login_allowlist=("10.0.0.0/24",)))
+    session.commit()
+    assert _sign_in(client).status_code == 200
+
+
+def test_sessions_whose_browser_never_returns_are_cleared_away(
+    client, make_user, new_client, session, frozen_clock
+) -> None:
+    make_user()
+    _sign_in(client)
+    frozen_clock.advance(hours=13)
+    _sign_in(new_client())
+    assert len(session.scalars(select(UserSession)).all()) == 1
+    session.commit()

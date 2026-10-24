@@ -98,6 +98,7 @@ def test_the_token_command_prints_a_token_and_stores_only_its_hash(
 SECURITY = {
     "min_password_length": 14, "breach_check_enabled": True, "lockout_threshold": 5,
     "lockout_minutes": 30, "idle_timeout_minutes": 20, "max_session_hours": 10,
+    "require_mfa_everyone": False, "require_mfa_administrators": True,
 }
 
 

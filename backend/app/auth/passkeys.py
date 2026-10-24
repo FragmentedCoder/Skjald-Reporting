@@ -1,4 +1,4 @@
-"""Passkeys and hardware security keys (WebAuthn / FIDO2), used as the second factor."""
+"""Passkeys and hardware security keys (WebAuthn / FIDO2), used for multifactor sign-in."""
 
 from __future__ import annotations
 

@@ -103,7 +103,7 @@ def full_session(session):
     def sign_in(user):
         token, record = start_session(session, user, SecurityPolicy(), ip="testclient",
                                       user_agent=None)
-        record.mfa_verified_at = clock.utcnow()
+        record.mfa_verified_at = record.confirmed_at = clock.utcnow()
         session.commit()
         return {"Cookie": f"{COOKIE_NAME}={token}", "X-CSRF-Token": csrf_token_for(token)}
 

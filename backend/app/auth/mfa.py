@@ -1,4 +1,4 @@
-"""Second factors: authenticator apps (TOTP), passkeys and hardware keys, recovery codes."""
+"""Multifactor authentication: authenticator apps (TOTP), passkeys and keys, recovery codes."""
 
 from __future__ import annotations
 
@@ -17,6 +17,8 @@ from app import clock
 from app.auth.sessions import UserSession, rotate_token
 from app.db import Base, UTCDateTime
 from app.policy import SecurityPolicy
+from app.roles import Role, roles_of
+from app.users import User
 
 TOTP_PERIOD_SECONDS = 30
 TOTP_ISSUER = "Skjald"
@@ -81,23 +83,45 @@ def unused_recovery_codes(db: Session, user_id: int) -> list[RecoveryCode]:
     )
 
 
-def second_factor_state(
-    db: Session, record: UserSession
-) -> tuple[SecondFactorState, list[Method]]:
-    """Where the session stands, and which methods can finish it."""
-    if record.mfa_verified_at is not None:
-        return "done", []
-    kinds = {factor.kind for factor in confirmed_factors(db, record.user_id)}
-    if not kinds:
-        return "enrol", []
+def mfa_required(db: Session, user_id: int, policy: SecurityPolicy) -> bool:
+    if policy.require_mfa_everyone:
+        return True
+    user = db.get(User, user_id)
+    if user is not None and user.is_break_glass:
+        return True  # the last way in when everything else fails: always protected
+    return policy.require_mfa_administrators and Role.ADMINISTRATOR in roles_of(db, user_id)
+
+
+def methods_of(db: Session, user_id: int) -> list[Method]:
+    """The ways this person can confirm it's them.
+
+    A recovery code is always offered once any factor exists, used up or not:
+    leaving it out would tell an attacker the codes are gone.
+    """
+    kinds = {factor.kind for factor in confirmed_factors(db, user_id)}
     methods: list[Method] = []
     if "totp" in kinds:
         methods.append("totp")
     if "webauthn" in kinds:
         methods.append("webauthn")
-    if unused_recovery_codes(db, record.user_id):
+    if kinds:
         methods.append("recovery_code")
-    return "verify", methods
+    return methods
+
+
+def second_factor_state(
+    db: Session, record: UserSession, policy: SecurityPolicy
+) -> SecondFactorState:
+    """Where the session stands.
+
+    Someone with a factor always uses it. Someone without one sets one up if
+    multifactor is required for them, and otherwise is signed in already.
+    """
+    if record.mfa_verified_at is not None:
+        return "done"
+    if confirmed_factors(db, record.user_id):
+        return "verify"
+    return "enrol" if mfa_required(db, record.user_id, policy) else "done"
 
 
 def may_enrol(db: Session, record: UserSession) -> bool:
@@ -111,24 +135,30 @@ def may_enrol(db: Session, record: UserSession) -> bool:
     return record.mfa_verified_at is not None or not confirmed_factors(db, record.user_id)
 
 
+def mark_signed_in(record: UserSession) -> None:
+    """Bookkeeping for a complete sign-in (or a fresh confirmation, for step-up)."""
+    now = clock.utcnow()
+    record.confirmed_at = now
+    record.user.last_sign_in_at = now
+    record.last_seen_at = now
+    # Only a complete sign-in resets the failure count; a password alone would let
+    # someone guess codes forever, a few at a time between sign-ins.
+    record.user.failed_sign_ins = 0
+    record.user.locked_until = None
+
+
 def upgrade_session(db: Session, record: UserSession) -> str:
-    """Mark the session as having passed both factors, under a new token.
+    """Mark the session as having passed multifactor authentication, under a new token.
 
     The new token means a token planted or seen before this point (session
     fixation) is worthless. Returns the new token for the cookie.
     """
     token = rotate_token(record)
-    now = clock.utcnow()
-    record.mfa_verified_at = now
-    record.user.last_sign_in_at = now
-    record.last_seen_at = now
+    record.mfa_verified_at = clock.utcnow()
     record.challenge = None
     record.challenge_purpose = None
     record.challenge_expires_at = None
-    # Only a full sign-in resets the failure count; a password alone would let
-    # someone guess codes forever, a few at a time between sign-ins.
-    record.user.failed_sign_ins = 0
-    record.user.locked_until = None
+    mark_signed_in(record)
     return token
 
 

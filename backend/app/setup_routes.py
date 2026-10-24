@@ -1,7 +1,7 @@
 """The first-run setup wizard: company name, break-glass Administrator, recovery kit.
 
 Every step needs the setup token. The recovery kit and the last step also need
-the new Administrator to be fully signed in, second factor included. Once setup
+the new Administrator to be fully signed in, multifactor included. Once setup
 is complete, every step answers 410 Gone.
 """
 
@@ -205,7 +205,7 @@ def create_administrator(
     )
     db.commit()
     set_session_cookie(response, token)
-    return session_info(db, record, token)
+    return session_info(db, record, token, request)
 
 
 @router.post("/recovery-kit")

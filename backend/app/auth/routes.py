@@ -7,17 +7,39 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app import audit
-from app.auth.dependencies import DB, AnySession, client_ip
-from app.auth.mfa import Method, SecondFactorState, second_factor_state
-from app.auth.sessions import COOKIE_NAME, UserSession, csrf_token_for, start_session
+from app.auth.dependencies import (
+    DB,
+    AnySession,
+    client_ip,
+    effective_capabilities,
+    refuse,
+)
+from app.auth.mfa import (
+    Method,
+    SecondFactorState,
+    mark_signed_in,
+    methods_of,
+    second_factor_state,
+    unused_recovery_codes,
+)
+from app.auth.sessions import (
+    COOKIE_NAME,
+    UserSession,
+    check_session,
+    csrf_token_for,
+    ended_message,
+    idle_deadline,
+    start_session,
+)
 from app.auth.sign_in import (
     ADDRESS_WINDOW,
     FAILED_ACTION,
     authenticate,
     too_many_failures_from,
 )
-from app.policy import load_policy
-from app.roles import Capability, Role, can, roles_of
+from app.images import avatar_url
+from app.policy import load_policy, login_allowed_from
+from app.roles import Capability, Role, roles_of
 
 router = APIRouter(prefix="/auth")
 
@@ -36,38 +58,56 @@ class UserInfo(BaseModel):
     username: str
     display_name: str
     theme: str
+    avatar_url: str | None
     roles: list[Role]
-    # What the roles allow, worked out here so the frontend never re-derives it.
+    # What the roles allow from this address, worked out here so the frontend never
+    # re-derives it. "administer" is left out outside the admin IP allowlist.
     capabilities: list[Capability]
 
 
 class SessionInfo(BaseModel):
     user: UserInfo
-    # enrol: set up a second factor now. verify: use one of `methods`. done: signed in.
+    # enrol: set up multifactor now. verify: use one of `methods`. done: signed in.
     second_factor: SecondFactorState
+    # The ways this person can confirm it's them, for sign-in and for step-up.
     methods: list[Method]
     # A temporary password must be replaced before the app opens.
     password_change_required: bool
+    # Only once signed in: how many recovery codes are left, to warn when few.
+    recovery_codes_left: int | None
     csrf_token: str
+    idle_expires_at: datetime
     expires_at: datetime
 
 
-def session_info(db: Session, record: UserSession, token: str) -> SessionInfo:
-    state, methods = second_factor_state(db, record)
-    roles = roles_of(db, record.user_id)
+class SessionStatus(BaseModel):
+    idle_expires_at: datetime
+    expires_at: datetime
+
+
+def session_info(db: Session, record: UserSession, token: str, request: Request) -> SessionInfo:
+    policy = load_policy(db)
+    state = second_factor_state(db, record, policy)
+    user = record.user
     return SessionInfo(
         user=UserInfo(
-            id=record.user.id,
-            username=record.user.username,
-            display_name=record.user.display_name,
-            theme=record.user.theme,
-            roles=sorted(roles),
-            capabilities=sorted(c for c in Capability if can(roles, c)),
+            id=user.id,
+            username=user.username,
+            display_name=user.display_name,
+            theme=user.theme,
+            avatar_url=avatar_url(db, user.id),
+            roles=sorted(roles_of(db, user.id)),
+            capabilities=sorted(effective_capabilities(db, record, request)),
         ),
         second_factor=state,
-        methods=methods,
-        password_change_required=record.user.must_change_password,
+        methods=methods_of(db, user.id),
+        password_change_required=user.must_change_password,
+        recovery_codes_left=(
+            len(unused_recovery_codes(db, user.id))
+            if state == "done" and methods_of(db, user.id) else None
+        ),
         csrf_token=csrf_token_for(token),
+        idle_expires_at=idle_deadline(record, policy),
         expires_at=record.expires_at,
     )
 
@@ -81,6 +121,12 @@ def set_session_cookie(response: Response, token: str) -> None:
 @router.post("/sign-in")
 def sign_in(body: SignInRequest, request: Request, response: Response, db: DB) -> SessionInfo:
     ip = client_ip(request)
+    policy = load_policy(db)
+    if not login_allowed_from(policy, ip):
+        audit.append(db, "auth.sign_in.refused_network", ip=ip)
+        db.commit()
+        raise refuse(status.HTTP_403_FORBIDDEN, "Skjald isn't available from this network.",
+                     "network")
     if too_many_failures_from(db, ip):
         audit.append(db, "auth.sign_in.throttled", ip=ip)
         db.commit()
@@ -90,7 +136,6 @@ def sign_in(body: SignInRequest, request: Request, response: Response, db: DB) -
             headers={"Retry-After": str(int(ADDRESS_WINDOW.total_seconds()))},
         )
 
-    policy = load_policy(db)
     outcome = authenticate(db, body.username, body.password, policy)
     account = outcome.account
     actor_id = account.id if account else None
@@ -114,6 +159,9 @@ def sign_in(body: SignInRequest, request: Request, response: Response, db: DB) -
     token, record = start_session(
         db, account, policy, ip=ip, user_agent=request.headers.get("user-agent")
     )
+    # Without multifactor required or set up, the password completes the sign-in.
+    if second_factor_state(db, record, policy) == "done":
+        mark_signed_in(record)
     details: dict[str, object] = {"session": record.id}
     if account.is_break_glass:
         details["break_glass"] = True
@@ -123,12 +171,29 @@ def sign_in(body: SignInRequest, request: Request, response: Response, db: DB) -
     )
     db.commit()
     set_session_cookie(response, token)
-    return session_info(db, record, token)
+    return session_info(db, record, token, request)
 
 
 @router.get("/session")
 def get_current_session(request: Request, record: AnySession, db: DB) -> SessionInfo:
-    return session_info(db, record, request.cookies[COOKIE_NAME])
+    return session_info(db, record, request.cookies[COOKIE_NAME], request)
+
+
+@router.get("/session/status")
+def get_session_status(request: Request, db: DB) -> SessionStatus:
+    """Is the session still alive? Doesn't count as activity, so the browser can ask
+    on a timer and go to the sign-in page the moment the session ends."""
+    token = request.cookies.get(COOKIE_NAME)
+    policy = load_policy(db)
+    if not token:
+        raise refuse(status.HTTP_401_UNAUTHORIZED, "Sign in to continue.", "signed_out")
+    record, reason = check_session(db, token, policy, ip=client_ip(request), touch=False)
+    db.commit()
+    if record is None:
+        raise refuse(status.HTTP_401_UNAUTHORIZED, ended_message(reason or "", policy),
+                     f"session_{reason}")
+    return SessionStatus(idle_expires_at=idle_deadline(record, policy),
+                         expires_at=record.expires_at)
 
 
 @router.post("/sign-out", status_code=status.HTTP_204_NO_CONTENT)

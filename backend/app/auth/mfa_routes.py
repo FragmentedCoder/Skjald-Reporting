@@ -1,4 +1,4 @@
-"""Second-factor endpoints: enrol and verify authenticator apps and passkeys, use recovery codes."""
+"""Multifactor endpoints: enrol and verify authenticator apps and passkeys, use recovery codes."""
 
 from __future__ import annotations
 
@@ -85,7 +85,7 @@ def _require_enrolment_allowed(db: Session, record: UserSession) -> None:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Choose a new password first.")
     if not may_enrol(db, record):
         raise HTTPException(
-            status.HTTP_403_FORBIDDEN, "Finish signing in with your second factor first."
+            status.HTTP_403_FORBIDDEN, "Finish signing in with multifactor authentication first."
         )
 
 
@@ -96,7 +96,7 @@ def _require_factors(db: Session, record: UserSession) -> None:
         db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Sign in again in a few minutes.")
     if not confirmed_factors(db, record.user_id):
-        raise HTTPException(status.HTTP_409_CONFLICT, "Set up a second factor first.")
+        raise HTTPException(status.HTTP_409_CONFLICT, "Set up multifactor authentication first.")
 
 
 def _complete(
@@ -124,7 +124,8 @@ def _complete(
     audit.append(db, "auth.mfa.verified", **actor, ip=ip, details={"method": method})
     db.commit()
     set_session_cookie(response, token)
-    return SecondFactorResult(session=session_info(db, record, token), recovery_codes=codes)
+    return SecondFactorResult(session=session_info(db, record, token, request),
+                              recovery_codes=codes)
 
 
 def _fail(db: Session, request: Request, record: UserSession, method: Method) -> NoReturn:
