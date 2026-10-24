@@ -44,6 +44,10 @@ def _connect(db_path: Path, key: bytes) -> sqlcipher3.Connection:
     conn.execute(f"PRAGMA key = \"x'{key.hex()}'\"")
     conn.execute("PRAGMA cipher_memory_security = ON")
     conn.execute("PRAGMA foreign_keys = ON")
+    # Deleted rows are overwritten, not just unlinked: a deleted customer's sealed
+    # data and key leave no traces in free pages. SQLCipher has this on already;
+    # saying so keeps it on if that default ever changes.
+    conn.execute("PRAGMA secure_delete = ON")
     conn.execute("PRAGMA busy_timeout = 30000")
     conn.execute("PRAGMA journal_mode = WAL")
     # A wrong key fails here, not on PRAGMA key: SQLCipher only notices once it

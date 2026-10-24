@@ -30,6 +30,14 @@ def data_dir(tmp_path):
     return tmp_path / "data"
 
 
+@pytest.fixture(autouse=True)
+def master_key_in_settings(monkeypatch, master_key_path):
+    """Customer keys are wrapped by the master key the app finds in its settings."""
+    from app.settings import settings
+
+    monkeypatch.setattr(settings, "master_key_path", str(master_key_path))
+
+
 @pytest.fixture
 def engine(data_dir, master_key_path):
     engine = make_engine(data_dir, master_key_path)
