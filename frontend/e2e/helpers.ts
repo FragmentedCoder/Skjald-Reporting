@@ -78,3 +78,11 @@ export async function signOut(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/sign-in$/);
 }
+
+/** A toast on screen with this text (screen readers get a hidden copy too). */
+export function toastWith(page: Page, text: string | RegExp) {
+  return page
+    .getByRole("region", { name: "Notifications" })
+    .getByRole("listitem")
+    .filter({ hasText: text });
+}

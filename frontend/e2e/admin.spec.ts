@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
-import { setUpAuthenticatorApp, signIn, totp, watchForCspViolations } from "./helpers";
+import { setUpAuthenticatorApp, signIn, toastWith, totp, watchForCspViolations } from "./helpers";
 
 const BJORN_PASSWORD = "bjørns egen lange adgangssætning";
 
@@ -71,10 +71,10 @@ test("the admin panel, from adding a user to their first sign-in", async ({ brow
   await expect(admin.getByText("Not signed in anywhere.")).toBeVisible();
   await bjorn.getByRole("link", { name: /your account/ }).click();
   await expect(bjorn).toHaveURL(/\/sign-in$/);
-  await expect(bjorn.getByText("An administrator signed you out.")).toBeVisible();
+  await expect(toastWith(bjorn, "An administrator signed you out.")).toBeVisible();
   await shot(bjorn, "6-signed-out-toast");
   await bjorn.getByRole("button", { name: "Dismiss" }).click();
-  await expect(bjorn.getByText("An administrator signed you out.")).toHaveCount(0);
+  await expect(toastWith(bjorn, "An administrator signed you out.")).toHaveCount(0);
 
   // He signs in again with his app; then the row menu resets his multifactor.
   await signIn(bjorn, "bjorn", BJORN_PASSWORD);
@@ -86,18 +86,18 @@ test("the admin panel, from adding a user to their first sign-in", async ({ brow
   await shot(admin, "7-row-menu");
   await admin.getByRole("menuitem", { name: "Reset multifactor…" }).click();
   await admin.getByRole("dialog").getByRole("button", { name: "Reset multifactor" }).click();
-  await expect(admin.getByText("Bjørn Havn sets up multifactor again")).toBeVisible();
+  await expect(toastWith(admin, "Bjørn Havn sets up multifactor again")).toBeVisible();
   await expect(admin.getByRole("row", { name: /Bjørn Havn/ })).toContainText("Not yet");
   await bjorn.reload();
   await expect(bjorn).toHaveURL(/\/sign-in$/);
-  await expect(bjorn.getByText(/reset your multifactor authentication/)).toBeVisible();
+  await expect(toastWith(bjorn, /reset your multifactor authentication/)).toBeVisible();
 
   // Security: a change is saved; an allowlist that shuts this browser out is refused.
   await adminMenu(admin, "Security").click();
   await expect(admin.getByRole("switch", { name: "Required for everyone" })).toBeChecked();
   await admin.getByLabel("Keep it locked for").fill("20");
   await admin.getByRole("button", { name: "Save settings" }).click();
-  await expect(admin.getByText("Security settings saved.")).toBeVisible();
+  await expect(toastWith(admin, "Security settings saved.")).toBeVisible();
 
   // Lowering security asks to confirm it's you, however recent the sign-in.
   const everyone = admin.getByRole("switch", { name: /Required for everyone/ });
@@ -132,7 +132,10 @@ test("the admin panel, from adding a user to their first sign-in", async ({ brow
   await admin.getByLabel("Tag line").fill("Rapporter fra fjorden.");
   await admin.getByLabel("Company name").fill("Nordlys IT A/S");
   await admin.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(admin.getByText("Branding saved.")).toBeVisible();
+  await expect(toastWith(admin, "Branding saved.")).toBeVisible();
+  // However many have piled up, at most three toasts show at once.
+  const shown = admin.getByRole("region", { name: "Notifications" }).getByRole("listitem");
+  expect(await shown.count()).toBeLessThanOrEqual(3);
   await expect(admin.getByRole("banner")).toContainText("Nordlys Rapport");
   await expect(admin).toHaveTitle(/Nordlys Rapport/);
   await shot(admin, "9-branding");

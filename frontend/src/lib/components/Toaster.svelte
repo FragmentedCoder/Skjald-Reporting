@@ -5,13 +5,23 @@
   import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
   import X from "@lucide/svelte/icons/x";
   import { onMount } from "svelte";
-  import { dismiss, hold, release, toasts, type Toast } from "$lib/toast.svelte";
+  import { flip } from "svelte/animate";
+  import { fade, fly } from "svelte/transition";
+  import { announcement, dismiss, hold, release, toasts, type Toast } from "$lib/toast.svelte";
 
   let toaster: HTMLElement;
+  // Toasts glide into place, unless the person asked their system for less motion.
+  let motion = $state(180);
+
+  // Newest on top: when one goes, the ones above it move down into its place.
+  const newestFirst = $derived([...toasts].reverse());
 
   // A popover sits in the browser's top layer, above the page and any dialog shown
   // before it. A dialog opened later covers it, so a new toast lifts it back up.
-  onMount(() => toaster.showPopover());
+  onMount(() => {
+    toaster.showPopover();
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) motion = 0;
+  });
 
   $effect(() => {
     if (toasts.length && document.querySelector("dialog[open]")) {
@@ -28,37 +38,39 @@
   }
 </script>
 
-<!-- Two live regions, always in the page, so screen readers announce what lands in
-     them: urgent messages interrupt, the rest wait their turn. -->
 <section class="toaster" aria-label="Notifications" popover="manual" bind:this={toaster}>
-  {#each ["assertive", "polite"] as politeness (politeness)}
-    <div class="region" aria-live={politeness === "assertive" ? "assertive" : "polite"}>
-      {#each toasts.filter((t) => (t.tone === "critical") === (politeness === "assertive")) as item (item.id)}
-        {@const Icon = ICONS[item.tone]}
-        <div
-          class="toast toast-{item.tone}"
-          role={item.tone === "critical" ? "alert" : "status"}
-          onmouseenter={() => hold(item.id)}
-          onmouseleave={() => release(item.id)}
-          onfocusin={() => hold(item.id)}
-          onfocusout={() => release(item.id)}
-        >
-          <Icon class="icon" size={18} aria-hidden="true" />
-          <div class="body">
-            <p>{item.text}</p>
-            {#if item.action}
-              <button class="link-button" type="button" onclick={() => act(item)}>
-                {item.action.label}
-              </button>
-            {/if}
-          </div>
-          <button class="close" type="button" aria-label="Dismiss" onclick={() => dismiss(item.id)}>
-            <X size={16} aria-hidden="true" />
-          </button>
+  <ol class="list">
+    {#each newestFirst as item (item.id)}
+      {@const Icon = ICONS[item.tone]}
+      <li
+        class="toast toast-{item.tone}"
+        animate:flip={{ duration: motion }}
+        in:fly={{ y: -12, duration: motion }}
+        out:fade={{ duration: motion }}
+        onmouseenter={() => hold(item.id)}
+        onmouseleave={() => release(item.id)}
+        onfocusin={() => hold(item.id)}
+        onfocusout={() => release(item.id)}
+      >
+        <Icon class="icon" size={18} aria-hidden="true" />
+        <div class="body">
+          <p>{item.text}</p>
+          {#if item.action}
+            <button class="link-button" type="button" onclick={() => act(item)}>
+              {item.action.label}
+            </button>
+          {/if}
         </div>
-      {/each}
-    </div>
-  {/each}
+        <button class="close" type="button" aria-label="Dismiss" onclick={() => dismiss(item.id)}>
+          <X size={16} aria-hidden="true" />
+        </button>
+      </li>
+    {/each}
+  </ol>
+  <!-- Screen readers hear each toast once, from these, however the toasts move:
+       urgent ones interrupt, the rest wait their turn. -->
+  <div class="visually-hidden" aria-live="assertive">{announcement.assertive}</div>
+  <div class="visually-hidden" aria-live="polite">{announcement.polite}</div>
 </section>
 
 <style>
@@ -80,10 +92,13 @@
     width: min(380px, calc(100vw - 2 * var(--space-4)));
     pointer-events: none;
   }
-  .region {
+  .list {
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
   }
   .toast {
     display: grid;
@@ -148,16 +163,5 @@
   .close:hover {
     background: var(--surface-subtle);
     color: var(--text);
-  }
-  @media (prefers-reduced-motion: no-preference) {
-    .toast {
-      animation: rise 160ms ease-out;
-    }
-    @keyframes rise {
-      from {
-        opacity: 0;
-        transform: translateY(8px);
-      }
-    }
   }
 </style>
