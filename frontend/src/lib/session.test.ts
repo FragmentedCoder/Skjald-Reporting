@@ -11,6 +11,7 @@ function sessionIn(
       username: "astrid",
       display_name: "Astrid Fjeld",
       theme: "system",
+      colours: { primary: null, accent: null },
       avatar_url: null,
       roles: [],
       capabilities: [],

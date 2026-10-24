@@ -3,10 +3,20 @@
   import { onMount } from "svelte";
   import { api, ApiError } from "$lib/api";
   import { branding, loadBranding, pageTitle, useBranding, type Branding } from "$lib/branding.svelte";
+  import { ACCENT, PRIMARY } from "$lib/colours";
   import Brand from "$lib/components/Brand.svelte";
+  import Switch from "$lib/components/Switch.svelte";
+  import SwatchPicker from "$lib/components/SwatchPicker.svelte";
   import { toast } from "$lib/toast.svelte";
 
-  let form = $state({ site_name: "", tagline: "", company_name: "" });
+  let form = $state({
+    site_name: "",
+    tagline: "",
+    company_name: "",
+    primary_colour: "fjord",
+    accent_colour: "rav",
+    enforce_colours: false,
+  });
   let loaded = $state(false);
   let error = $state<string | null>(null);
   let busy = $state(false);
@@ -19,6 +29,9 @@
       site_name: current.site_name,
       tagline: current.tagline,
       company_name: current.company_name ?? "",
+      primary_colour: current.primary_colour,
+      accent_colour: current.accent_colour,
+      enforce_colours: current.enforce_colours,
     };
     loaded = true;
   });
@@ -36,9 +49,9 @@
     }
   }
 
-  function save(event: SubmitEvent) {
+  function save(event: SubmitEvent, done = "Branding saved.") {
     event.preventDefault();
-    run(() => api<Branding>("PUT", "/admin/branding", form), "Branding saved.");
+    run(() => api<Branding>("PUT", "/admin/branding", form), done);
   }
 
   function upload() {
@@ -67,6 +80,7 @@
 {#if loaded}
   <section class="section" aria-labelledby="preview-title">
     <h2 class="section-title" id="preview-title">Preview</h2>
+    <p class="small muted">How the top bar and the sign-in page show your site, as saved.</p>
     <div class="preview">
       <Brand size={40} tagline />
     </div>
@@ -74,6 +88,7 @@
 
   <section class="section" aria-labelledby="names-title">
     <h2 class="section-title" id="names-title">Names</h2>
+    <p class="small muted">What people see when they sign in and work, and the name on reports.</p>
     <form class="stack form-narrow" onsubmit={save}>
       <div class="field">
         <label for="site-name">Site name</label>
@@ -92,6 +107,24 @@
         <span class="hint">Your company's legal name, as it appears on reports.</span>
       </div>
       <div><button class="button button-primary" type="submit" disabled={busy}>Save</button></div>
+    </form>
+  </section>
+
+  <section class="section" aria-labelledby="colours-title">
+    <h2 class="section-title" id="colours-title">Colours</h2>
+    <p class="small muted">
+      The site's colours. People can pick their own in Your account, unless you set these for
+      everyone. Every choice is checked to stay readable in light and dark mode.
+    </p>
+    <form class="stack" onsubmit={(event) => save(event, "Colours saved.")}>
+      <SwatchPicker legend="Primary colour" hint="Links, buttons, switches and focus outlines."
+        swatches={PRIMARY} bind:value={form.primary_colour} />
+      <SwatchPicker legend="Accent colour" hint="Marks where you are in the menus, and commands to copy."
+        swatches={ACCENT} bind:value={form.accent_colour} />
+      <Switch title="Use these colours for everyone" bind:checked={form.enforce_colours}>
+        People's own colour choices are kept, but don't apply while this is on.
+      </Switch>
+      <div><button class="button button-primary" type="submit" disabled={busy}>Save colours</button></div>
     </form>
   </section>
 

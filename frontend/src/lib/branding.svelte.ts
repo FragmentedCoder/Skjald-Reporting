@@ -5,6 +5,9 @@ export interface Branding {
   tagline: string;
   company_name: string | null;
   logo_url: string | null;
+  primary_colour: string;
+  accent_colour: string;
+  enforce_colours: boolean;
 }
 
 const DEFAULTS: Branding = {
@@ -12,10 +15,13 @@ const DEFAULTS: Branding = {
   tagline: "Reports worth keeping.",
   company_name: null,
   logo_url: null,
+  primary_colour: "fjord",
+  accent_colour: "rav",
+  enforce_colours: false,
 };
 
-// The site's name, tag line and logo, which an Administrator can change. Public:
-// the sign-in page shows them too.
+// The site's name, tag line, logo and colours, which an Administrator can change.
+// Public: the sign-in page shows them too.
 export const branding = $state<{ current: Branding; loaded: boolean }>({
   current: DEFAULTS,
   loaded: false,

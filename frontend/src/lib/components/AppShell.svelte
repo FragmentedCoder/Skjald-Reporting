@@ -3,11 +3,15 @@
   import { page } from "$app/state";
   import House from "@lucide/svelte/icons/house";
   import LogOut from "@lucide/svelte/icons/log-out";
+  import Moon from "@lucide/svelte/icons/moon";
   import Shield from "@lucide/svelte/icons/shield-check";
-  import type { Snippet } from "svelte";
+  import Sun from "@lucide/svelte/icons/sun";
+  import { onMount, type Snippet } from "svelte";
+  import { api } from "$lib/api";
   import Avatar from "./Avatar.svelte";
   import Brand from "./Brand.svelte";
-  import { can, session, signOut, type SessionInfo } from "$lib/session.svelte";
+  import { applyTheme, can, session, signOut, type SessionInfo } from "$lib/session.svelte";
+  import { toast } from "$lib/toast.svelte";
 
   let { info, children }: { info: SessionInfo; children: Snippet } = $props();
 
@@ -16,6 +20,29 @@
   const current = $derived(session.current ?? info);
   const showAdmin = $derived(can(current, "administer") || can(current, "read_audit_log"));
   const path = $derived(page.url.pathname);
+
+  // Light or dark right now: the person's choice, or the device's when "system".
+  let deviceDark = $state(false);
+  const dark = $derived(user.theme === "dark" || (user.theme === "system" && deviceDark));
+
+  onMount(() => {
+    const query = window.matchMedia("(prefers-color-scheme: dark)");
+    deviceDark = query.matches;
+    const changed = () => (deviceDark = query.matches);
+    query.addEventListener("change", changed);
+    return () => query.removeEventListener("change", changed);
+  });
+
+  async function toggleTheme() {
+    const next = dark ? "light" : "dark";
+    applyTheme(next);
+    if (session.current) session.current.user.theme = next;
+    try {
+      await api("PATCH", "/account", { theme: next });
+    } catch {
+      toast("Couldn't save the change; it lasts until you reload.", "warning", { key: "theme" });
+    }
+  }
 </script>
 
 <header class="bar">
@@ -35,6 +62,11 @@
     {/if}
   </nav>
   <div class="who">
+    <button class="icon-button" type="button" onclick={toggleTheme}
+      aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
+      title={dark ? "Switch to light mode" : "Switch to dark mode"}>
+      {#if dark}<Sun size={18} aria-hidden="true" />{:else}<Moon size={18} aria-hidden="true" />{/if}
+    </button>
     <a class="account" href={resolve("/account")} title="Your account: {user.display_name}"
       aria-current={path === "/account" ? "page" : undefined}>
       <Avatar name={user.display_name} url={user.avatar_url} size={28} />
@@ -87,6 +119,27 @@
   .nav a[aria-current="page"],
   .account:hover,
   .account[aria-current="page"] {
+    background: var(--surface-subtle);
+    color: var(--text);
+  }
+  /* The accent marks where you are. */
+  .nav a[aria-current="page"],
+  .account[aria-current="page"] {
+    box-shadow: inset 0 -2px 0 var(--accent);
+  }
+  .icon-button {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: none;
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+  .icon-button:hover {
     background: var(--surface-subtle);
     color: var(--text);
   }

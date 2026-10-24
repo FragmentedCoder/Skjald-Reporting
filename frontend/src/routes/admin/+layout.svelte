@@ -92,6 +92,9 @@
     background: var(--surface-subtle);
     color: var(--text);
   }
+  .side a[aria-current="page"] {
+    box-shadow: inset 3px 0 0 var(--accent);
+  }
   .main {
     display: flex;
     flex-direction: column;

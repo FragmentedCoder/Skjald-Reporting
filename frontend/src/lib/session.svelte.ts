@@ -14,6 +14,8 @@ export interface SessionInfo {
     username: string;
     display_name: string;
     theme: Theme;
+    // Null follows the site's colours.
+    colours: { primary: string | null; accent: string | null };
     avatar_url: string | null;
     roles: Role[];
     capabilities: Capability[];
