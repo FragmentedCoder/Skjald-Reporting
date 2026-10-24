@@ -1,13 +1,18 @@
 <script lang="ts">
+  import ImageIcon from "@lucide/svelte/icons/image";
   import { onMount } from "svelte";
-  import { api, ApiError } from "$lib/api";
+  import { api, ApiError, sessionGone } from "$lib/api";
+  import { PROFILE_FIELDS, profileForm, type Profile, type ProfileForm } from "$lib/admin";
+  import { pageTitle } from "$lib/branding.svelte";
   import AppShell from "$lib/components/AppShell.svelte";
+  import Avatar from "$lib/components/Avatar.svelte";
   import Dialog from "$lib/components/Dialog.svelte";
   import Pill from "$lib/components/Pill.svelte";
   import SaveSecrets from "$lib/components/SaveSecrets.svelte";
   import SecondFactorSetup from "$lib/components/SecondFactorSetup.svelte";
   import { browserName, date, dateTime } from "$lib/format";
   import { recoveryCodesText } from "$lib/secrets";
+  import { toast } from "$lib/toast.svelte";
   import {
     applyTheme,
     session,
@@ -34,12 +39,12 @@
     user_agent: string | null;
     current: boolean;
   }
-  interface Account {
+  interface Account extends Profile {
     username: string;
-    display_name: string;
-    email: string | null;
     theme: Theme;
+    avatar_url: string | null;
     password_changed_at: string | null;
+    mfa_required: boolean;
     factors: Factor[];
     recovery_codes_left: number;
     sessions: SessionRow[];
@@ -49,7 +54,9 @@
 
   let info = $state<SessionInfo | null>(null);
   let account = $state<Account | null>(null);
-  let profile = $state({ display_name: "", email: "", theme: "system" as Theme });
+  let profile = $state<ProfileForm | null>(null);
+  let theme = $state<Theme>("system");
+  let avatarInput = $state<HTMLInputElement>();
   let passwords = $state({ current: "", next: "", repeat: "" });
   let notice = $state<{ section: string; tone: "ok" | "critical"; text: string } | null>(null);
   let busy = $state(false);
@@ -65,18 +72,32 @@
   let newCodes = $state<string[] | null>(null);
   let codesOpen = $state(false);
 
+  // The last method can't go while the account needs multifactor.
+  const lastRequired = $derived(account !== null && account.mfa_required && account.factors.length < 2);
+
   onMount(async () => {
     info = await settle("app");
-    if (info) await load();
+    if (!info) return;
+    try {
+      await load();
+    } catch (e) {
+      if (!sessionGone(e)) toast(e instanceof ApiError ? e.message : "Your account couldn't be loaded.", "critical");
+    }
   });
 
   async function load() {
-    account = await api<Account>("GET", "/account");
-    profile = {
-      display_name: account.display_name,
-      email: account.email ?? "",
-      theme: account.theme,
-    };
+    use(await api<Account>("GET", "/account"));
+  }
+
+  function use(found: Account) {
+    account = found;
+    profile = profileForm(found);
+    theme = found.theme;
+    if (session.current) {
+      session.current.user.display_name = found.display_name;
+      session.current.user.theme = found.theme;
+      session.current.user.avatar_url = found.avatar_url;
+    }
   }
 
   async function guarded(section: string, action: () => Promise<void>) {
@@ -102,17 +123,9 @@
   function saveProfile(event: SubmitEvent) {
     event.preventDefault();
     guarded("profile", async () => {
-      account = await api<Account>("PATCH", "/account", {
-        display_name: profile.display_name,
-        email: profile.email,
-        theme: profile.theme,
-      });
-      if (session.current) {
-        session.current.user.display_name = account.display_name;
-        session.current.user.theme = account.theme;
-      }
-      applyTheme(account.theme);
-      notice = { section: "profile", tone: "ok", text: "Saved." };
+      use(await api<Account>("PATCH", "/account", { ...profile, theme }));
+      applyTheme(theme);
+      toast("Your profile is saved.", "ok", { key: "saved" });
     });
   }
 
@@ -131,11 +144,7 @@
       );
       passwords = { current: "", next: "", repeat: "" };
       await load();
-      notice = {
-        section: "password",
-        tone: "ok",
-        text: "Your password is changed. Any other sessions were signed out.",
-      };
+      toast("Your password is changed. Any other sessions were signed out.", "ok");
     });
   }
 
@@ -189,15 +198,42 @@
     await load();
   }
 
+  function uploadAvatar() {
+    const file = avatarInput?.files?.[0];
+    if (avatarInput) avatarInput.value = "";
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      notice = { section: "profile", tone: "critical", text: "The picture is larger than 2 MB." };
+      return;
+    }
+    guarded("profile", async () => {
+      use(await api<Account>("PUT", "/account/avatar", file));
+      toast("Your picture is saved.", "ok", { key: "saved" });
+    });
+  }
+
+  function removeAvatar() {
+    guarded("profile", async () => {
+      use(await api<Account>("DELETE", "/account/avatar"));
+    });
+  }
+
+  function endSession(row: SessionRow) {
+    guarded("sessions", async () => {
+      account = await api<Account>("POST", `/account/sessions/${row.id}/end`);
+      toast(`${browserName(row.user_agent)} is signed out.`, "ok");
+    });
+  }
+
   function endOtherSessions() {
     guarded("sessions", async () => {
       account = await api<Account>("POST", "/account/sessions/end-others");
-      notice = { section: "sessions", tone: "ok", text: "Other sessions are signed out." };
+      toast("Your other sessions are signed out.", "ok");
     });
   }
 </script>
 
-<svelte:head><title>Your account · Skjald</title></svelte:head>
+<svelte:head><title>{pageTitle("Your account")}</title></svelte:head>
 
 {#snippet message(section: string)}
   {#if notice?.section === section}
@@ -219,29 +255,58 @@
 
       <section class="section" aria-labelledby="profile-title">
         <h2 class="section-title" id="profile-title">Profile</h2>
+        <p class="small muted">
+          Work details your reports and templates can use, such as for signing a report.
+        </p>
         {@render message("profile")}
-        <form class="stack form-narrow" onsubmit={saveProfile}>
-          <div class="field">
-            <label for="display-name">Full name</label>
-            <input id="display-name" class="input" autocomplete="name" required
-              bind:value={profile.display_name} />
+        <div class="picture">
+          <Avatar name={account.display_name} url={account.avatar_url} size={72} />
+          <div class="stack">
+            <input bind:this={avatarInput} class="visually-hidden" type="file" id="avatar-file"
+              accept="image/png,image/jpeg,image/webp,image/gif" onchange={uploadAvatar} />
+            <div class="button-row">
+              <button class="button button-secondary" type="button" disabled={busy}
+                onclick={() => avatarInput?.click()}>
+                <ImageIcon size={16} aria-hidden="true" />
+                {account.avatar_url ? "Change picture" : "Add a picture"}
+              </button>
+              {#if account.avatar_url}
+                <button class="button button-secondary" type="button" disabled={busy}
+                  onclick={removeAvatar}>Remove picture</button>
+              {/if}
+            </div>
+            <span class="small muted">A PNG, JPEG, WebP or GIF up to 2 MB.</span>
           </div>
-          <div class="field">
-            <label for="email">Email</label>
-            <input id="email" class="input" type="email" autocomplete="email"
-              bind:value={profile.email} />
-          </div>
-          <fieldset class="themes">
-            <legend class="check-title">Appearance</legend>
-            {#each [["system", "Same as this device"], ["light", "Light"], ["dark", "Dark"]] as [value, label] (value)}
-              <label class="check">
-                <input type="radio" name="theme" {value} bind:group={profile.theme} />
-                <span>{label}</span>
-              </label>
-            {/each}
-          </fieldset>
-          <div><button class="button button-primary" type="submit" disabled={busy}>Save</button></div>
-        </form>
+        </div>
+        {#if profile}
+          <form class="stack form-wide" onsubmit={saveProfile}>
+            <div class="field">
+              <label for="display-name">Display name</label>
+              <input id="display-name" class="input" autocomplete="name" required maxlength="200"
+                bind:value={profile.display_name} />
+              <span class="hint">How Skjald shows your name to others.</span>
+            </div>
+            <div class="grid">
+              {#each PROFILE_FIELDS as field (field.key)}
+                <div class="field">
+                  <label for={field.key}>{field.label}</label>
+                  <input id={field.key} class="input" type={field.type ?? "text"}
+                    autocomplete={field.autocomplete} bind:value={profile[field.key]} />
+                </div>
+              {/each}
+            </div>
+            <fieldset class="themes">
+              <legend class="check-title">Appearance</legend>
+              {#each [["system", "Same as this device"], ["light", "Light"], ["dark", "Dark"]] as [value, label] (value)}
+                <label class="check">
+                  <input type="radio" name="theme" {value} bind:group={theme} />
+                  <span>{label}</span>
+                </label>
+              {/each}
+            </fieldset>
+            <div><button class="button button-primary" type="submit" disabled={busy}>Save</button></div>
+          </form>
+        {/if}
       </section>
 
       <section class="section" aria-labelledby="password-title">
@@ -275,55 +340,83 @@
       </section>
 
       <section class="section" aria-labelledby="factors-title">
-        <h2 class="section-title" id="factors-title">Second factors</h2>
+        <h2 class="section-title" id="factors-title">Multifactor authentication</h2>
+        <p class="small muted">
+          What you use besides your password: an authenticator app, a passkey or a security key.
+        </p>
         {@render message("factors")}
-        <div class="table-wrap">
-          <table class="table">
-            <thead>
-              <tr><th>Name</th><th>Kind</th><th>Added</th><th>Last used</th><th></th></tr>
-            </thead>
-            <tbody>
-              {#each account.factors as factor (factor.id)}
-                <tr>
-                  <td>{factor.label}</td>
-                  <td>{KIND_NAMES[factor.kind]}</td>
-                  <td>{date(factor.created_at)}</td>
-                  <td>{dateTime(factor.last_used_at)}</td>
-                  <td class="end">
-                    <button class="link-button" type="button" disabled={account.factors.length < 2}
-                      onclick={() => removeFactor(factor)}>Remove</button>
-                  </td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-        </div>
-        {#if account.factors.length < 2}
-          <p class="small muted">Add another before removing your only second factor.</p>
+        {#if account.factors.length}
+          <div class="table-wrap">
+            <table class="table">
+              <thead>
+                <tr><th>Name</th><th>Kind</th><th>Added</th><th>Last used</th><th></th></tr>
+              </thead>
+              <tbody>
+                {#each account.factors as factor (factor.id)}
+                  <tr>
+                    <td>{factor.label}</td>
+                    <td>{KIND_NAMES[factor.kind]}</td>
+                    <td>{date(factor.created_at)}</td>
+                    <td>{dateTime(factor.last_used_at)}</td>
+                    <td class="end">
+                      <button class="link-button" type="button" disabled={lastRequired}
+                        onclick={() => removeFactor(factor)}>
+                        Remove<span class="visually-hidden"> {factor.label}</span>
+                      </button>
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        {:else}
+          <p class="muted">None set up. Your account works with your password alone.</p>
+        {/if}
+        {#if lastRequired}
+          <p class="small muted">Your account needs multifactor: add another before removing this one.</p>
         {/if}
         <div>
           <button class="button button-secondary" type="button" onclick={() => (adding = true)}>
-            Add a second factor
+            Add a method
           </button>
         </div>
       </section>
 
-      <section class="section" aria-labelledby="codes-title">
-        <h2 class="section-title" id="codes-title">Recovery codes</h2>
-        <p>
-          <Pill tone={account.recovery_codes_left > 2 ? "ok" : "warning"}
-            text="{account.recovery_codes_left} of 10 left" />
-        </p>
-        <p class="small muted">
-          Each code lets you sign in once if you lose your second factor. New codes replace all
-          the old ones.
-        </p>
-        <div>
-          <button class="button button-secondary" type="button" onclick={regenerateCodes}>
-            Get new codes
-          </button>
-        </div>
-      </section>
+      {#if account.factors.length}
+        <section class="section" aria-labelledby="codes-title" id="recovery-codes">
+          <h2 class="section-title" id="codes-title">Recovery codes</h2>
+          {#if account.recovery_codes_left === 0}
+            <div class="alert alert-critical callout" role="alert">
+              <p class="check-title">You have no recovery codes left</p>
+              <p>
+                If you lose your phone or key now, an administrator has to reset your
+                multifactor. Get new codes, and keep them somewhere safe.
+              </p>
+            </div>
+          {:else if account.recovery_codes_left <= 3}
+            <div class="alert alert-warning callout" role="status">
+              <p class="check-title">
+                Only {account.recovery_codes_left} recovery {account.recovery_codes_left === 1
+                  ? "code"
+                  : "codes"} left
+              </p>
+              <p>Get new codes before you run out. New codes replace all the old ones.</p>
+            </div>
+          {:else}
+            <p><Pill tone="ok" text="{account.recovery_codes_left} of 10 left" /></p>
+          {/if}
+          <p class="small muted">
+            Each code lets you sign in once if you lose your phone or key. New codes replace all
+            the old ones.
+          </p>
+          <div>
+            <button class="button {account.recovery_codes_left <= 3 ? 'button-primary' : 'button-secondary'}"
+              type="button" onclick={regenerateCodes}>
+              Get new codes
+            </button>
+          </div>
+        </section>
+      {/if}
 
       <section class="section" aria-labelledby="sessions-title">
         <h2 class="section-title" id="sessions-title">Where you're signed in</h2>
@@ -331,7 +424,10 @@
         <div class="table-wrap">
           <table class="table">
             <thead>
-              <tr><th>Browser</th><th>Address</th><th>Signed in</th><th>Last active</th></tr>
+              <tr>
+                <th>Browser</th><th>Address</th><th>Signed in</th><th>Last active</th>
+                <th><span class="visually-hidden">Actions</span></th>
+              </tr>
             </thead>
             <tbody>
               {#each account.sessions as row (row.id)}
@@ -343,6 +439,15 @@
                   <td class="mono">{row.ip ?? "—"}</td>
                   <td>{dateTime(row.created_at)}</td>
                   <td>{dateTime(row.last_seen_at)}</td>
+                  <td class="end">
+                    {#if !row.current}
+                      <button class="link-button" type="button" disabled={busy}
+                        onclick={() => endSession(row)}>
+                        Sign out<span class="visually-hidden">: {browserName(row.user_agent)},
+                          signed in {dateTime(row.created_at)}</span>
+                      </button>
+                    {/if}
+                  </td>
                 </tr>
               {/each}
             </tbody>
@@ -351,7 +456,7 @@
         <div>
           <button class="button button-secondary" type="button" disabled={busy ||
             account.sessions.length < 2} onclick={endOtherSessions}>
-            Sign out other sessions
+            Sign out all other sessions
           </button>
         </div>
       </section>
@@ -376,7 +481,7 @@
     </form>
   </Dialog>
 
-  <Dialog bind:open={adding} title="Add a second factor">
+  <Dialog bind:open={adding} title="Add a multifactor method">
     {#if adding}<SecondFactorSetup onDone={factorAdded} />{/if}
     <div>
       <button class="button button-secondary" type="button" onclick={() => (adding = false)}>
@@ -419,5 +524,26 @@
   }
   .end {
     text-align: right;
+  }
+  .picture {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-4);
+  }
+  .form-wide {
+    max-width: 640px;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: var(--space-4);
+  }
+  .callout {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    max-width: 640px;
+    border-left: 4px solid currentColor;
   }
 </style>
