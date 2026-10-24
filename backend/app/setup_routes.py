@@ -7,7 +7,7 @@ is complete, every step answers 410 Gone.
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import asdict, replace
 from datetime import datetime
 from typing import Annotated
 
@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import audit, clock
+from app.admin import SecuritySettings
 from app.auth.dependencies import DB, FullSession, client_ip
 from app.auth.passwords import PasswordRejected
 from app.auth.pwned import BreachCheckUnavailable
@@ -32,7 +33,9 @@ from app.setup import (
     company_name,
     complete_setup,
     mark_recovery_kit_shown,
+    mark_security_reviewed,
     recovery_kit_shown,
+    security_reviewed,
     set_company_name,
     setup_complete,
     setup_token_valid,
@@ -52,6 +55,10 @@ class SetupStatus(BaseModel):
 
 class SetupProgress(BaseModel):
     company_name: str | None
+    # Passkeys are bound to this address, so it must be right before any are made.
+    address: str
+    security_reviewed: bool
+    security: SecuritySettings
     administrator: str | None
 
 
@@ -120,8 +127,12 @@ def setup_status(db: DB) -> SetupStatus:
 @router.post("/progress")
 def setup_progress(_: SetupToken, db: DB) -> SetupProgress:
     administrator = _break_glass_administrator(db)
+    policy = asdict(load_policy(db))
     return SetupProgress(
         company_name=company_name(db),
+        address=settings.address,
+        security_reviewed=security_reviewed(db),
+        security=SecuritySettings(**{k: policy[k] for k in SecuritySettings.model_fields}),
         administrator=administrator.username if administrator else None,
     )
 
@@ -130,6 +141,18 @@ def setup_progress(_: SetupToken, db: DB) -> SetupProgress:
 def name_company(body: CompanyRequest, request: Request, _: SetupToken, db: DB) -> SetupProgress:
     set_company_name(db, body.name)
     audit.append(db, "setup.company_named", ip=client_ip(request), details={"name": body.name})
+    db.commit()
+    return setup_progress(None, db)
+
+
+@router.post("/security")
+def set_security(
+    body: SecuritySettings, request: Request, _: SetupToken, db: DB
+) -> SetupProgress:
+    """The starting security policy. The admin IP allowlist is left to the admin panel."""
+    save_policy(db, replace(load_policy(db), **body.model_dump()))
+    mark_security_reviewed(db)
+    audit.append(db, "setup.security_set", ip=client_ip(request), details=body.model_dump())
     db.commit()
     return setup_progress(None, db)
 
@@ -215,6 +238,8 @@ def finish_setup(
     _require_setup_administrator(record)
     if company_name(db) is None:
         raise HTTPException(status.HTTP_409_CONFLICT, "Name the company first.")
+    if not security_reviewed(db):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Review the security settings first.")
     if not recovery_kit_shown(db) or not body.kit_saved:
         raise HTTPException(
             status.HTTP_409_CONFLICT, "Save the recovery kit before finishing setup."

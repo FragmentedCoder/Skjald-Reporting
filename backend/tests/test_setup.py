@@ -97,10 +97,21 @@ def test_the_token_command_prints_a_token_and_stores_only_its_hash(
     assert token not in stored and token.replace("-", "") not in stored
 
 
+SECURITY = {
+    "min_password_length": 14, "breach_check_enabled": True, "lockout_threshold": 5,
+    "lockout_minutes": 30, "idle_timeout_minutes": 20, "max_session_hours": 10,
+}
+
+
 def test_the_whole_wizard(client, token, session, server, no_breach_found, master_key_path,
                           data_dir) -> None:
-    assert client.post("/api/setup/company", json={"name": "Nordlys IT ApS"},
-                       headers=h(token)).status_code == 200
+    progress = client.post("/api/setup/company", json={"name": "Nordlys IT ApS"},
+                           headers=h(token)).json()
+    assert progress["address"] == "https://skjald.example.internal"
+    assert progress["security"]["min_password_length"] == 12  # the defaults, to review
+    assert not progress["security_reviewed"]
+    reviewed = client.post("/api/setup/security", json=SECURITY, headers=h(token)).json()
+    assert reviewed["security_reviewed"] and reviewed["security"] == SECURITY
 
     created = create_admin(client, token)
     assert created.status_code == 200
@@ -178,13 +189,33 @@ def test_the_kit_is_only_for_the_setup_administrator(
     assert client.post("/api/setup/recovery-kit", headers=headers).status_code == 403
 
 
-def test_setup_cannot_finish_before_the_kit_is_shown(
+def test_the_security_step_checks_its_limits(client, token, session) -> None:
+    for field, value in (("min_password_length", 6), ("lockout_threshold", 500)):
+        response = client.post("/api/setup/security", json=SECURITY | {field: value},
+                               headers=h(token))
+        assert response.status_code == 422, field
+    assert load_policy(session).min_password_length == 12
+    session.commit()
+
+
+def test_setup_cannot_finish_before_security_is_reviewed(
     client, token, server, no_breach_found
 ) -> None:
     client.post("/api/setup/company", json={"name": "Nordlys IT ApS"}, headers=h(token))
     csrf = enrol_app(client, create_admin(client, token).json()["csrf_token"])
+    client.post("/api/setup/recovery-kit", headers=h(token, csrf))
     response = client.post("/api/setup/complete", json={"kit_saved": True}, headers=h(token, csrf))
-    assert response.status_code == 409
+    assert response.json()["detail"] == "Review the security settings first."
+
+
+def test_setup_cannot_finish_before_the_kit_is_shown(
+    client, token, server, no_breach_found
+) -> None:
+    client.post("/api/setup/company", json={"name": "Nordlys IT ApS"}, headers=h(token))
+    client.post("/api/setup/security", json=SECURITY, headers=h(token))
+    csrf = enrol_app(client, create_admin(client, token).json()["csrf_token"])
+    response = client.post("/api/setup/complete", json={"kit_saved": True}, headers=h(token, csrf))
+    assert response.json()["detail"] == "Save the recovery kit before finishing setup."
 
 
 def test_break_glass_sign_ins_are_flagged(client, token, session, server, no_breach_found) -> None:

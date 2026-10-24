@@ -44,6 +44,21 @@ def setup_complete(db: Session) -> bool:
     return bool(_get(db, SETUP_KEY).get("completed_at"))
 
 
+def setup_completed_at(db: Session) -> str | None:
+    completed = _get(db, SETUP_KEY).get("completed_at")
+    return str(completed) if completed else None
+
+
+def mark_security_reviewed(db: Session) -> None:
+    state = _get(db, SETUP_KEY)
+    state["security_reviewed_at"] = timestamp(clock.utcnow())
+    _put(db, SETUP_KEY, state)
+
+
+def security_reviewed(db: Session) -> bool:
+    return bool(_get(db, SETUP_KEY).get("security_reviewed_at"))
+
+
 def new_setup_token(db: Session) -> str:
     """Replace the setup token with a new one. Only its hash is stored."""
     token = "-".join(
