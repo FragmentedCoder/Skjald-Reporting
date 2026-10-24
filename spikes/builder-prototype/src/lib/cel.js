@@ -2,7 +2,11 @@
 // as decided in spikes/expression-language.
 import {Environment} from '@marcbachmann/cel-js'
 import {RE2JS} from 're2js'
-import {lookupTables} from './sample.js'
+import {initialLibrary, lookupTablesFrom} from './sample.js'
+
+// Lookup tables come from the shared library; the app points this at its live copy.
+let lookupSource = () => lookupTablesFrom(initialLibrary)
+export const setLookupSource = (fn) => (lookupSource = fn)
 
 const has = (m, k) => (m instanceof Map ? m.has(k) : Object.hasOwn(m, k))
 const get = (m, k) => (m instanceof Map ? m.get(k) : m[k])
@@ -14,7 +18,7 @@ const env = new Environment({unlistedVariablesAreDyn: true, homogeneousAggregate
   .registerFunction('re_replace(string, string, string): string', (t, p, r) => RE2JS.compile(p).matcher(t).replaceAll(r))
   .registerFunction('string.replace(string, string): string', (s, a, b) => s.split(a).join(b))
   .registerFunction('sum(list<dyn>): dyn', (xs) => xs.reduce((a, b) => a + b, 0n))
-  .registerFunction('lookup(string, string): string', (t, k) => lookupTables[t]?.[k] ?? '')
+  .registerFunction('lookup(string, string): string', (t, k) => lookupSource()[t]?.[k] ?? '')
 
 // CEL tells whole numbers (int) from decimals (double); JSON-like data does not.
 const toCel = (v) => {
@@ -67,6 +71,8 @@ export const OPERATORS = {
   atLeast: {label: 'is at least', types: ['number']},
   atMost: {label: 'is at most', types: ['number']},
   matches: {label: 'matches pattern', types: ['text', 'ip', 'longtext']},
+  isFilled: {label: 'is filled in', types: ['text', 'longtext', 'ip', 'dropdown', 'secret', 'photo', 'datetime'], noValue: true},
+  isEmpty: {label: 'is empty', types: ['text', 'longtext', 'ip', 'dropdown', 'secret', 'photo', 'datetime'], noValue: true},
 }
 
 const literal = (value, type) => {
@@ -88,6 +94,8 @@ export function toCelExpression(rule, questions) {
     case 'atLeast': return `${ref} >= ${v}`
     case 'atMost': return `${ref} <= ${v}`
     case 'matches': return `re_match(${ref}, ${JSON.stringify(String(rule.value ?? ''))})`
+    case 'isFilled': return `${ref} != ""`
+    case 'isEmpty': return `${ref} == ""`
     default: return ''
   }
 }
@@ -96,6 +104,7 @@ export function describeRule(rule, questions) {
   if (!rule) return ''
   const q = questions.find((x) => x.key === rule.field)
   if (!q) return 'Rule refers to a removed question'
+  if (OPERATORS[rule.op]?.noValue) return `“${q.label}” ${OPERATORS[rule.op].label}`
   const value = q.type === 'yesno' ? (rule.value ? 'Yes' : 'No') : String(rule.value)
   return `“${q.label}” ${OPERATORS[rule.op]?.label ?? rule.op} ${value}`
 }
