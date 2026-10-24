@@ -8,7 +8,11 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-COMPOSE=(docker compose -f "$ROOT/deploy/docker-compose.yml")
+# Its own project, so `down -v` below never touches a stack someone is using; and
+# always at localhost, whatever deploy/.env says, since the passkey tests expect it.
+# A stack already on port 443 has to be stopped first.
+COMPOSE=(docker compose -p skjald-e2e -f "$ROOT/deploy/docker-compose.yml")
+export SKJALD_ADDRESS=https://localhost
 PLAYWRIGHT_IMAGE=mcr.microsoft.com/playwright:v1.64.0-noble
 E2E_PASSWORD="e2e passphrase by the fjord $(date +%s)"
 WORK=$(mktemp -d)
