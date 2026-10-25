@@ -5,7 +5,7 @@
   import Archive from "@lucide/svelte/icons/archive";
   import ArchiveRestore from "@lucide/svelte/icons/archive-restore";
   import FolderKanban from "@lucide/svelte/icons/folder-kanban";
-  import type { Snippet } from "svelte";
+  import { untrack, type Snippet } from "svelte";
   import { api, ApiError, sessionGone } from "#lib/api.js";
   import Dialog from "#lib/components/Dialog.svelte";
   import Pill from "#lib/components/Pill.svelte";
@@ -103,13 +103,18 @@
 
   $effect(() => {
     void id;
-    leaving = false;
-    void load();
+    // Only the ID counts: what loading reads (the project so far) mustn't start it again.
+    untrack(() => {
+      leaving = false;
+      void load();
+    });
   });
 
-  // Opens the project's customer, and the project under it, in the side menu.
+  // Opens the project's customer, and the project under it, in the side menu. Only
+  // the project counts, not the menu's state that choosing reads.
   $effect(() => {
-    if (project) void chooseCustomer(project.customer.id, project);
+    const open = project;
+    if (open) untrack(() => void chooseCustomer(open.customer.id, open));
   });
 
   $effect(() => {

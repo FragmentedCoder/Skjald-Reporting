@@ -3,7 +3,7 @@
   import { resolve } from "$app/paths";
   import { page } from "$app/state";
   import Building from "@lucide/svelte/icons/building";
-  import type { Snippet } from "svelte";
+  import { untrack, type Snippet } from "svelte";
   import { api, ApiError, sessionGone } from "#lib/api.js";
   import RecordHeader from "#lib/components/RecordHeader.svelte";
   import { shareCustomer } from "#lib/context.js";
@@ -73,9 +73,13 @@
   // Moving to another customer loads it and opens it in the menu.
   $effect(() => {
     const wanted = Number(id);
-    leaving = false;
-    void chooseCustomer(wanted);
-    void load();
+    // Only the ID counts: what loading reads (the customer so far, the menu's
+    // list) mustn't start it again.
+    untrack(() => {
+      leaving = false;
+      void chooseCustomer(wanted);
+      void load();
+    });
   });
 </script>
 
