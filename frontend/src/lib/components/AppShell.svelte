@@ -22,7 +22,7 @@
   import Users from "@lucide/svelte/icons/users";
   import UsersRound from "@lucide/svelte/icons/users-round";
   import X from "@lucide/svelte/icons/x";
-  import { onMount, type Component, type Snippet } from "svelte";
+  import { onMount, tick, type Component, type Snippet } from "svelte";
   import { api } from "#lib/api.js";
   import { classificationTone, type ProjectSummary } from "#lib/customers.js";
   import { applyTheme, can, session, signOut, type SessionInfo } from "#lib/session.svelte.js";
@@ -53,6 +53,7 @@
   const showAdmin = $derived(can(current, "administer") || can(current, "read_audit_log"));
   const sees = $derived(current.user.roles.length > 0);
   let menuOpen = $state(false);
+  let nav = $state<HTMLElement>();
 
   const customerItems = $derived.by((): Item[] => {
     if (!customer || !full) return [];
@@ -120,8 +121,13 @@
     return () => query.removeEventListener("change", changed);
   });
 
-  // Moving to another page closes the menu on a phone.
-  afterNavigate(() => (menuOpen = false));
+  // Moving to another page closes the menu on a phone, and a long menu scrolls
+  // to show where you are.
+  afterNavigate(async () => {
+    menuOpen = false;
+    await tick();
+    nav?.querySelector('[aria-current="page"]')?.scrollIntoView({ block: "nearest" });
+  });
 
   async function toggleTheme() {
     const next = dark ? "light" : "dark";
@@ -183,90 +189,93 @@
     <button class="scrim" type="button" aria-label="Close the menu" onclick={() => (menuOpen = false)}></button>
   {/if}
 
-  <aside class="side" id="side-menu" aria-label="Side menu">
-    <div class="side-head">
-      <a class="home" href={resolve("/(app)")}><Brand size={30} /></a>
-      <button class="icon-button close" type="button" aria-label="Close the menu"
-        onclick={() => (menuOpen = false)}>
-        <X size={20} aria-hidden="true" />
-      </button>
-    </div>
+  <!-- The column runs the page's full height; the menu in it stays in view. -->
+  <div class="side-column">
+    <aside class="side" id="side-menu" aria-label="Side menu">
+      <div class="side-head">
+        <a class="home" href={resolve("/(app)")}><Brand size={30} /></a>
+        <button class="icon-button close" type="button" aria-label="Close the menu"
+          onclick={() => (menuOpen = false)}>
+          <X size={20} aria-hidden="true" />
+        </button>
+      </div>
 
-    <nav class="nav" aria-label="Main">
-      {#if sees}
-        <CustomerPicker />
-        {#if customer && full}
-          <ul class="items">
-            {#each customerItems as item (item.href)}
-              <li>
-                {@render link(item)}
-                {#if item.label === "Projects" && workspace.projects?.length}
-                  <ul class="items nested">
-                    {#each workspace.projects as project (project.id)}
-                      <li>{@render projectEntry(project)}</li>
-                    {/each}
-                  </ul>
-                {:else if item.label === "Archived" && workspace.project?.archived_at}
-                  <ul class="items nested">
-                    <li>{@render projectEntry(workspace.project)}</li>
-                  </ul>
-                {/if}
-              </li>
-            {/each}
-          </ul>
-          {#if customerSettings}
-            <ul class="items customer-foot">
-              <li>{@render link(customerSettings)}</li>
-            </ul>
-          {/if}
-        {:else if customer}
-          <p class="small muted hint">
-            {customer.visibility === "names" ? "You see this customer's name only." : "You see an overview of this customer."}
-          </p>
-        {:else}
-          <p class="small muted hint">Choose a customer to see its projects, contacts and people.</p>
-        {/if}
-      {/if}
-
-      <ul class="items global">
-        <li>{@render link({ href: resolve("/(app)"), label: "Home", icon: House, current: path === "/" })}</li>
+      <nav bind:this={nav} class="nav" aria-label="Main">
         {#if sees}
-          <li>{@render link({ href: resolve("/(app)/customers"), label: "All customers", icon: Building,
-            current: path === "/customers" || path === "/customers/new" })}</li>
-        {/if}
-        {#if showAdmin}
-          <li>
-            {@render link({ href: resolve("/(app)/admin"), label: "Admin", icon: Shield,
-              current: path === "/admin" })}
-            {#if path.startsWith("/admin")}
-              <ul class="items nested">
-                {#each adminItems as item (item.href)}
-                  <li>{@render link(item, 1)}</li>
-                {/each}
+          <CustomerPicker />
+          {#if customer && full}
+            <ul class="items">
+              {#each customerItems as item (item.href)}
+                <li>
+                  {@render link(item)}
+                  {#if item.label === "Projects" && workspace.projects?.length}
+                    <ul class="items nested">
+                      {#each workspace.projects as project (project.id)}
+                        <li>{@render projectEntry(project)}</li>
+                      {/each}
+                    </ul>
+                  {:else if item.label === "Archived" && workspace.project?.archived_at}
+                    <ul class="items nested">
+                      <li>{@render projectEntry(workspace.project)}</li>
+                    </ul>
+                  {/if}
+                </li>
+              {/each}
+            </ul>
+            {#if customerSettings}
+              <ul class="items customer-foot">
+                <li>{@render link(customerSettings)}</li>
               </ul>
             {/if}
-          </li>
+          {:else if customer}
+            <p class="small muted hint">
+              {customer.visibility === "names" ? "You see this customer's name only." : "You see an overview of this customer."}
+            </p>
+          {:else}
+            <p class="small muted hint">Choose a customer to see its projects, contacts and people.</p>
+          {/if}
         {/if}
-      </ul>
-    </nav>
 
-    <div class="you">
-      <a class="account" href={resolve("/(app)/account")} title="Your account: {user.display_name}"
-        aria-current={path === "/account" ? "page" : undefined}>
-        <Avatar name={user.display_name} url={user.avatar_url} size={32} />
-        <span class="name">{user.display_name}</span>
-        <span class="visually-hidden">, your account</span>
-      </a>
-      <button class="icon-button" type="button" onclick={toggleTheme}
-        aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
-        title={dark ? "Switch to light mode" : "Switch to dark mode"}>
-        {#if dark}<Sun size={18} aria-hidden="true" />{:else}<Moon size={18} aria-hidden="true" />{/if}
-      </button>
-      <button class="icon-button" type="button" onclick={leave} aria-label="Sign out" title="Sign out">
-        <LogOut size={18} aria-hidden="true" />
-      </button>
-    </div>
-  </aside>
+        <ul class="items global">
+          <li>{@render link({ href: resolve("/(app)"), label: "Home", icon: House, current: path === "/" })}</li>
+          {#if sees}
+            <li>{@render link({ href: resolve("/(app)/customers"), label: "All customers", icon: Building,
+              current: path === "/customers" || path === "/customers/new" })}</li>
+          {/if}
+          {#if showAdmin}
+            <li>
+              {@render link({ href: resolve("/(app)/admin"), label: "Admin", icon: Shield,
+                current: path === "/admin" })}
+              {#if path.startsWith("/admin")}
+                <ul class="items nested">
+                  {#each adminItems as item (item.href)}
+                    <li>{@render link(item, 1)}</li>
+                  {/each}
+                </ul>
+              {/if}
+            </li>
+          {/if}
+        </ul>
+      </nav>
+
+      <div class="you">
+        <a class="account" href={resolve("/(app)/account")} title="Your account: {user.display_name}"
+          aria-current={path === "/account" ? "page" : undefined}>
+          <Avatar name={user.display_name} url={user.avatar_url} size={32} />
+          <span class="name">{user.display_name}</span>
+          <span class="visually-hidden">, your account</span>
+        </a>
+        <button class="icon-button" type="button" onclick={toggleTheme}
+          aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
+          title={dark ? "Switch to light mode" : "Switch to dark mode"}>
+          {#if dark}<Sun size={18} aria-hidden="true" />{:else}<Moon size={18} aria-hidden="true" />{/if}
+        </button>
+        <button class="icon-button" type="button" onclick={leave} aria-label="Sign out" title="Sign out">
+          <LogOut size={18} aria-hidden="true" />
+        </button>
+      </div>
+    </aside>
+  </div>
 
   <div class="content">
     {@render children()}
@@ -285,6 +294,10 @@
   .icon-button.close {
     display: none;
   }
+  .side-column {
+    border-right: 1px solid var(--border);
+    background: var(--surface);
+  }
   .side {
     position: sticky;
     top: 0;
@@ -292,9 +305,8 @@
     flex-direction: column;
     gap: var(--space-4);
     height: 100vh;
+    height: 100dvh;
     padding: var(--space-4) var(--space-3);
-    overflow-y: auto;
-    border-right: 1px solid var(--border);
     background: var(--surface);
   }
   .side-head {
@@ -308,11 +320,17 @@
     color: var(--text);
     text-decoration: none;
   }
+  /* A long menu scrolls on its own; the account and Sign out stay in view. The
+     small padding keeps focus outlines from being clipped. */
   .nav {
     display: flex;
     flex: 1;
     flex-direction: column;
     gap: var(--space-3);
+    min-height: 0;
+    margin: -3px;
+    padding: 3px;
+    overflow-y: auto;
   }
   .items {
     display: flex;
@@ -456,7 +474,11 @@
   /* Narrow screens: a slim top bar, and the menu slides in over the page. */
   @media (max-width: 900px) {
     .frame {
-      grid-template-columns: 1fr;
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: auto 1fr;
+    }
+    .side-column {
+      display: contents;
     }
     .topbar {
       position: sticky;
