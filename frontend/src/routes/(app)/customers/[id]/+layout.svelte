@@ -4,6 +4,7 @@
   import Building from "@lucide/svelte/icons/building";
   import type { Snippet } from "svelte";
   import { api, ApiError, sessionGone } from "#lib/api.js";
+  import RecordHeader from "#lib/components/RecordHeader.svelte";
   import { shareCustomer } from "#lib/context.js";
   import { formatCvr, LANGUAGES, type CustomerDetail } from "#lib/customers.js";
   import { chooseCustomer, refreshWorkspace } from "#lib/workspace.svelte.js";
@@ -56,23 +57,14 @@
       <p class="alert alert-critical" role="alert">{error}</p>
     </div>
   {:else if customer}
-    <header class="who">
-      {#if customer.logo_url}
-        <img class="logo" src={customer.logo_url} alt="" height="48" />
-      {:else}
-        <span class="logo-placeholder" aria-hidden="true"><Building size={24} /></span>
+    <RecordHeader kind="Customer" title={customer.name} icon={Building} image={customer.logo_url}>
+      {#if customer.visibility === "full"}
+        <p class="small muted">
+          {#if customer.cvr}CVR <span class="mono">{formatCvr(customer.cvr)}</span> ·{/if}
+          Reports in {LANGUAGES.find((l) => l.value === customer?.language)?.name}
+        </p>
       {/if}
-      <div>
-        <p class="eyebrow small muted">Customer</p>
-        <h1 class="title">{customer.name}</h1>
-        {#if customer.visibility === "full"}
-          <p class="small muted">
-            CVR <span class="mono">{formatCvr(customer.cvr)}</span>
-            · Reports in {LANGUAGES.find((l) => l.value === customer?.language)?.name}
-          </p>
-        {/if}
-      </div>
-    </header>
+    </RecordHeader>
 
     {#if customer.visibility === "full"}
       {@render children()}
@@ -95,32 +87,3 @@
     {/if}
   {/if}
 </main>
-
-<style>
-  .who {
-    display: flex;
-    align-items: center;
-    gap: var(--space-4);
-  }
-  .eyebrow {
-    font: var(--type-overline);
-    letter-spacing: var(--type-overline-tracking);
-    text-transform: uppercase;
-  }
-  .logo {
-    width: auto;
-    max-width: 160px;
-    height: 48px;
-    object-fit: contain;
-  }
-  .logo-placeholder {
-    display: grid;
-    flex: none;
-    place-items: center;
-    width: 48px;
-    height: 48px;
-    border-radius: var(--radius-md);
-    background: var(--surface-subtle);
-    color: var(--text-muted);
-  }
-</style>

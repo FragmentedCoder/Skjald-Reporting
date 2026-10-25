@@ -48,13 +48,15 @@
 <svelte:head><title>{pageTitle(project ? `Details · ${project.number}` : "Project")}</title></svelte:head>
 
 {#if project?.may_edit && form && customer}
-  <form class="section stack form-wide" onsubmit={save} aria-labelledby="edit-title">
+  <section class="section" aria-labelledby="edit-title">
     <h2 class="section-title" id="edit-title">Details</h2>
     <p class="small muted">Reports fill these in. Changes are logged.</p>
-    {#if error}<p class="alert alert-critical" role="alert">{error}</p>{/if}
-    <ProjectFields bind:values={form} {customer} />
-    <div><button class="button button-primary" type="submit" disabled={busy}>Save project</button></div>
-  </form>
+    <form class="stack form-wide" onsubmit={save}>
+      {#if error}<p class="alert alert-critical" role="alert">{error}</p>{/if}
+      <ProjectFields bind:values={form} {customer} />
+      <div><button class="button button-primary" type="submit" disabled={busy}>Save project</button></div>
+    </form>
+  </section>
 {:else if project}
   <section class="section" aria-labelledby="facts-title">
     <h2 class="section-title" id="facts-title">Details</h2>

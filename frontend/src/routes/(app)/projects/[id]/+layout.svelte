@@ -3,10 +3,12 @@
   import { page } from "$app/state";
   import Archive from "@lucide/svelte/icons/archive";
   import ArchiveRestore from "@lucide/svelte/icons/archive-restore";
+  import FolderKanban from "@lucide/svelte/icons/folder-kanban";
   import type { Snippet } from "svelte";
   import { api, ApiError, sessionGone } from "#lib/api.js";
   import Dialog from "#lib/components/Dialog.svelte";
   import Pill from "#lib/components/Pill.svelte";
+  import RecordHeader from "#lib/components/RecordHeader.svelte";
   import { shareCustomer, shareProject } from "#lib/context.js";
   import { classificationTone, type CustomerDetail, type ProjectDetail } from "#lib/customers.js";
   import { dateTime } from "#lib/format.js";
@@ -114,18 +116,16 @@
     </div>
   {:else if project}
     <div class="page-header">
-      <div>
-        <p class="eyebrow small muted">
-          Project ·
-          <a href={resolve("/(app)/customers/[id]", { id: String(project.customer.id) })}>{project.customer.name}</a>
-        </p>
-        <h1 class="title">{project.name}</h1>
+      <RecordHeader kind="Project" title={project.name} icon={FolderKanban}>
         <div class="tags">
           <span class="small muted mono">{project.number}</span>
           <Pill tone={classificationTone(project.classification)} text={project.classification} />
           {#if project.archived_at}<Pill tone="neutral" text="Archived" />{/if}
+          <span class="small muted">
+            for <a href={resolve("/(app)/customers/[id]", { id: String(project.customer.id) })}>{project.customer.name}</a>
+          </span>
         </div>
-      </div>
+      </RecordHeader>
       {#if project.may_edit}
         <button class="button button-secondary" type="button" disabled={busy}
           onclick={() => (archiveOpen = true)}>
@@ -162,14 +162,6 @@
 </Dialog>
 
 <style>
-  .eyebrow {
-    font: var(--type-overline);
-    letter-spacing: var(--type-overline-tracking);
-    text-transform: uppercase;
-  }
-  .eyebrow a {
-    color: inherit;
-  }
   .tags {
     display: flex;
     flex-wrap: wrap;
