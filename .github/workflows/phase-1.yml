@@ -62,6 +62,17 @@ jobs:
       - name: Build
         run: npm run build
 
+  deploy:
+    name: Installer and scripts
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      # ShellCheck comes with the runner image.
+      - name: Lint the shell scripts
+        run: shellcheck -x deploy/*.sh frontend/e2e/run.sh
+      - name: Test the installer's functions
+        run: deploy/install.test.sh
+
   browser:
     name: Browser tests against the full stack
     runs-on: ubuntu-24.04
