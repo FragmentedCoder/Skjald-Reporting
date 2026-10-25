@@ -44,6 +44,7 @@ function menu(page: Page) {
 }
 
 test("the side menu, with customers and projects", async ({ browser }) => {
+  test.setTimeout(240_000); // the page tour takes about a hundred screenshots
   const shotsOf = (page: Page, theme: string) => (name: string) =>
     page.screenshot({ path: `e2e-results/screens/menu-${name}-${theme}.png` });
 
@@ -58,7 +59,7 @@ test("the side menu, with customers and projects", async ({ browser }) => {
     ["Hovedkontor", "Datacenter Aarhus"]);
   const nordhavn = await addCustomer(mette, "Nordhavn Logistik ApS", "87654321",
     [["Lise Kjær", "Head of IT", "lise@nordhavn.example"]], ["Lager Køge"]);
-  await addCustomer(mette, "Sølvbjerg Kommune", "29189900", [], []);
+  const solvbjerg = await addCustomer(mette, "Sølvbjerg Kommune", "29189900", [], []);
   const bob = fjordlys.assignable.find((p) => p.username === "e2e-bob")!.id;
   for (const customer of [fjordlys, nordhavn]) {
     await call(mette, "PUT", `/customers/${customer.id}/assignments`, { user_ids: [bob] });
@@ -108,6 +109,12 @@ test("the side menu, with customers and projects", async ({ browser }) => {
     await shot("4-archived-project");
   }
 
+  // A long menu (a customer's projects and Admin's sections) scrolls on its own:
+  // the page you're on and Sign out both stay in view.
+  await mette.goto("/admin/audit");
+  await expect(menu(mette).getByRole("link", { name: "Audit log" })).toBeInViewport();
+  await expect(mette.getByRole("button", { name: "Sign out" })).toBeInViewport();
+
   // At phone width the menu slides in over the page.
   // Without the slide, so the screenshot shows the menu fully open.
   await mette.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
@@ -136,6 +143,56 @@ test("the side menu, with customers and projects", async ({ browser }) => {
   const picker = bobPage.getByRole("dialog", { name: "Choose a customer" });
   await expect(picker.getByRole("button")).toHaveCount(2);
   await expect(picker).not.toContainText("Sølvbjerg");
+
+  // Not assertions: every page, in both themes, on a desktop and a phone, written
+  // to e2e-results/screens for a person to look over.
+  const tour = async (page: Page, who: string, stops: [string, string][]) => {
+    for (const [size, viewport] of [
+      ["desktop", { width: 1440, height: 900 }],
+      ["phone", { width: 390, height: 844 }],
+    ] as const) {
+      await page.setViewportSize(viewport);
+      for (const theme of ["light", "dark"] as const) {
+        await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" });
+        for (const [name, path] of stops) {
+          await page.goto(path);
+          await page.getByRole("heading", { level: 1 }).first().waitFor();
+          await page.waitForLoadState("networkidle");
+          await page.screenshot({
+            path: `e2e-results/screens/page-${who}-${name}-${theme}-${size}.png`,
+            fullPage: true,
+          });
+        }
+      }
+    }
+  };
+  const customer = `/customers/${fjordlys.id}`;
+  const open = `/projects/${ransomware.id}`;
+  await tour(mette, "admin", [
+    ["01-home", "/"],
+    ["02-customers", "/customers"],
+    ["03-customer-new", "/customers/new"],
+    ["04-overview", customer],
+    ["05-projects", `${customer}/projects`],
+    ["06-project-new", `${customer}/projects/new`],
+    ["07-archived", `${customer}/archived`],
+    ["08-contacts", `${customer}/contacts`],
+    ["09-people", `${customer}/people`],
+    ["10-settings", `${customer}/settings`],
+    ["11-empty-customer", `/customers/${solvbjerg.id}`],
+    ["12-reports", open],
+    ["13-details", `${open}/details`],
+    ["14-team", `${open}/team`],
+    ["15-archived-project", `/projects/${phishing.id}/details`],
+    ["16-account", "/account"],
+    ["17-users", "/admin/users"],
+  ]);
+  await tour(bobPage, "technician", [
+    ["01-home", "/"],
+    ["02-customers", "/customers"],
+    ["03-people", `${customer}/people`],
+    ["04-team", `${open}/team`],
+  ]);
 
   expect(violations).toEqual([]);
   await metteContext.close();
