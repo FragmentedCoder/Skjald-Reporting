@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app import audit, clock
+from app import audit, clock, tls
 from app.account import (
     Profile,
     ProfileUpdate,
@@ -492,6 +492,8 @@ def update_security(body: AdminSecurity, request: Request, admin: Admin, db: DB
         save_policy(db, new)
         _log(db, request, admin, "admin.security_changed", details={"changes": changes})
     db.commit()
+    if {"admin_allowlist", "admin_allowlist_enabled"} & changes.keys():
+        tls.write_admin_allowlist(new.admin_allowlist_enabled, new.admin_allowlist)
     return _security_view(db, request)
 
 

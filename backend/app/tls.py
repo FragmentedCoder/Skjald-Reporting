@@ -1,4 +1,5 @@
-"""HTTPS: which certificate Caddy serves for Skjald's address.
+"""HTTPS: which certificate Caddy serves for Skjald's address (and the admin
+panel's allowlist, the other setting the app hands Caddy).
 
 Three ways, chosen in the setup wizard or Admin -> Certificate:
 
@@ -167,6 +168,30 @@ def write_for_caddy(tls: TlsSettings, chain_pem: str | None = None,
     _write(folder / "tls.caddy", directive + "\n")
 
 
+ALLOWLIST_FILE = "admin-allowlist.caddy"
+
+
+def write_admin_allowlist(enabled: bool, networks: tuple[str, ...]) -> None:
+    """Give Caddy the admin panel's allowlist, so requests to the admin API from
+    elsewhere stop there as well as in the app. Only networks Python reads as such
+    are written: nothing else reaches Caddy's settings."""
+    folder = Path(settings.tls_dir)
+    folder.mkdir(parents=True, exist_ok=True)
+    if not enabled:
+        _write(folder / ALLOWLIST_FILE, "# The admin panel's allowlist is off.\n")
+        return
+    ranges = " ".join(str(ipaddress.ip_network(net, strict=False)) for net in networks)
+    outside = f"\tnot client_ip {ranges}\n" if ranges else ""
+    _write(folder / ALLOWLIST_FILE, (
+        "# The admin panel's allowlist, written by Skjald (Admin -> Security).\n"
+        "@outside_admin_allowlist {\n"
+        "\tpath /api/admin /api/admin/*\n"
+        f"{outside}"
+        "}\n"
+        'respond @outside_admin_allowlist "The admin panel can\'t be reached from this '
+        'address." 403\n'))
+
+
 def save_tls(db: Session, tls: TlsSettings) -> None:
     db.merge(Setting(key=TLS_SETTING, value=tls.model_dump_json()))
 
@@ -195,9 +220,12 @@ def main() -> None:
     from sqlalchemy.orm import Session as _Session
 
     from app.db import get_engine
+    from app.policy import load_policy
 
     with _Session(get_engine()) as db:
         tls = load_tls(db)
+        policy = load_policy(db)
+    write_admin_allowlist(policy.admin_allowlist_enabled, policy.admin_allowlist)
     if tls.mode == "own" and not (Path(settings.tls_dir) / "cert.pem").exists():
         print("The certificate's files are missing: serving Caddy's own until it's "
               "uploaded again (Admin -> Certificate).", flush=True)

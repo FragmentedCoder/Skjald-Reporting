@@ -1,5 +1,6 @@
 import json
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 from cryptography import x509
@@ -228,3 +229,63 @@ def test_an_acme_email_cannot_inject_caddy_settings(client, admin, tls_dir) -> N
     for sneaky in ("a@b.example\n}\nimport /etc/passwd", "a@b {", "x"):
         refused = client.put(TLS, headers=headers, json={"mode": "acme", "acme_email": sneaky})
         assert refused.status_code == 422, sneaky
+
+
+# The admin panel's allowlist, at Caddy too
+
+
+def allowlist_file() -> str:
+    return (Path(settings.tls_dir) / tls.ALLOWLIST_FILE).read_text()
+
+
+def test_caddy_is_told_the_admin_allowlist() -> None:
+    tls.write_admin_allowlist(True, ("10.0.0.5", "192.168.1.0/24", "2001:db8::/32"))
+    rule = allowlist_file()
+    assert "\tpath /api/admin /api/admin/*\n" in rule
+    assert "\tnot client_ip 10.0.0.5/32 192.168.1.0/24 2001:db8::/32\n" in rule
+    assert rule.endswith('respond @outside_admin_allowlist "The admin panel can\'t be reached '
+                         'from this address." 403\n')
+    tls.write_admin_allowlist(False, ("10.0.0.5",))
+    assert allowlist_file() == "# The admin panel's allowlist is off.\n"
+
+
+def test_only_networks_reach_caddys_settings() -> None:
+    with pytest.raises(ValueError):
+        tls.write_admin_allowlist(True, ("10.0.0.0/8 } respond 200",))
+
+
+def test_saving_the_allowlist_tells_caddy_and_the_reset_too(client, admin, session, engine,
+                                                            monkeypatch) -> None:
+    from starlette.testclient import TestClient
+
+    from app import console
+    from app import db as db_module
+    from app.main import app
+
+    _, headers = admin
+    from_inside = TestClient(app, base_url="https://testserver", client=("10.0.0.5", 50000))
+    current = from_inside.get("/api/admin/security", headers=headers).json()
+    unchanged = {key: current[key] for key in (
+        "min_password_length", "breach_check_enabled", "lockout_threshold", "lockout_minutes",
+        "idle_timeout_minutes", "max_session_hours", "require_mfa_everyone",
+        "require_mfa_administrators", "login_allowlist_enabled", "login_allowlist")}
+    saved = from_inside.put("/api/admin/security", headers=headers, json=unchanged | {
+        "admin_allowlist_enabled": True, "admin_allowlist": ["10.0.0.0/24"]})
+    assert saved.status_code == 200, saved.text
+    assert "not client_ip 10.0.0.0/24" in allowlist_file()
+
+    monkeypatch.setattr(db_module, "get_engine", lambda: engine)
+    assert console.main(["reset-allowlist"]) == 0
+    assert allowlist_file() == "# The admin panel's allowlist is off.\n"
+
+
+def test_the_app_tells_caddy_the_allowlist_as_it_starts(engine, session, monkeypatch) -> None:
+    from app import db as db_module
+    from app.policy import SecurityPolicy, save_policy
+
+    monkeypatch.setattr(db_module, "get_engine", lambda: engine)
+    save_policy(session, SecurityPolicy(admin_allowlist_enabled=True,
+                                        admin_allowlist=("172.16.0.0/12",)))
+    session.commit()
+    tls.main()
+    assert "not client_ip 172.16.0.0/12" in allowlist_file()

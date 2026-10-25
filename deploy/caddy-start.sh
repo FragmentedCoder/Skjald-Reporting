@@ -1,24 +1,36 @@
 #!/bin/sh
-# Caddy, with the TLS settings the app writes into the volume shared at
-# /etc/caddy/skjald (see backend/app/tls.py and docs/architecture.md, "HTTPS").
+# Caddy, with the settings the app writes into the volume shared at
+# /etc/caddy/skjald: TLS and the admin panel's allowlist (see backend/app/tls.py
+# and docs/architecture.md, "HTTPS").
 # They're copied into place, and Caddy reloads whenever they change; settings
 # that don't load leave Caddy with the ones it had.
 set -u
 
 shared=/etc/caddy/skjald
-active=/etc/caddy/active-tls.caddy
 config="--config /etc/caddy/Caddyfile --adapter caddyfile"
+# What the app writes, each copied to /etc/caddy/active-<name> for the Caddyfile to
+# import, or the default from /etc/caddy/default-<name> until there is one.
+settings_files="tls.caddy admin-allowlist.caddy"
 
 fingerprint() {
-	cat "$shared/tls.caddy" "$shared/cert.pem" "$shared/key.pem" 2>/dev/null | sha256sum
+	# shellcheck disable=SC2086 # the names split on purpose
+	(cd "$shared" 2>/dev/null && cat $settings_files cert.pem key.pem 2>/dev/null) | sha256sum
+}
+
+take_defaults() {
+	for name in $settings_files; do
+		cp "/etc/caddy/default-$name" "/etc/caddy/active-$name"
+	done
 }
 
 take_shared() {
-	if [ -s "$shared/tls.caddy" ]; then
-		cp "$shared/tls.caddy" "$active"
-	else
-		cp /etc/caddy/default-tls.caddy "$active"
-	fi
+	for name in $settings_files; do
+		if [ -s "$shared/$name" ]; then
+			cp "$shared/$name" "/etc/caddy/active-$name"
+		else
+			cp "/etc/caddy/default-$name" "/etc/caddy/active-$name"
+		fi
+	done
 }
 
 seen=$(fingerprint)
@@ -26,7 +38,7 @@ take_shared
 # shellcheck disable=SC2086
 if ! caddy validate $config >/dev/null 2>&1; then
 	echo "The saved TLS settings don't load: serving Caddy's own certificate." >&2
-	cp /etc/caddy/default-tls.caddy "$active"
+	take_defaults
 fi
 
 # shellcheck disable=SC2086
@@ -40,7 +52,9 @@ while kill -0 "$caddy_pid" 2>/dev/null; do
 	now=$(fingerprint)
 	[ "$now" = "$seen" ] && continue
 	seen=$now
-	cp "$active" "$active.before"
+	for name in $settings_files; do
+		cp "/etc/caddy/active-$name" "/etc/caddy/active-$name.before"
+	done
 	take_shared
 	# --force: a new certificate under the same file names is still a change.
 	# shellcheck disable=SC2086
@@ -48,7 +62,9 @@ while kill -0 "$caddy_pid" 2>/dev/null; do
 		echo "The TLS settings changed: Caddy reloaded."
 	else
 		echo "The new TLS settings didn't load: Caddy keeps the ones it had." >&2
-		mv "$active.before" "$active"
+		for name in $settings_files; do
+			mv "/etc/caddy/active-$name.before" "/etc/caddy/active-$name"
+		done
 	fi
 done
 wait "$caddy_pid"

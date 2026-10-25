@@ -210,6 +210,7 @@ def main(argv: list[str]) -> int:
             return 0
         were_on = reset_allowlist(db)
         db.commit()
+        tls.write_admin_allowlist(False, ())
     if were_on:
         print(f"Switched off the {' and '.join(were_on)} allowlist; Skjald answers from any "
               "address again.")

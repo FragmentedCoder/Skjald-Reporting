@@ -28,6 +28,9 @@
 		request_body {
 			max_size 5MB
 		}
+		# The admin panel's allowlist (Admin -> Security), here as well as in the app:
+		# refused requests to /api/admin never reach it.
+		import /etc/caddy/active-admin-allowlist.caddy
 		reverse_proxy app:8000 {
 			transport http {
 				read_timeout 60s

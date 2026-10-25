@@ -34,11 +34,12 @@ def data_dir(tmp_path):
 def master_key_in_settings(monkeypatch, master_key_path, data_dir):
     """Customer keys are wrapped by the master key the app finds in its settings, and
     the key files it makes (the config key's, for sealed settings) go in the test's
-    own data folder, never /data."""
+    own data folder, never /data; what it writes for Caddy, never in /tls."""
     from app.settings import settings
 
     monkeypatch.setattr(settings, "master_key_path", str(master_key_path))
     monkeypatch.setattr(settings, "data_dir", str(data_dir))
+    monkeypatch.setattr(settings, "tls_dir", str(data_dir.parent / "caddy-settings"))
 
 
 @pytest.fixture
