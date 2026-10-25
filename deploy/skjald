@@ -4,7 +4,7 @@
 # deploy folder it lives in. Run `skjald help` for the commands.
 set -euo pipefail
 
-DEPLOY_DIR=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)
+DEPLOY_DIR=${SKJALD_DEPLOY_DIR:-$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)}
 REPO_DIR=$(dirname "${DEPLOY_DIR}")
 SKJALD_HOME="${SKJALD_HOME:-/opt/skjald}"
 # Copies of the data from before each update, to roll back to; the newest few stay.
@@ -160,6 +160,14 @@ cmd_keys() {
 }
 
 cmd_update() {
+	# Bash reads a script as it runs it, and the update changes this one: run a copy.
+	if [[ -z "${SKJALD_RUNNING_COPY:-}" ]]; then
+		local running_copy
+		running_copy=$(mktemp)
+		cp "$(readlink -f "${BASH_SOURCE[0]}")" "${running_copy}"
+		SKJALD_RUNNING_COPY=${running_copy} SKJALD_DEPLOY_DIR=${DEPLOY_DIR} exec bash "${running_copy}" update "$@"
+	fi
+	trap 'rm -f "${SKJALD_RUNNING_COPY}"' EXIT
 	local ref="" backup=true
 	while [[ $# -gt 0 ]]; do
 		case "$1" in
@@ -218,14 +226,15 @@ cmd_update() {
 
 	warn "The new version didn't come up: rolling back to $(short "${old}")."
 	compose logs --tail=30 app >&2 || true
-	compose stop app worker
-	put_data_back_from "${copy}"
+	compose stop
+	# The old code first: its compose file is the one that knows the old services.
 	if [[ -n "${branch}" ]]; then
 		git_owner checkout --quiet "${branch}"
 		git_owner reset --quiet --keep "${old}"
 	else
 		git_owner checkout --quiet --detach "${old}"
 	fi
+	put_data_back_from "${copy}"
 	compose up -d --build
 	wait_until_up || die "Rolled back, but Skjald still doesn't answer: see skjald logs."
 	die "Not updated: rolled back to $(version), with the data from before the update."
