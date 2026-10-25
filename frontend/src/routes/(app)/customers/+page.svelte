@@ -70,10 +70,10 @@
 
   {#if customers}
     {#if customers.length}
-      <div class="section table-wrap">
+      <div class="section table-wrap customers">
         <table class="table">
           <thead>
-            <tr><th>Name</th><th>CVR</th><th>Projects</th><th>Archived</th></tr>
+            <tr><th>Name</th><th class="roomy">CVR</th><th>Projects</th><th class="roomy">Archived</th></tr>
           </thead>
           <tbody>
             {#each customers as customer (customer.id)}
@@ -85,11 +85,13 @@
                   {#if customer.visibility !== "full"}
                     <Pill tone="neutral"
                       text={customer.visibility === "names" ? "Name only" : "Overview only"} />
+                  {:else if customer.cvr}
+                    <div class="small muted compact">CVR <span class="mono">{formatCvr(customer.cvr)}</span></div>
                   {/if}
                 </td>
-                <td class="mono">{customer.visibility === "full" ? formatCvr(customer.cvr) : "—"}</td>
+                <td class="roomy mono nowrap">{customer.visibility === "full" ? formatCvr(customer.cvr) : "—"}</td>
                 <td>{customer.active_projects ?? "—"}</td>
-                <td>{customer.archived_projects ?? "—"}</td>
+                <td class="roomy">{customer.archived_projects ?? "—"}</td>
               </tr>
             {/each}
           </tbody>
@@ -119,6 +121,24 @@
 </main>
 
 <style>
+  /* Where the table is narrow, as on a phone, the CVR moves under the name. */
+  .customers {
+    container-type: inline-size;
+  }
+  .nowrap {
+    white-space: nowrap;
+  }
+  .compact {
+    display: none;
+  }
+  @container (max-width: 520px) {
+    .roomy {
+      display: none;
+    }
+    .compact {
+      display: block;
+    }
+  }
   .search {
     position: relative;
     max-width: 420px;
