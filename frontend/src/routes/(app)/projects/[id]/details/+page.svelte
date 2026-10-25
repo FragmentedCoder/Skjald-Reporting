@@ -4,7 +4,7 @@
   import ProjectFields, { projectBody, type ProjectForm } from "#lib/components/ProjectFields.svelte";
   import { sharedCustomer, sharedProject } from "#lib/context.js";
   import type { ProjectDetail } from "#lib/customers.js";
-  import { date, dateTime } from "#lib/format.js";
+  import { dateRange, dateTime } from "#lib/format.js";
   import { toast } from "#lib/toast.svelte.js";
 
   // What a project is: its name, dates, who's responsible, the contact and sites,
@@ -62,7 +62,7 @@
       <dt>Responsible</dt>
       <dd>{project.responsible?.name ?? "Nobody yet"}</dd>
       <dt>Dates</dt>
-      <dd>{project.start_date || project.end_date ? `${date(project.start_date)} – ${date(project.end_date)}` : "—"}</dd>
+      <dd>{dateRange(project.start_date, project.end_date)}</dd>
       <dt>Customer contact</dt>
       <dd>{project.contact?.name ?? "None"}</dd>
       <dt>Sites</dt>

@@ -4,7 +4,7 @@
   import { pageTitle } from "#lib/branding.svelte.js";
   import { sharedProject } from "#lib/context.js";
   import { CLASSIFICATIONS } from "#lib/customers.js";
-  import { date } from "#lib/format.js";
+  import { dateRange } from "#lib/format.js";
 
   // A project's reports, with what matters about the project beside them.
   const shared = sharedProject();
@@ -34,7 +34,7 @@
         <dt>Responsible</dt>
         <dd>{project.responsible?.name ?? "Nobody yet"}</dd>
         <dt>Dates</dt>
-        <dd>{project.start_date || project.end_date ? `${date(project.start_date)} – ${date(project.end_date)}` : "—"}</dd>
+        <dd>{dateRange(project.start_date, project.end_date)}</dd>
         <dt>Shared as</dt>
         <dd>{CLASSIFICATIONS.find((c) => c.value === project.classification)?.hint ?? project.classification}</dd>
         <dt>Team</dt>

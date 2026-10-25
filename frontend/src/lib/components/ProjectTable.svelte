@@ -1,7 +1,7 @@
 <script lang="ts">
   import { resolve } from "$app/paths";
   import { classificationTone, type ProjectSummary } from "#lib/customers.js";
-  import { date } from "#lib/format.js";
+  import { dateRange } from "#lib/format.js";
   import Pill from "./Pill.svelte";
 
   // Projects in a table, each linking to its own page. With `customer`, a column
@@ -37,9 +37,7 @@
             {#if customer}<td>{project.customer.name}</td>{/if}
             <td>{project.responsible?.name ?? "—"}</td>
             <td class="nowrap">
-              {project.start_date || project.end_date
-                ? `${date(project.start_date)} – ${date(project.end_date)}`
-                : "—"}
+              {dateRange(project.start_date, project.end_date)}
             </td>
             <td><Pill tone={classificationTone(project.classification)} text={project.classification} /></td>
           </tr>

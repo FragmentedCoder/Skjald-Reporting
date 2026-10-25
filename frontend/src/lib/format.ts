@@ -1,5 +1,7 @@
 const DATE_TIME = new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short" });
 const DATE = new Intl.DateTimeFormat("en-GB", { dateStyle: "medium" });
+// A plain date ("2026-10-01") parses as midnight UTC; shown in UTC, it's the same day everywhere.
+const PLAIN_DATE = new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeZone: "UTC" });
 
 /** "24 Oct 2026, 14:05" in the viewer's time zone; "Never" when there is no date. */
 export function dateTime(iso: string | null | undefined, empty = "Never"): string {
@@ -7,7 +9,16 @@ export function dateTime(iso: string | null | undefined, empty = "Never"): strin
 }
 
 export function date(iso: string | null | undefined, empty = "—"): string {
-  return iso ? DATE.format(new Date(iso)) : empty;
+  if (!iso) return empty;
+  return (/^\d{4}-\d{2}-\d{2}$/.test(iso) ? PLAIN_DATE : DATE).format(new Date(iso));
+}
+
+/** A project's dates: both, "From …" or "Until …" when only one is set, or a dash. */
+export function dateRange(start: string | null | undefined, end: string | null | undefined): string {
+  if (start && end) return `${date(start)} – ${date(end)}`;
+  if (start) return `From ${date(start)}`;
+  if (end) return `Until ${date(end)}`;
+  return "—";
 }
 
 /** A short, readable name for a browser from its user agent. */
