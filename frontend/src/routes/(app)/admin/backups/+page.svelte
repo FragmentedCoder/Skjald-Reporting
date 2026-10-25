@@ -2,8 +2,6 @@
   import { onDestroy, onMount } from "svelte";
   import { api, ApiError, sessionGone } from "#lib/api.js";
   import {
-    hourLabel,
-    KINDS,
     RUN_NAMES,
     runSummary,
     type BackupRun,
@@ -12,6 +10,7 @@
     type RunKind,
   } from "#lib/backups.js";
   import { pageTitle } from "#lib/branding.svelte.js";
+  import BackupTargetFields from "#lib/components/BackupTargetFields.svelte";
   import Command from "#lib/components/Command.svelte";
   import Pill from "#lib/components/Pill.svelte";
   import { dateTime } from "#lib/format.js";
@@ -29,7 +28,6 @@
   let following = $state<BackupRun | null>(null);
   let timer: ReturnType<typeof setTimeout> | undefined;
 
-  const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
   const TONES = { done: "ok", failed: "critical", running: "info", queued: "neutral" } as const;
   const STATES = { done: "OK", failed: "Failed", running: "Running", queued: "Waiting" } as const;
 
@@ -159,105 +157,8 @@
 
   <form class="section stack" onsubmit={save} aria-labelledby="target-title">
     <h2 class="section-title" id="target-title">Where backups go</h2>
-    <fieldset class="checks kinds">
-      <legend class="visually-hidden">Backup target</legend>
-      {#each KINDS as option (option.kind)}
-        <label class="check">
-          <input type="radio" name="kind" value={option.kind} bind:group={form.kind} />
-          <span>
-            <span class="check-title">{option.name}</span>
-            <span class="small muted">{option.about}</span>
-          </span>
-        </label>
-      {/each}
-    </fieldset>
-
-    {#if form.kind === "smb"}
-      <div class="grid">
-        <div class="field">
-          <label for="smb-host">Server</label>
-          <input id="smb-host" class="input" required bind:value={form.smb_host} />
-          <span class="hint">Its name or address, such as “nas.example.internal”.</span>
-        </div>
-        <div class="field">
-          <label for="smb-share">Share</label>
-          <input id="smb-share" class="input" required bind:value={form.smb_share} />
-        </div>
-        <div class="field">
-          <label for="smb-path">Folder in the share</label>
-          <input id="smb-path" class="input" bind:value={form.smb_path} />
-        </div>
-        <div class="field">
-          <label for="smb-domain">Domain (optional)</label>
-          <input id="smb-domain" class="input" bind:value={form.smb_domain} />
-        </div>
-        <div class="field">
-          <label for="smb-user">User name</label>
-          <input id="smb-user" class="input" required autocomplete="off" bind:value={form.smb_username} />
-        </div>
-        <div class="field">
-          <label for="smb-password">Password</label>
-          <input id="smb-password" class="input" type="password" autocomplete="new-password"
-            placeholder={status.smb_password_set ? "Saved; type to replace it" : ""} bind:value={smbPassword} />
-        </div>
-      </div>
-    {:else if form.kind === "s3"}
-      <div class="grid">
-        <div class="field wide">
-          <label for="s3-endpoint">Address</label>
-          <input id="s3-endpoint" class="input" required placeholder="https://s3.eu-north-1.amazonaws.com"
-            bind:value={form.s3_endpoint} />
-        </div>
-        <div class="field">
-          <label for="s3-bucket">Bucket</label>
-          <input id="s3-bucket" class="input" required bind:value={form.s3_bucket} />
-        </div>
-        <div class="field">
-          <label for="s3-path">Folder in the bucket</label>
-          <input id="s3-path" class="input" bind:value={form.s3_path} />
-        </div>
-        <div class="field">
-          <label for="s3-region">Region (optional)</label>
-          <input id="s3-region" class="input" bind:value={form.s3_region} />
-        </div>
-        <div class="field">
-          <label for="s3-key">Access key</label>
-          <input id="s3-key" class="input" required autocomplete="off" bind:value={form.s3_access_key_id} />
-        </div>
-        <div class="field">
-          <label for="s3-secret">Secret key</label>
-          <input id="s3-secret" class="input" type="password" autocomplete="new-password"
-            placeholder={status.s3_secret_set ? "Saved; type to replace it" : ""} bind:value={s3Secret} />
-        </div>
-      </div>
-    {:else if form.kind === "local"}
-      <p class="alert alert-warning">
-        Backups kept on this server don't survive losing it. Use them alongside an SMB share or
-        S3-compatible storage, or point SKJALD_BACKUP_DIR at a separate disk.
-      </p>
-    {/if}
-
-    {#if form.kind !== "off"}
-      <h3 class="subtitle">When and for how long</h3>
-      <div class="grid">
-        <div class="field">
-          <label for="hour">Every night at</label>
-          <select id="hour" class="input" bind:value={form.hour}>
-            {#each HOURS as hour (hour)}
-              <option value={hour}>{hourLabel(hour)}</option>
-            {/each}
-          </select>
-        </div>
-        <div class="field">
-          <label for="keep">Keep for (days)</label>
-          <input id="keep" class="input" type="number" min="7" max="3650" required bind:value={form.keep_days} />
-        </div>
-      </div>
-      <p class="small muted">
-        Older snapshots are deleted. A customer deleted in Skjald stays in older snapshots until
-        they age out: after {form.keep_days} days, no backup holds anything of them.
-      </p>
-    {/if}
+    <BackupTargetFields bind:target={form} bind:smbPassword bind:s3Secret
+      smbPasswordSet={status.smb_password_set} s3SecretSet={status.s3_secret_set} />
 
     <div class="button-row">
       <button class="button button-primary" type="submit" disabled={busy}>Save</button>
@@ -302,7 +203,7 @@
       stopped and the recovery kit at hand. The data that was there is kept beside it.
     </p>
     <Command command="docker compose stop app worker" />
-    <Command command="docker compose run --rm worker python -m app.restore" />
+    <Command command="docker compose run --rm --no-deps worker python -m app.restore" />
     <Command command="docker compose up -d" />
     <p class="small muted">
       On a new server, put the kit's master key in place first: run the installer with
@@ -312,24 +213,6 @@
 {/if}
 
 <style>
-  .kinds {
-    margin: 0;
-    padding: 0;
-    border: 0;
-  }
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: var(--space-4);
-    max-width: 760px;
-  }
-  .wide {
-    grid-column: 1 / -1;
-  }
-  .subtitle {
-    margin: var(--space-2) 0 0;
-    font: var(--type-label);
-  }
   .nowrap {
     white-space: nowrap;
   }

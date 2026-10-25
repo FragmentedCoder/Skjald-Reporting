@@ -54,6 +54,7 @@ with Session(get_engine()) as db:
         ("e2e-keeper", "Kari Keeper", Role.ADMINISTRATOR),
         ("e2e-mette", "Mette Madsen", Role.ADMINISTRATOR),
         ("e2e-bob", "Bob Bager", Role.TECHNICIAN),
+        ("e2e-postmaster", "Pia Post", Role.ADMINISTRATOR),
     ):
         password = vet_new_password(os.environ["E2E_PASSWORD"], policy, username=username)
         grant_role(db, create_user(db, username, name, password), role, actor=None, ip=None)
@@ -85,5 +86,6 @@ docker run --rm --network host \
 		chown -R "$HOST_UID" /work
 		exit $result' || status=$?
 
-mkdir -p "$ROOT/frontend/e2e-results" && cp -r "$WORK/e2e-results/." "$ROOT/frontend/e2e-results/" 2>/dev/null || true
+mkdir -p "$ROOT/frontend/e2e-results"
+cp -r "$WORK/e2e-results/." "$ROOT/frontend/e2e-results/" 2>/dev/null || true
 exit $status

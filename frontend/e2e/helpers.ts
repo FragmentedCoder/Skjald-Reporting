@@ -89,3 +89,15 @@ export function toastWith(page: Page, text: string | RegExp) {
     .getByRole("listitem")
     .filter({ hasText: text });
 }
+
+/** Dismiss every toast on screen, so the next one shows at once (three at most show).
+ * One at a time: a dismissed toast fades out before it leaves. */
+export async function dismissToasts(page: Page): Promise<void> {
+  const dismiss = page.getByRole("region", { name: "Notifications" }).getByRole("button", { name: "Dismiss" });
+  while ((await dismiss.count()) > 0) {
+    const button = await dismiss.first().elementHandle();
+    if (!button) continue;
+    await button.click();
+    await button.waitForElementState("hidden");
+  }
+}

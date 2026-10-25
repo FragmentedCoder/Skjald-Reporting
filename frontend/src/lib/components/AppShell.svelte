@@ -10,7 +10,9 @@
   import House from "@lucide/svelte/icons/house";
   import LayoutDashboard from "@lucide/svelte/icons/layout-dashboard";
   import ListChecks from "@lucide/svelte/icons/list-checks";
+  import LockKeyhole from "@lucide/svelte/icons/lock-keyhole";
   import LogOut from "@lucide/svelte/icons/log-out";
+  import Mail from "@lucide/svelte/icons/mail";
   import Menu from "@lucide/svelte/icons/menu";
   import Moon from "@lucide/svelte/icons/moon";
   import Palette from "@lucide/svelte/icons/palette";
@@ -132,7 +134,7 @@
 
   const adminItems = $derived.by((): Item[] => {
     const items: Item[] = [];
-    const add = (route: `/(app)/admin/${"users" | "security" | "branding" | "backups" | "health" | "audit"}`,
+    const add = (route: `/(app)/admin/${"users" | "security" | "branding" | "backups" | "email" | "certificate" | "health" | "audit"}`,
                  label: string, icon: Item["icon"]) =>
       items.push({ href: resolve(route), label, icon, current: path.startsWith(resolve(route)) });
     if (can(current, "administer")) {
@@ -140,6 +142,8 @@
       add("/(app)/admin/security", "Security", Shield);
       add("/(app)/admin/branding", "Branding", Palette);
       add("/(app)/admin/backups", "Backups", DatabaseBackup);
+      add("/(app)/admin/email", "Email", Mail);
+      add("/(app)/admin/certificate", "Certificate", LockKeyhole);
       add("/(app)/admin/health", "Server health", HeartPulse);
     }
     if (can(current, "read_audit_log")) add("/(app)/admin/audit", "Audit log", ScrollText);
