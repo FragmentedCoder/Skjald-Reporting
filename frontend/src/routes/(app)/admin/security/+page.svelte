@@ -14,7 +14,7 @@
   import { withStepUp } from "#lib/stepUp.svelte.js";
   import { toast } from "#lib/toast.svelte.js";
 
-  const RESET_COMMAND = "docker compose exec app python -m app.console reset-allowlist";
+  const RESET_COMMAND = "sudo skjald admin reset-allowlist";
 
   let values = $state<SecuritySettings | null>(null);
   let lists = $state({ admin: "", login: "", adminOn: false, loginOn: false });
@@ -132,9 +132,8 @@
 
       <div class="stack form-narrow">
         <p class="small">
-          If an allowlist ever locks every administrator out, run this on the server, in the
-          folder with Skjald's <span class="mono">docker-compose.yml</span>. It switches both
-          allowlists off and keeps their addresses.
+          If an allowlist ever locks every administrator out, run this on the server. It
+          switches both allowlists off and keeps their addresses.
         </p>
         <Command command={RESET_COMMAND} />
       </div>

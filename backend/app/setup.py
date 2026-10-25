@@ -2,7 +2,8 @@
 
 Until setup is complete, the server can be claimed by whoever holds the setup
 token, which only someone with access to the VM can read. Run as
-`python -m app.setup` to print a new token (the container does this at start).
+`python -m app.setup` (skjald setup-token) to print a new token; the container
+does it at start.
 """
 
 from __future__ import annotations
@@ -148,7 +149,7 @@ def main() -> None:
         f"  Skjald needs setting up. Open {settings.address}/setup and enter:\n\n"
         f"      Setup token: {token}\n\n"
         "  It works until setup is finished. Restarting Skjald, or running\n"
-        "  `docker compose exec app python -m app.setup`, prints a new one.\n"
+        "  `sudo skjald setup-token`, prints a new one.\n"
         f"{rule}",
         flush=True,
     )

@@ -199,15 +199,15 @@
   <section class="section" aria-labelledby="restore-title">
     <h2 class="section-title" id="restore-title">Restoring</h2>
     <p class="small">
-      Restoring replaces Skjald's data with a backup, so it's done on the server, with Skjald
-      stopped and the recovery kit at hand. The data that was there is kept beside it.
+      Restoring replaces Skjald's data with a backup, so it's done on the server with the
+      recovery kit at hand. Skjald stops while it runs, and the data that was there is kept
+      beside it.
     </p>
-    <Command command="docker compose stop app worker" />
-    <Command command="docker compose run --rm --no-deps worker python -m app.restore" />
-    <Command command="docker compose up -d" />
+    <Command command="sudo skjald restore" />
     <p class="small muted">
-      On a new server, put the kit's master key in place first: run the installer with
-      --restore-master-key.
+      The newest backup unless you add --snapshot and its ID. A backup made before the master
+      key was rotated asks for the master key it was made under. On a new server, put the
+      kit's master key in place first: run the installer with --restore-master-key.
     </p>
   </section>
 {/if}

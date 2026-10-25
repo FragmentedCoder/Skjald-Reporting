@@ -207,7 +207,7 @@ start_stack() {
 		fi
 		sleep 2
 	done
-	die "Skjald didn't answer within four minutes. See: docker compose logs app caddy"
+	die "Skjald didn't answer within four minutes. See: skjald logs app caddy"
 }
 
 main() {

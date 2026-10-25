@@ -353,13 +353,11 @@
   {#if step === "token"}
     <AuthLayout heading="Set up Skjald" {eyebrow}>
       <p class="muted">
-        Skjald printed a one-time setup token in its log when it started, so only someone with
-        access to the server can set it up. On the server, in the folder with Skjald's
-        <span class="mono">docker-compose.yml</span>, show it with:
+        The installer printed a one-time setup token, so only someone with access to the
+        server can set Skjald up. If it's gone from the screen, print a new one on the server
+        (the old one stops working):
       </p>
-      <Command command="docker compose logs app | grep 'Setup token'" />
-      <p class="small muted">Or print a new one (the old one stops working) with:</p>
-      <Command command="docker compose exec app python -m app.setup" />
+      <Command command="sudo skjald setup-token" />
       <form class="stack" onsubmit={submitToken}>
         {#if error}<p class="alert alert-critical" role="alert">{error}</p>{/if}
         <div class="field">

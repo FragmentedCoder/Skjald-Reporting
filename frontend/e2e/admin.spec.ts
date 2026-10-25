@@ -124,7 +124,7 @@ test("the admin panel, from adding a user to their first sign-in", async ({ brow
   await admin.getByLabel("Admin panel allowlist").fill("10.99.0.0/24");
   await admin.getByRole("button", { name: "Save settings" }).click();
   await expect(admin.getByRole("alert")).toContainText("lock you out");
-  await expect(admin.getByText("python -m app.console reset-allowlist")).toBeVisible();
+  await expect(admin.getByText("sudo skjald admin reset-allowlist")).toBeVisible();
   await shot(admin, "8-security");
   await admin.reload();
 

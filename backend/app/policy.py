@@ -51,7 +51,7 @@ class SecurityPolicy:
     login_allowlist_enabled: bool = False
     login_allowlist: tuple[str, ...] = ()
     # Both lists are switched off from the VM console with
-    # `python -m app.console reset-allowlist` if they ever lock everyone out.
+    # `skjald admin reset-allowlist` if they ever lock everyone out.
 
 
 def load_policy(db: Session) -> SecurityPolicy:

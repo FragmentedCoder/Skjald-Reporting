@@ -64,4 +64,4 @@ export function expiry(certificate: Certificate, now = Date.now()): string {
   return "expires within the hour";
 }
 
-export const RESET_COMMAND = "docker compose exec app python -m app.console reset-certificate";
+export const RESET_COMMAND = "sudo skjald admin reset-certificate";

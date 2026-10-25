@@ -1,8 +1,5 @@
-"""Restore a backup: `python -m app.restore`, with Skjald stopped.
-
-    docker compose stop app worker
-    docker compose run --rm --no-deps worker python -m app.restore
-    docker compose up -d
+"""Restore a backup: `python -m app.restore`, with Skjald stopped. `skjald restore`
+on the server stops Skjald, runs it in a worker container, and starts it again.
 
 It asks for the backup key from the recovery kit, restores the snapshot (the
 newest unless --snapshot says otherwise) into a scratch folder and checks it as
