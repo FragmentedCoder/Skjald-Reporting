@@ -37,7 +37,7 @@ seen=$(fingerprint)
 take_shared
 # shellcheck disable=SC2086
 if ! caddy validate $config >/dev/null 2>&1; then
-	echo "The saved TLS settings don't load: serving Caddy's own certificate." >&2
+	echo "Skjald's saved settings for Caddy don't load: using the defaults (Caddy's own certificate, no allowlist)." >&2
 	take_defaults
 fi
 
@@ -59,9 +59,9 @@ while kill -0 "$caddy_pid" 2>/dev/null; do
 	# --force: a new certificate under the same file names is still a change.
 	# shellcheck disable=SC2086
 	if caddy reload $config --force; then
-		echo "The TLS settings changed: Caddy reloaded."
+		echo "Skjald's settings for Caddy changed: Caddy reloaded."
 	else
-		echo "The new TLS settings didn't load: Caddy keeps the ones it had." >&2
+		echo "Skjald's new settings for Caddy didn't load: Caddy keeps the ones it had." >&2
 		for name in $settings_files; do
 			mv "/etc/caddy/active-$name.before" "/etc/caddy/active-$name"
 		done

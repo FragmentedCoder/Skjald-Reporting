@@ -5,7 +5,20 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-FROM caddy:2.10-alpine
+# Caddy itself, with the DNS providers that Let's Encrypt's DNS challenge can use
+# (Cloudflare, and RFC 2136 for an organisation's own DNS server), pinned. Building
+# it also brings a current Go, and fixed dependencies Caddy's own release lacks
+# (golang.org/x/net 0.60 for CVE-2026-78669): the image scan in CI keeps watch.
+FROM caddy:2.11.7-builder-alpine AS caddy
+RUN xcaddy build v2.11.7 \
+      --with github.com/caddy-dns/cloudflare@v0.2.4 \
+      --with github.com/caddy-dns/rfc2136@v1.0.0 \
+      --replace golang.org/x/net=golang.org/x/net@v0.60.0
+
+FROM caddy:2.11.7-alpine
+# Alpine's fixes since the image was made.
+RUN apk upgrade --no-cache
+COPY --from=caddy /usr/bin/caddy /usr/bin/caddy
 COPY deploy/Caddyfile /etc/caddy/Caddyfile
 COPY deploy/caddy-start.sh /usr/local/bin/caddy-start
 # Until Skjald says otherwise: Caddy's own certificate authority, and no allowlist.
