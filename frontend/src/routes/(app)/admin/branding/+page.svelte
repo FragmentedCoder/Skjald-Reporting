@@ -81,7 +81,7 @@
 {#if loaded}
   <section class="section" aria-labelledby="preview-title">
     <h2 class="section-title" id="preview-title">Preview</h2>
-    <p class="small muted">How the top bar and the sign-in page show your site, as saved.</p>
+    <p class="small muted">How the side menu and the sign-in page show your site, as saved.</p>
     <div class="preview">
       <Brand size={40} tagline />
     </div>
@@ -94,7 +94,7 @@
       <div class="field">
         <label for="site-name">Site name</label>
         <input id="site-name" class="input" required maxlength="60" bind:value={form.site_name} />
-        <span class="hint">Shown in the top bar, on the sign-in page and in browser tabs.</span>
+        <span class="hint">Shown in the side menu, on the sign-in page and in browser tabs.</span>
       </div>
       <div class="field">
         <label for="tagline">Tag line</label>

@@ -341,7 +341,8 @@
         <h2 class="section-title" id="appearance-title">Appearance</h2>
         <p class="small muted">
           How Skjald looks for you, on every device you sign in on. Changes apply at once. The
-          button beside your name in the top bar switches between light and dark too.
+          button beside your name, at the bottom of the side menu, switches between light and
+          dark too.
         </p>
         <fieldset class="themes">
           <legend class="check-title">Light or dark</legend>
