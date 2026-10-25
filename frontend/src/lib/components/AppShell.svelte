@@ -18,23 +18,33 @@
   import Settings from "@lucide/svelte/icons/settings";
   import Shield from "@lucide/svelte/icons/shield-check";
   import Building from "@lucide/svelte/icons/building";
+  import ChevronDown from "@lucide/svelte/icons/chevron-down";
   import Sun from "@lucide/svelte/icons/sun";
   import Users from "@lucide/svelte/icons/users";
   import UsersRound from "@lucide/svelte/icons/users-round";
   import X from "@lucide/svelte/icons/x";
   import { onMount, tick, type Component, type Snippet } from "svelte";
+  import { SvelteSet } from "svelte/reactivity";
   import { api } from "#lib/api.js";
   import { classificationTone, type ProjectSummary } from "#lib/customers.js";
   import { applyTheme, can, session, signOut, type SessionInfo } from "#lib/session.svelte.js";
   import { toast } from "#lib/toast.svelte.js";
-  import { clearWorkspace, openCustomer, refreshWorkspace, workspace } from "#lib/workspace.svelte.js";
+  import {
+    clearWorkspace,
+    openCustomer,
+    refreshSoon,
+    refreshWorkspace,
+    watchWorkspace,
+    workspace,
+  } from "#lib/workspace.svelte.js";
   import Avatar from "./Avatar.svelte";
   import Brand from "./Brand.svelte";
   import CustomerPicker from "./CustomerPicker.svelte";
 
   // The app's frame: a side menu with the customer you're working in, its
   // projects, and the open project's sections; the page beside it. On a narrow
-  // screen the menu slides in from a button in a slim top bar.
+  // screen the menu slides in from a button in a slim top bar. The menu runs from
+  // the top, so a group that opens pushes what's below it down, never up.
   let { info, children }: { info: SessionInfo; children: Snippet } = $props();
 
   interface Item {
@@ -43,6 +53,28 @@
     icon: Component<{ size?: number; "aria-hidden"?: boolean | "true" }>;
     current: boolean;
     count?: number | null;
+    group?: Group;
+  }
+
+  // An item with others under it (a customer's projects, an open project, Admin).
+  // On its own page, clicking it again folds the group away or opens it again.
+  interface Group {
+    key: string;
+    open: boolean;
+    here: boolean;
+  }
+
+  const folded = new SvelteSet<string>();
+
+  function group(key: string, shown: boolean, here: boolean): Group {
+    return { key, open: shown && !folded.has(key), here };
+  }
+
+  function follow(event: MouseEvent, found?: Group) {
+    if (!found?.here) return;
+    event.preventDefault();
+    if (folded.has(found.key)) folded.delete(found.key);
+    else folded.add(found.key);
   }
 
   const current = $derived(session.current ?? info);
@@ -62,7 +94,10 @@
     return [
       { href: base, label: "Overview", icon: LayoutDashboard, current: path === base },
       { href: resolve("/(app)/customers/[id]/projects", { id }), label: "Projects", icon: FolderKanban,
-        current: path === resolve("/(app)/customers/[id]/projects", { id }), count: customer.active_projects },
+        current: path === resolve("/(app)/customers/[id]/projects", { id }), count: customer.active_projects,
+        group: workspace.projects?.length
+          ? group("projects", true, path === resolve("/(app)/customers/[id]/projects", { id }))
+          : undefined },
       { href: resolve("/(app)/customers/[id]/archived", { id }), label: "Archived", icon: Archive,
         current: path === resolve("/(app)/customers/[id]/archived", { id }), count: customer.archived_projects },
       { href: resolve("/(app)/customers/[id]/contacts", { id }), label: "Contacts & sites", icon: Contact,
@@ -114,17 +149,29 @@
 
   onMount(() => {
     void refreshWorkspace();
+    const stopWatching = watchWorkspace();
     const query = window.matchMedia("(prefers-color-scheme: dark)");
     deviceDark = query.matches;
     const changed = () => (deviceDark = query.matches);
     query.addEventListener("change", changed);
-    return () => query.removeEventListener("change", changed);
+    return () => {
+      stopWatching();
+      query.removeEventListener("change", changed);
+    };
   });
 
   // Moving to another page closes the menu on a phone, and a long menu scrolls
   // to show where you are.
   afterNavigate(async () => {
     menuOpen = false;
+    refreshSoon();
+    const [, section, id] = page.url.pathname.split("/");
+    if (section === "admin") folded.delete("admin");
+    if (section === "projects") {
+      folded.delete("projects");
+      folded.delete(`project:${id}`);
+    }
+    if (section === "customers" && page.url.pathname.endsWith("/projects")) folded.delete("projects");
     await tick();
     nav?.querySelector('[aria-current="page"]')?.scrollIntoView({ block: "nearest" });
   });
@@ -148,22 +195,31 @@
 
 {#snippet link(item: Item, depth = 0)}
   <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- every item's href comes from resolve() -->
-  <a class="item depth-{depth}" href={item.href} aria-current={item.current ? "page" : undefined}>
+  <a class="item depth-{depth}" href={item.href} aria-current={item.current ? "page" : undefined}
+    aria-expanded={item.group?.open} onclick={(event) => follow(event, item.group)}>
     <item.icon size={16} aria-hidden="true" />
     <span class="text">{item.label}</span>
     {#if item.count !== undefined && item.count !== null}<span class="count">{item.count}</span>{/if}
+    {#if item.group}{@render chevron(item.group.open)}{/if}
   </a>
+{/snippet}
+
+{#snippet chevron(open: boolean)}
+  <span class="chevron" class:folded={!open} aria-hidden="true"><ChevronDown size={14} /></span>
 {/snippet}
 
 {#snippet projectEntry(project: ProjectSummary)}
   {@const open = project.id === workspace.project?.id}
   {@const href = resolve("/(app)/projects/[id]", { id: String(project.id) })}
-  <a class="item depth-1 project" {href} class:open>
+  {@const sections = group(`project:${project.id}`, open, path === href)}
+  <a class="item depth-1 project" {href} class:open aria-expanded={open ? sections.open : undefined}
+    onclick={(event) => follow(event, open ? sections : undefined)}>
     <span class="dot {classificationTone(project.classification)}" aria-hidden="true"></span>
     <span class="text">{project.name}</span>
     <span class="visually-hidden">, {project.classification}</span>
+    {#if open}{@render chevron(sections.open)}{/if}
   </a>
-  {#if open}
+  {#if sections.open}
     <ul class="items nested">
       {#each projectItems(project.id) as sub (sub.href)}
         <li>{@render link(sub, 2)}</li>
@@ -208,7 +264,7 @@
               {#each customerItems as item (item.href)}
                 <li>
                   {@render link(item)}
-                  {#if item.label === "Projects" && workspace.projects?.length}
+                  {#if item.label === "Projects" && item.group?.open}
                     <ul class="items nested">
                       {#each workspace.projects as project (project.id)}
                         <li>{@render projectEntry(project)}</li>
@@ -223,7 +279,7 @@
               {/each}
             </ul>
             {#if customerSettings}
-              <ul class="items customer-foot">
+              <ul class="items">
                 <li>{@render link(customerSettings)}</li>
               </ul>
             {/if}
@@ -243,10 +299,11 @@
               current: path === "/customers" || path === "/customers/new" })}</li>
           {/if}
           {#if showAdmin}
+            {@const admin = group("admin", path.startsWith("/admin"), path.startsWith("/admin"))}
             <li>
               {@render link({ href: resolve("/(app)/admin"), label: "Admin", icon: Shield,
-                current: path === "/admin" })}
-              {#if path.startsWith("/admin")}
+                current: path === "/admin", group: admin })}
+              {#if admin.open}
                 <ul class="items nested">
                   {#each adminItems as item (item.href)}
                     <li>{@render link(item, 1)}</li>
@@ -344,15 +401,18 @@
     margin-top: 2px;
   }
   .global {
-    margin-top: auto;
     padding-top: var(--space-3);
     border-top: 1px solid var(--border);
   }
-  .customer-foot {
-    margin-top: auto;
+  .chevron {
+    display: grid;
+    flex: none;
+    place-items: center;
+    color: var(--text-muted);
+    transition: transform 120ms ease-out;
   }
-  .customer-foot + .global {
-    margin-top: 0;
+  .chevron.folded {
+    transform: rotate(-90deg);
   }
   .item {
     display: flex;
@@ -523,7 +583,8 @@
   }
   @media (prefers-reduced-motion: reduce) {
     .side,
-    .menu-open .side {
+    .menu-open .side,
+    .chevron {
       transition: none;
     }
   }
