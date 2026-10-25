@@ -43,7 +43,7 @@ def sign_in(browser, username, password):
 
 
 def test_a_new_user_gets_a_random_temporary_password_that_expires(
-    client, admin, session, frozen_clock
+    frozen_clock, client, admin, session
 ) -> None:
     _, headers = admin
     body = client.post(USERS, headers=headers, json={
@@ -96,7 +96,7 @@ def test_a_temporary_password_must_be_replaced_before_anything_else(
 
 
 def test_an_expired_temporary_password_no_longer_signs_in(
-    bjorn, new_client, frozen_clock
+    frozen_clock, bjorn, new_client
 ) -> None:
     _, temporary = bjorn
     frozen_clock.advance(days=8)

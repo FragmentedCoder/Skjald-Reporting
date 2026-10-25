@@ -66,7 +66,7 @@ def test_a_first_sign_in_must_set_up_a_second_factor(client, make_user) -> None:
 
 
 def test_setting_up_an_authenticator_app_finishes_sign_in(
-    client, make_user, session, frozen_clock, stranger
+    frozen_clock, client, make_user, session, stranger
 ) -> None:
     make_user()
     first = sign_in(client)
@@ -102,7 +102,7 @@ def test_setting_up_an_authenticator_app_finishes_sign_in(
     ]
 
 
-def test_a_wrong_code_does_not_finish_setup(client, make_user, frozen_clock) -> None:
+def test_a_wrong_code_does_not_finish_setup(frozen_clock, client, make_user) -> None:
     make_user()
     sign_in(client)
     secret = post(client, f"{MFA}/totp/enrol").json()["secret"]
@@ -111,7 +111,7 @@ def test_a_wrong_code_does_not_finish_setup(client, make_user, frozen_clock) -> 
     assert client.get("/api/auth/session").json()["second_factor"] == "enrol"
 
 
-def test_a_returning_user_signs_in_with_the_app(client, enrolled, frozen_clock) -> None:
+def test_a_returning_user_signs_in_with_the_app(frozen_clock, client, enrolled) -> None:
     secret, _ = enrolled
     info = sign_in(client).json()
     assert (info["second_factor"], info["methods"]) == ("verify", ["totp", "recovery_code"])
@@ -122,7 +122,7 @@ def test_a_returning_user_signs_in_with_the_app(client, enrolled, frozen_clock) 
     assert response.json()["recovery_codes"] is None
 
 
-def test_a_code_cannot_be_used_twice(client, enrolled, frozen_clock) -> None:
+def test_a_code_cannot_be_used_twice(frozen_clock, client, enrolled) -> None:
     secret, _ = enrolled
     code = code_at(secret, frozen_clock.now)
     sign_in(client)
@@ -135,7 +135,7 @@ def test_a_code_cannot_be_used_twice(client, enrolled, frozen_clock) -> None:
 
 @pytest.mark.parametrize(("steps", "accepted"), [(-1, True), (1, True), (-2, False), (2, False)])
 def test_a_phone_clock_one_step_off_is_tolerated(
-    client, enrolled, frozen_clock, steps, accepted
+    frozen_clock, client, enrolled, steps, accepted
 ) -> None:
     secret, _ = enrolled
     sign_in(client)
@@ -186,7 +186,7 @@ def test_wrong_codes_share_the_password_lockout(client, enrolled, session) -> No
 
 
 def test_only_a_full_sign_in_resets_the_failure_count(
-    client, enrolled, session, frozen_clock
+    frozen_clock, client, enrolled, session
 ) -> None:
     secret, _ = enrolled
     save_policy(session, SecurityPolicy(lockout_threshold=3))
@@ -324,7 +324,7 @@ def test_who_must_set_up_multifactor_follows_the_policy(
 
 
 def test_the_recovery_code_option_stays_when_none_are_left(
-    client, enrolled, session, frozen_clock
+    frozen_clock, client, enrolled, session
 ) -> None:
     from app.auth.mfa import RecoveryCode
 
@@ -341,7 +341,7 @@ def test_the_recovery_code_option_stays_when_none_are_left(
 
 
 def test_multifactor_confirms_it_is_you_for_security_changes(
-    client, enrolled, session, frozen_clock
+    frozen_clock, client, enrolled, session
 ) -> None:
     from app.roles import Role, grant_role
     from app.users import find_user

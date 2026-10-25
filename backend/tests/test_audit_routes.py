@@ -27,7 +27,7 @@ def entries(client, headers, **params):
     return client.get("/api/audit", headers=headers, params=params).json()
 
 
-def test_entries_come_newest_first_in_pages(client, admin, log) -> None:
+def test_entries_come_newest_first_in_pages(frozen_clock, client, admin, log) -> None:
     _, headers = admin
     first = entries(client, headers, limit=2)
     assert [e["action"] for e in first["entries"]] == ["auth.sign_out", "admin.user_created"]
@@ -45,18 +45,20 @@ def test_entries_come_newest_first_in_pages(client, admin, log) -> None:
     ({"actor": "ASTRID"}, ["auth.sign_out", "auth.sign_in.succeeded"]),
     ({"since": "2026-10-21", "until": "2026-10-21"}, ["admin.user_created"]),
 ])
-def test_entries_can_be_filtered(client, admin, log, params, expected) -> None:
+def test_entries_can_be_filtered(frozen_clock, client, admin, log, params, expected) -> None:
     _, headers = admin
     assert [e["action"] for e in entries(client, headers, **params)["entries"]] == expected
 
 
-def test_the_chain_is_checked_on_request(client, admin, log) -> None:
+def test_the_chain_is_checked_on_request(frozen_clock, client, admin, log) -> None:
     _, headers = admin
     status = client.get("/api/audit/verify", headers=headers).json()
     assert status["ok"] and status["entries_checked"] == 5
 
 
-def test_the_export_is_csv_safe_for_spreadsheets_and_logged(client, admin, log, session) -> None:
+def test_the_export_is_csv_safe_for_spreadsheets_and_logged(
+    frozen_clock, client, admin, log, session
+) -> None:
     _, headers = admin
     response = client.get("/api/audit/export", headers=headers, params={"action": "admin.*"})
     assert response.headers["content-type"].startswith("text/csv")
@@ -85,7 +87,7 @@ def test_a_cell_that_looks_like_a_formula_is_neutralised() -> None:
 
 
 def test_auditors_read_the_log_and_technicians_do_not(
-    client, make_user, session, full_session, log
+    frozen_clock, client, make_user, session, full_session, log
 ) -> None:
     auditor = make_user("auditor", display_name="Aud Itor")
     grant_role(session, auditor, Role.AUDITOR, actor=None, ip=None)

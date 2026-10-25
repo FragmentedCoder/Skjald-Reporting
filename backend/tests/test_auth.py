@@ -107,7 +107,7 @@ def test_a_typed_username_that_matches_no_account_is_not_logged(client, session)
 
 
 def test_an_account_locks_after_repeated_failures_and_unlocks_later(
-    client, make_user, session, frozen_clock
+    frozen_clock, client, make_user, session
 ) -> None:
     make_user()
     save_policy(session, SecurityPolicy(lockout_threshold=3, lockout_minutes=15))
@@ -159,7 +159,7 @@ def test_the_session_endpoint_needs_a_live_session(client, make_user) -> None:
     assert response.json()["csrf_token"] == csrf
 
 
-def test_an_idle_session_ends(client, make_user, session, frozen_clock) -> None:
+def test_an_idle_session_ends(frozen_clock, client, make_user, session) -> None:
     make_user()
     _sign_in(client)
     frozen_clock.advance(minutes=29)
@@ -171,7 +171,7 @@ def test_an_idle_session_ends(client, make_user, session, frozen_clock) -> None:
 
 
 def test_a_session_ends_at_its_maximum_length_even_when_in_use(
-    client, make_user, frozen_clock
+    frozen_clock, client, make_user
 ) -> None:
     make_user()
     _sign_in(client)
@@ -258,7 +258,7 @@ def test_sign_ins_and_sign_outs_are_audited_in_an_unbroken_chain(
 
 
 def test_the_status_check_does_not_keep_a_session_alive(
-    client, make_user, frozen_clock, session
+    frozen_clock, client, make_user, session
 ) -> None:
     make_user()
     save_policy(session, SecurityPolicy(require_mfa_everyone=False,
@@ -298,7 +298,7 @@ def test_an_allowlist_that_is_switched_off_lets_everyone_in(client, make_user, s
 
 
 def test_sessions_whose_browser_never_returns_are_cleared_away(
-    client, make_user, new_client, session, frozen_clock
+    frozen_clock, client, make_user, new_client, session
 ) -> None:
     make_user()
     _sign_in(client)

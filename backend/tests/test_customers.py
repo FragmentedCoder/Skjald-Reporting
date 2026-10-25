@@ -228,7 +228,7 @@ def test_a_logo_is_shown_only_to_those_who_see_the_customer(
 
 
 def test_deleting_a_customer_takes_its_key_and_everything_with_it(
-    client, admin, nordlys, session, frozen_clock
+    frozen_clock, client, admin, nordlys, session
 ) -> None:
     _, headers = admin
     cid = nordlys["id"]
@@ -270,7 +270,7 @@ def astrid_on_nordlys(client, admin, nordlys, person):
 
 
 def test_an_assigned_technician_creates_numbered_projects(
-    client, nordlys, astrid_on_nordlys, frozen_clock, session
+    frozen_clock, client, nordlys, astrid_on_nordlys, session
 ) -> None:
     astrid, headers = astrid_on_nordlys
     cid = nordlys["id"]
