@@ -4,7 +4,7 @@ Skjald is in early development, and ideas, questions and bug reports are welcome
 
 ## Issues
 
-- Use the issue templates for bugs and feature requests.
+- Use the issue templates: [report a bug](https://github.com/FragmentedCoder/Skjald-Reporting/issues/new?template=bug_report.yml) or [suggest a feature](https://github.com/FragmentedCoder/Skjald-Reporting/issues/new?template=feature_request.yml). They're also what **New issue** offers on the Issues tab; blank issues are switched off. The templates live in [.github/ISSUE_TEMPLATE](.github/ISSUE_TEMPLATE).
 - Search existing issues first; add to one rather than opening a duplicate.
 - Report security problems privately as described in [SECURITY.md](SECURITY.md).
 
@@ -14,6 +14,17 @@ Skjald is in early development, and ideas, questions and bug reports are welcome
 - Keep each pull request focused on one change, and describe what it does and how you tested it.
 - Add or update tests and documentation along with the code.
 - Commit messages: a short subject in the imperative mood ("Add CVSS lookup table"), with detail in the body if needed.
+
+## Running Skjald and its tests
+
+The design is in [docs/architecture.md](docs/architecture.md); read it before changing how something works, and keep it current. You need Docker, Python 3.13 and Node 22.17 or later.
+
+- **Backend** (`backend/`): `pip install -e ".[dev]"`, then `ruff check .`, `mypy app` and `pytest`. The backup tests run restic itself and need restic 0.18 or later on the PATH; without it they're skipped.
+- **Frontend** (`frontend/`): `npm ci`, then `npm run lint`, `npm run check`, `npm run test` and `npm run build`.
+- **Browser tests** against the whole stack behind Caddy: `frontend/e2e/run.sh` from the repository root. It starts its own stack (project `skjald-e2e`, port 8443) and removes it with its data afterwards, so it runs beside a test install. It needs a master key at `/etc/skjald/master.key`, as `deploy/install.sh` makes it.
+- **Installer and scripts**: `deploy/install.test.sh`, and `shellcheck -x deploy/*.sh frontend/e2e/run.sh`.
+
+CI runs all of these on every pull request, and the browser tests keep their screenshots as an artifact.
 
 ## Never commit
 

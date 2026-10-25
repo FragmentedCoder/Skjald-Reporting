@@ -39,5 +39,5 @@ body:
     id: logs
     attributes:
       label: Logs
-      description: Output of `skjald logs`, with anything sensitive removed.
+      description: Output of `docker compose logs app worker caddy`, run in the folder with Skjald's docker-compose.yml, with anything sensitive removed.
       render: text
