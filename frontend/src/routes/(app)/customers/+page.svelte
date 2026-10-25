@@ -6,7 +6,7 @@
   import { api, ApiError, sessionGone } from "#lib/api.js";
   import { pageTitle } from "#lib/branding.svelte.js";
   import Pill from "#lib/components/Pill.svelte";
-  import { formatCvr, type CustomerSummary } from "#lib/customers.js";
+  import type { CustomerSummary } from "#lib/customers.js";
   import { can, session } from "#lib/session.svelte.js";
 
   const info = $derived(session.current);
@@ -73,7 +73,7 @@
       <div class="section table-wrap customers">
         <table class="table">
           <thead>
-            <tr><th>Name</th><th class="roomy">CVR</th><th>Projects</th><th class="roomy">Archived</th></tr>
+            <tr><th>Name</th><th>Projects</th><th class="roomy">Archived</th><th>People</th></tr>
           </thead>
           <tbody>
             {#each customers as customer (customer.id)}
@@ -85,13 +85,11 @@
                   {#if customer.visibility !== "full"}
                     <Pill tone="neutral"
                       text={customer.visibility === "names" ? "Name only" : "Overview only"} />
-                  {:else if customer.cvr}
-                    <div class="small muted compact">CVR <span class="mono">{formatCvr(customer.cvr)}</span></div>
                   {/if}
                 </td>
-                <td class="roomy mono nowrap">{customer.visibility === "full" ? formatCvr(customer.cvr) : "—"}</td>
                 <td>{customer.active_projects ?? "—"}</td>
                 <td class="roomy">{customer.archived_projects ?? "—"}</td>
+                <td>{customer.people ?? "—"}</td>
               </tr>
             {/each}
           </tbody>
@@ -121,22 +119,13 @@
 </main>
 
 <style>
-  /* Where the table is narrow, as on a phone, the CVR moves under the name. */
+  /* Where the table is narrow, as on a phone, the archived count goes. */
   .customers {
     container-type: inline-size;
-  }
-  .nowrap {
-    white-space: nowrap;
-  }
-  .compact {
-    display: none;
   }
   @container (max-width: 520px) {
     .roomy {
       display: none;
-    }
-    .compact {
-      display: block;
     }
   }
   .search {
