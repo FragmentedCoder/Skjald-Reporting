@@ -11,7 +11,7 @@
     type AuditFilters,
   } from "#lib/audit.js";
   import Pill from "#lib/components/Pill.svelte";
-  import { dateTime, time } from "#lib/format.js";
+  import { isoTime, time } from "#lib/format.js";
 
   interface ChainStatus {
     ok: boolean;
@@ -155,13 +155,13 @@
 <div class="section table-wrap">
   <table class="table">
     <thead>
-      <tr><th>#</th><th>When</th><th>Who</th><th>What</th><th>Details</th><th>Address</th></tr>
+      <tr><th>#</th><th>When (UTC)</th><th>Who</th><th>What</th><th>Details</th><th>Address</th></tr>
     </thead>
     <tbody>
       {#each entries as entry (entry.seq)}
         <tr>
           <td class="mono muted">{entry.seq}</td>
-          <td class="nowrap">{dateTime(entry.occurred_at)}</td>
+          <td class="nowrap mono" title={entry.occurred_at}>{isoTime(entry.occurred_at)}</td>
           <td>{entry.actor_name ?? "—"}</td>
           <td class="mono">{entry.action}</td>
           <td class="details">{describe(entry.details)}</td>

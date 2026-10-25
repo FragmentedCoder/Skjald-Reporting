@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import { dateRange } from "./format";
+import { dateRange, isoTime } from "./format";
+
+describe("isoTime", () => {
+  it("shows a stored time as ISO 8601 in UTC, to the second", () => {
+    expect(isoTime("2026-10-25T14:05:12.123456+00:00")).toBe("2026-10-25T14:05:12Z");
+    expect(isoTime("2026-10-25T16:05:12+02:00")).toBe("2026-10-25T14:05:12Z");
+  });
+});
 
 describe("dateRange", () => {
   it("shows both dates, or says which one it has", () => {

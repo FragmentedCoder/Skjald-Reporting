@@ -171,6 +171,10 @@ test("the admin panel, from adding a user to their first sign-in", async ({ brow
   await expect(admin.getByText("Chain intact")).toBeVisible();
   await admin.getByLabel("What").selectOption("admin.*");
   await admin.getByRole("button", { name: "Show" }).click();
+  // Times are ISO 8601, in UTC.
+  await expect(admin.locator("tbody td:nth-child(2)").first()).toHaveText(
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/,
+  );
   const actions = admin.locator("tbody td:nth-child(4)");
   await expect(actions.first()).toContainText("admin.");
   for (const action of await actions.allTextContents()) expect(action).toMatch(/^admin\./);

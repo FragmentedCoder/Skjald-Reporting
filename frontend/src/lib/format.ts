@@ -13,6 +13,11 @@ export function date(iso: string | null | undefined, empty = "—"): string {
   return (/^\d{4}-\d{2}-\d{2}$/.test(iso) ? PLAIN_DATE : DATE).format(new Date(iso));
 }
 
+/** ISO 8601 in UTC to the second ("2026-10-25T14:05:12Z"), as the audit log shows times. */
+export function isoTime(iso: string): string {
+  return new Date(iso).toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
 /** A project's dates: both, "From …" or "Until …" when only one is set, or a dash. */
 export function dateRange(start: string | null | undefined, end: string | null | undefined): string {
   if (start && end) return `${date(start)} – ${date(end)}`;
