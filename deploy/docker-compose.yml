@@ -35,7 +35,7 @@ services:
       SKJALD_MASTER_KEY_PATH: /etc/skjald/master.key
     volumes:
       - skjald_data:/data
-      - /etc/skjald:/etc/skjald:ro
+      - ${SKJALD_ETC:-/etc/skjald}:/etc/skjald:ro
       - skjald_tls:/tls
 
   # The background worker: backups, the audit log's daily timestamp, email. The
@@ -58,12 +58,35 @@ services:
       SKJALD_MASTER_KEY_PATH: /etc/skjald/master.key
     volumes:
       - skjald_data:/data
-      - /etc/skjald:/etc/skjald:ro
+      - ${SKJALD_ETC:-/etc/skjald}:/etc/skjald:ro
       # Backups kept on this server: a volume by default, or a folder on the host
       # (owned by UID 10001) when SKJALD_BACKUP_DIR names one, such as a mounted disk.
       - ${SKJALD_BACKUP_DIR:-skjald_backups}:/backups
     depends_on:
       - app
+
+  # For the skjald command, never started with the others: what has to write to
+  # the master key's folder (rotating the key) or work on the data while the app
+  # is stopped (copying it aside before an update). The same image and limits.
+  tools:
+    build:
+      context: ../backend
+    profiles: ["tools"]
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    environment:
+      SKJALD_ADDRESS: ${SKJALD_ADDRESS:-https://localhost}
+      SKJALD_DATA_DIR: /data
+      SKJALD_MASTER_KEY_PATH: /etc/skjald/master.key
+    volumes:
+      - skjald_data:/data
+      - ${SKJALD_ETC:-/etc/skjald}:/etc/skjald
+      - ${SKJALD_BACKUP_DIR:-skjald_backups}:/backups
 
 volumes:
   caddy_data:
