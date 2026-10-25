@@ -1,11 +1,19 @@
 // Mirrors backend/app/roles.py. What a role *allows* always comes from the server
 // (SessionInfo.user.capabilities); this file only names things for people.
 
-export type Role = "administrator" | "report_designer" | "technician" | "reviewer" | "auditor";
+export type Role =
+  | "administrator"
+  | "manager"
+  | "report_designer"
+  | "technician"
+  | "reviewer"
+  | "auditor";
 
 export type Capability =
   | "manage_customers"
-  | "create_projects_and_reports"
+  | "delete_customers"
+  | "manage_projects"
+  | "create_reports"
   | "fill_in_reports"
   | "review_and_countersign"
   | "build_templates"
@@ -24,6 +32,13 @@ export const ROLES: { role: Role; name: string; description: string }[] = [
     description: "Everything: all customers, users, security, keys and settings.",
   },
   {
+    role: "manager",
+    name: "Manager",
+    description:
+      "Runs customers and projects: assigns people, and chooses each project's responsible " +
+      "technician, reviewer and team. No admin panel.",
+  },
+  {
     role: "report_designer",
     name: "Report designer",
     description: "Builds templates, custom fields and styles.",
@@ -31,12 +46,12 @@ export const ROLES: { role: Role; name: string; description: string }[] = [
   {
     role: "technician",
     name: "Technician",
-    description: "Writes reports for the customers they are assigned to.",
+    description: "Writes reports in the projects they're on.",
   },
   {
     role: "reviewer",
     name: "Reviewer",
-    description: "Reviews and countersigns reports for assigned customers.",
+    description: "Reviews and countersigns reports in the projects they review.",
   },
   { role: "auditor", name: "Auditor", description: "Reads the audit log and report metadata." },
 ];

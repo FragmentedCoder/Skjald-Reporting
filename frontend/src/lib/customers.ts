@@ -43,7 +43,8 @@ export interface CustomerDetail extends CustomerSummary {
   contacts: Contact[] | null;
   assigned: Person[] | null;
   may_manage: boolean;
-  may_create_projects: boolean;
+  may_delete: boolean;
+  may_manage_projects: boolean;
   assignable: Person[] | null;
 }
 
@@ -58,16 +59,18 @@ export interface ProjectSummary {
   name: string;
   customer: Named;
   responsible: Named | null;
+  reviewer: Named | null;
   start_date: string | null;
   end_date: string | null;
   classification: Classification;
   archived_at: string | null;
 }
 
-/** Someone on a project's team: its responsible technician or someone added. */
+/** Someone on a project's team: its responsible technician, its reviewer or someone added. */
 export interface Member extends Named {
   roles: Role[];
   responsible: boolean;
+  reviewer: boolean;
 }
 
 export interface ProjectDetail extends ProjectSummary {
@@ -115,4 +118,8 @@ export function formatCvr(cvr: string | null): string {
 
 export function technicians(people: Person[] | null): Person[] {
   return (people ?? []).filter((p) => p.roles.includes("technician"));
+}
+
+export function reviewers(people: Person[] | null): Person[] {
+  return (people ?? []).filter((p) => p.roles.includes("reviewer"));
 }

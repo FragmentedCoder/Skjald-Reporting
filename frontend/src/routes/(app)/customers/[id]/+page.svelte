@@ -56,13 +56,13 @@
     <section class="section wide" aria-labelledby="work-title">
       <div class="heading-row">
         <h2 class="section-title" id="work-title">Projects under way</h2>
-        {#if customer.may_create_projects}
+        {#if customer.may_manage_projects}
           <a class="button button-primary" href={resolve("/(app)/customers/[id]/projects/new", { id })}>
             <Plus size={18} aria-hidden="true" />New project
           </a>
         {/if}
       </div>
-      <ProjectTable projects={recent} empty={customer.may_create_projects
+      <ProjectTable projects={recent} empty={customer.may_manage_projects
         ? "No active projects. Start one with New project."
         : "No active projects you can open."} />
       {#if (customer.active_projects ?? 0) > recent.length}

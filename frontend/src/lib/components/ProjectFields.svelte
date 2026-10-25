@@ -4,6 +4,7 @@
     start_date: string;
     end_date: string;
     responsible_id: string;
+    reviewer_id: string;
     contact_id: string;
     site_ids: number[];
     classification: string;
@@ -16,6 +17,7 @@
       start_date: form.start_date || null,
       end_date: form.end_date || null,
       responsible_id: form.responsible_id ? Number(form.responsible_id) : null,
+      reviewer_id: form.reviewer_id ? Number(form.reviewer_id) : null,
       contact_id: form.contact_id ? Number(form.contact_id) : null,
       site_ids: form.site_ids,
       classification: form.classification,
@@ -24,13 +26,18 @@
 </script>
 
 <script lang="ts">
-  import { CLASSIFICATIONS, technicians, type CustomerDetail } from "#lib/customers.js";
+  import { CLASSIFICATIONS, reviewers, technicians, type CustomerDetail } from "#lib/customers.js";
 
-  // A project's fields; the choices (technicians, contacts, sites) are the customer's.
+  // A project's fields; the choices (technicians, reviewers, contacts, sites) are the
+  // customer's. Nobody reviews their own report, so whoever is responsible isn't
+  // offered as the reviewer, and the other way round.
   let { values = $bindable(), customer }: { values: ProjectForm; customer: CustomerDetail } = $props();
 
   const uid = $props.id();
-  const people = $derived(technicians(customer.assigned));
+  const people = $derived(technicians(customer.assigned)
+    .filter((p) => String(p.id) !== values.reviewer_id));
+  const checkers = $derived(reviewers(customer.assigned)
+    .filter((p) => String(p.id) !== values.responsible_id));
 </script>
 
 <div class="field">
@@ -57,7 +64,20 @@
       <option value={String(person.id)}>{person.display_name}</option>
     {/each}
   </select>
-  <span class="hint">One of the technicians assigned to {customer.name}.</span>
+  <span class="hint">One of the technicians assigned to {customer.name}. Writes the reports.</span>
+</div>
+<div class="field">
+  <label for="{uid}-reviewer">Reviewer</label>
+  <select id="{uid}-reviewer" class="input" bind:value={values.reviewer_id}>
+    <option value="">Nobody yet</option>
+    {#each checkers as person (person.id)}
+      <option value={String(person.id)}>{person.display_name}</option>
+    {/each}
+  </select>
+  <span class="hint">
+    One of the reviewers assigned to {customer.name}. Reviews and countersigns the reports, and
+    can't change the project.
+  </span>
 </div>
 <div class="field">
   <label for="{uid}-contact">Customer contact</label>

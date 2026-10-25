@@ -6,7 +6,7 @@
   import { roleName } from "#lib/roles.js";
   import { toast } from "#lib/toast.svelte.js";
 
-  // Who works with the customer. Administrators choose; everyone sees who.
+  // Who works with the customer. Managers and Administrators choose; everyone sees who.
   const shared = sharedCustomer();
   const customer = $derived(shared.current);
   // Starts from who's assigned now; the checkboxes change it until it's saved.
@@ -34,9 +34,9 @@
   <section class="section" aria-labelledby="people-title">
     <h2 class="section-title" id="people-title">Who works with this customer</h2>
     <p class="small muted">
-      Technicians and reviewers see only the customers they're assigned to. Technicians create
-      projects and reports for them; reviewers review and countersign. A TLP:RED project is
-      only for its own team, chosen on the project.
+      Technicians and reviewers see only the customers they're assigned to. Technicians write
+      reports in the projects they're on; reviewers review and countersign them. A TLP:RED
+      project is only for its own team, chosen on the project.
     </p>
     {#if customer.may_manage}
       <form class="stack" onsubmit={save}>

@@ -12,7 +12,8 @@
   import { toast } from "#lib/toast.svelte.js";
   import { clearWorkspace, refreshWorkspace } from "#lib/workspace.svelte.js";
 
-  // The customer's own details, its logo, and deleting it. Administrators only.
+  // The customer's own details and logo, for Managers and Administrators; deleting
+  // it, for Administrators only.
   const shared = sharedCustomer();
   const customer = $derived(shared.current);
   let details = $state({ name: "", cvr: "", address: "", language: "da", retention_months: 12 });
@@ -78,7 +79,7 @@
 <svelte:head><title>{pageTitle(`Customer settings · ${customer?.name ?? "Customer"}`)}</title></svelte:head>
 
 {#if customer && !customer.may_manage}
-  <p class="alert alert-warning">Only administrators change a customer's settings.</p>
+  <p class="alert alert-warning">Only Managers and Administrators change a customer's settings.</p>
 {:else if customer}
   <section class="section" aria-labelledby="details-title">
     <h2 class="section-title" id="details-title">Details</h2>
@@ -110,39 +111,41 @@
     </div>
   </section>
 
-  <section class="section danger-zone" aria-labelledby="delete-title">
-    <h2 class="section-title" id="delete-title">Delete customer</h2>
-    <p class="small">
-      Deletes the customer, its sites, contacts and projects, and its encryption key: whatever was
-      encrypted with it can't be read again. This can't be undone.
-    </p>
-    <div>
-      <button class="button button-secondary danger" type="button"
-        onclick={() => { deleteName = ""; deleteError = null; deleteOpen = true; }}>
-        Delete customer
-      </button>
-    </div>
-  </section>
-
-  <Dialog bind:open={deleteOpen} title="Delete {customer.name}">
-    <form class="stack" onsubmit={deleteCustomer}>
-      {#if deleteError}<p class="alert alert-critical" role="alert">{deleteError}</p>{/if}
-      <p>
-        Its sites, contacts, {customer.active_projects} active and {customer.archived_projects}
-        archived projects go too, with its encryption key, so nothing that was encrypted with it
-        can be read again. This can't be undone.
+  {#if customer.may_delete}
+    <section class="section danger-zone" aria-labelledby="delete-title">
+      <h2 class="section-title" id="delete-title">Delete customer</h2>
+      <p class="small">
+        Deletes the customer, its sites, contacts and projects, and its encryption key: whatever was
+        encrypted with it can't be read again. This can't be undone.
       </p>
-      <div class="field">
-        <label for="delete-name">Type the customer's name to confirm</label>
-        <input id="delete-name" class="input" autocomplete="off" required bind:value={deleteName} />
+      <div>
+        <button class="button button-secondary danger" type="button"
+          onclick={() => { deleteName = ""; deleteError = null; deleteOpen = true; }}>
+          Delete customer
+        </button>
       </div>
-      <div class="button-row end">
-        <button class="button button-secondary" type="button" onclick={() => (deleteOpen = false)}>Cancel</button>
-        <button class="button button-primary danger-fill" type="submit"
-          disabled={busy || deleteName.trim() !== customer.name}>Delete for good</button>
-      </div>
-    </form>
-  </Dialog>
+    </section>
+
+    <Dialog bind:open={deleteOpen} title="Delete {customer.name}">
+      <form class="stack" onsubmit={deleteCustomer}>
+        {#if deleteError}<p class="alert alert-critical" role="alert">{deleteError}</p>{/if}
+        <p>
+          Its sites, contacts, {customer.active_projects} active and {customer.archived_projects}
+          archived projects go too, with its encryption key, so nothing that was encrypted with it
+          can be read again. This can't be undone.
+        </p>
+        <div class="field">
+          <label for="delete-name">Type the customer's name to confirm</label>
+          <input id="delete-name" class="input" autocomplete="off" required bind:value={deleteName} />
+        </div>
+        <div class="button-row end">
+          <button class="button button-secondary" type="button" onclick={() => (deleteOpen = false)}>Cancel</button>
+          <button class="button button-primary danger-fill" type="submit"
+            disabled={busy || deleteName.trim() !== customer.name}>Delete for good</button>
+        </div>
+      </form>
+    </Dialog>
+  {/if}
 {/if}
 
 <style>

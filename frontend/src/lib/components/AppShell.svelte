@@ -72,7 +72,7 @@
     ];
   });
 
-  // The customer's own settings (details, logo, deleting it), for Administrators:
+  // The customer's own settings (details, logo, deleting it), for Managers and Administrators:
   // last in the customer's part of the menu, just above Home.
   const customerSettings = $derived.by((): Item | null => {
     if (!customer || !full || !can(current, "manage_customers")) return null;

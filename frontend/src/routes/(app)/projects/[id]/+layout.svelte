@@ -153,7 +153,7 @@
 <Dialog bind:open={archiveOpen} title="Archive {project?.number ?? 'project'}">
   <p>
     The project and its reports become read-only, and it moves to the customer's archived
-    projects. Retention periods count from today. An administrator can reopen it.
+    projects. Retention periods count from today. A Manager or Administrator can reopen it.
   </p>
   {#snippet actions()}
     <button class="button button-secondary" type="button" onclick={() => (archiveOpen = false)}>Cancel</button>

@@ -33,6 +33,8 @@
       <dl class="facts">
         <dt>Responsible</dt>
         <dd>{project.responsible?.name ?? "Nobody yet"}</dd>
+        <dt>Reviewer</dt>
+        <dd>{project.reviewer?.name ?? "Nobody yet"}</dd>
         <dt>Dates</dt>
         <dd>{dateRange(project.start_date, project.end_date)}</dd>
         <dt>Shared as</dt>

@@ -23,6 +23,7 @@
       start_date: project.start_date ?? "",
       end_date: project.end_date ?? "",
       responsible_id: project.responsible ? String(project.responsible.id) : "",
+      reviewer_id: project.reviewer ? String(project.reviewer.id) : "",
       contact_id: project.contact ? String(project.contact.id) : "",
       site_ids: project.sites.map((s) => s.id),
       classification: project.classification,
@@ -63,6 +64,8 @@
     <dl class="facts">
       <dt>Responsible</dt>
       <dd>{project.responsible?.name ?? "Nobody yet"}</dd>
+      <dt>Reviewer</dt>
+      <dd>{project.reviewer?.name ?? "Nobody yet"}</dd>
       <dt>Dates</dt>
       <dd>{dateRange(project.start_date, project.end_date)}</dd>
       <dt>Customer contact</dt>

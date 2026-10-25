@@ -7,13 +7,14 @@
   import { roleName } from "#lib/roles.js";
   import { toast } from "#lib/toast.svelte.js";
 
-  // Who works on the project. Its responsible technician always does; the others
-  // are picked from the people assigned to the customer.
+  // Who works on the project. Its responsible technician and reviewer always do
+  // (chosen on Details); Managers and Administrators pick the others from the
+  // people assigned to the customer.
   const shared = sharedProject();
   const project = $derived(shared.current);
   const customer = $derived(sharedCustomer().current);
   const red = $derived(project?.classification === TEAM_ONLY);
-  // Starts from the team now (its responsible included); the checkboxes change it.
+  // Starts from the team now (responsible and reviewer included); the checkboxes change it.
   let chosen = $derived((project?.team ?? []).map((m) => m.id));
   let busy = $state(false);
 
@@ -39,11 +40,13 @@
     <h2 class="section-title" id="team-title">Team</h2>
     <p class="small muted">
       {#if red}
-        This project is TLP:RED: only administrators and the people on its team can see it.
+        This project is TLP:RED: only Managers, Administrators and the people on its team can
+        see it.
       {:else}
         Who works on this project. Everyone assigned to {project.customer.name} can see it; if
-        it's made TLP:RED, only its team and administrators can.
+        it's made TLP:RED, only its team, Managers and Administrators can.
       {/if}
+      The responsible technician and the reviewer are chosen on Details.
     </p>
     {#if project.may_edit && customer}
       <form class="stack" onsubmit={save}>
@@ -51,13 +54,14 @@
           <fieldset class="checks people">
             <legend class="visually-hidden">Team members</legend>
             {#each customer.assigned as person (person.id)}
-              {@const responsible = person.id === project.responsible?.id}
+              {@const role = person.id === project.responsible?.id ? "Responsible"
+                : person.id === project.reviewer?.id ? "Reviewer" : null}
               <label class="check">
-                <input type="checkbox" value={person.id} bind:group={chosen} disabled={responsible} />
+                <input type="checkbox" value={person.id} bind:group={chosen} disabled={!!role} />
                 <span>
                   <span class="check-title">{person.display_name}</span>
                   <span class="small muted">
-                    {responsible ? "Responsible · " : ""}{person.roles.map(roleName).join(", ")}
+                    {role ? `${role} · ` : ""}{person.roles.map(roleName).join(", ")}
                   </span>
                 </span>
               </label>
@@ -75,6 +79,7 @@
             <span class="check-title">{member.name}</span>
             <span class="small muted">{member.roles.map(roleName).join(", ")}</span>
             {#if member.responsible}<Pill tone="info" text="Responsible" />{/if}
+            {#if member.reviewer}<Pill tone="info" text="Reviewer" />{/if}
           </li>
         {/each}
       </ul>

@@ -10,7 +10,7 @@
   import type { Contact, CustomerDetail, Site } from "#lib/customers.js";
   import { toast } from "#lib/toast.svelte.js";
 
-  // The customer's people and places. Administrators change them; reports and
+  // The customer's people and places. Managers and Administrators change them; reports and
   // projects pick from them.
   const shared = sharedCustomer();
   const customer = $derived(shared.current);

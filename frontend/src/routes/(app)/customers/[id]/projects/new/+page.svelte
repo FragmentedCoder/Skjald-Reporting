@@ -14,7 +14,8 @@
   const customer = $derived(shared.current);
   const id = $derived(String(customer?.id ?? ""));
   let form = $state<ProjectForm>({
-    name: "", start_date: "", end_date: "", responsible_id: "", contact_id: "", site_ids: [],
+    name: "", start_date: "", end_date: "", responsible_id: "", reviewer_id: "", contact_id: "",
+    site_ids: [],
     classification: DEFAULT_CLASSIFICATION,
   });
   let error = $state<string | null>(null);
@@ -52,7 +53,7 @@
   <section class="section" aria-labelledby="new-title">
     <h2 class="section-title" id="new-title">New project</h2>
     <p class="small muted">It gets its number when you create it.</p>
-    {#if customer.may_create_projects}
+    {#if customer.may_manage_projects}
       <form class="stack form-wide" onsubmit={submit}>
         {#if error}<p class="alert alert-critical" role="alert">{error}</p>{/if}
         <ProjectFields bind:values={form} {customer} />
@@ -63,7 +64,7 @@
       </form>
     {:else}
       <p class="alert alert-warning">
-        Only administrators and the technicians assigned to {customer.name} create its projects.
+        Only Managers and Administrators start projects.
       </p>
     {/if}
   </section>

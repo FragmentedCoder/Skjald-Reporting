@@ -28,7 +28,7 @@
   <h2 class="section-title" id="archived-title">Archived projects</h2>
   <p class="small muted">
     Finished projects: read-only, with their reports. Retention periods count from the day each
-    was archived. An administrator can reopen one.
+    was archived. A Manager or Administrator can reopen one.
   </p>
   {#if archived}
     <ProjectTable projects={archived} empty="Nothing archived yet." />

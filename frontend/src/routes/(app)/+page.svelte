@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { resolve } from "$app/paths";
   import { onMount } from "svelte";
   import { api, sessionGone } from "#lib/api.js";
   import { branding } from "#lib/branding.svelte.js";
@@ -11,9 +10,11 @@
   const info = $derived(session.current);
   let projects = $state<ProjectSummary[] | null>(null);
 
-  // Yours first: the ones you're responsible for.
-  const mine = $derived(projects?.filter((p) => p.responsible?.id === info?.user.id) ?? []);
-  const others = $derived(projects?.filter((p) => p.responsible?.id !== info?.user.id) ?? []);
+  // Yours first: the ones you're responsible for or review.
+  const yours = (p: ProjectSummary) =>
+    p.responsible?.id === info?.user.id || p.reviewer?.id === info?.user.id;
+  const mine = $derived(projects?.filter(yours) ?? []);
+  const others = $derived(projects?.filter((p) => !yours(p)) ?? []);
 
   onMount(async () => {
     try {
@@ -39,7 +40,7 @@
       {#if mine.length}
         <section class="section" aria-labelledby="mine-title">
           <h2 class="section-title" id="mine-title">Your projects</h2>
-          <p class="small muted">Active projects you're responsible for.</p>
+          <p class="small muted">Active projects you're responsible for or review.</p>
           <ProjectTable projects={mine} empty="" customer />
         </section>
       {/if}
@@ -56,10 +57,8 @@
       <section class="empty">
         <p>No active projects yet.</p>
         <p class="small muted">
-          {#if can(info, "manage_customers")}
-            Add a customer, assign technicians to it, and start its first project.
-          {:else if can(info, "create_projects_and_reports")}
-            Start a project from one of <a href={resolve("/(app)/customers")}>your customers</a>.
+          {#if can(info, "manage_projects")}
+            Add a customer, assign technicians and reviewers to it, and start its first project.
           {:else if info.user.roles.length}
             Projects for the customers you work with will appear here.
           {:else}
