@@ -11,7 +11,7 @@ from app.customers import (
     SEES_CUSTOMERS,
     Customer,
     CustomerContact,
-    Sealer,
+    Keyring,
     bound_to,
 )
 from app.roles import Role, grant_role
@@ -139,15 +139,20 @@ def test_a_customer_gets_its_own_key_bound_to_it(client, admin, nordlys, session
         unwrap_key(master, customer.wrapped_key, context=b"skjald/customer-key/999")
 
 
-def test_addresses_and_contacts_are_sealed_with_the_customer_key(
+def test_everything_about_a_customer_is_sealed_with_its_key(
     client, admin, nordlys, session
 ) -> None:
     customer = session.get(Customer, nordlys["id"])
     contact = session.scalars(select(CustomerContact)).one()
     session.commit()
-    assert b"Fjordvej" not in customer.sealed
+    assert b"Fjordvej" not in customer.sealed and b"Nordlys" not in customer.sealed
     assert b"sigrid" not in contact.sealed
-    sealer = Sealer(customer)
+    # The database holds no names in the clear: they're inside the sealed values.
+    for table in ("customers", "customer_sites"):
+        columns = {row[1] for row in session.execute(text(f"PRAGMA table_info({table})"))}
+        assert not columns & {"name", "cvr"}, table
+    session.commit()
+    sealer = Keyring().sealer(customer)
     assert sealer.open("contact", contact.id, contact.sealed)["name"] == "Sigrid Holm"
     with pytest.raises(InvalidTag):  # a sealed value moved to another record won't open
         sealer.open("contact", contact.id + 1, contact.sealed)
@@ -245,7 +250,8 @@ def test_deleting_a_customer_takes_its_key_and_everything_with_it(
         assert session.execute(text(f"SELECT count(*) FROM {table}")).scalar() == 0, table
     session.commit()
     deleted = audit_entries(session, "customer.deleted")[0]
-    assert deleted.details == '{"name":"Nordlys IT ApS","projects":1}'
+    # The audit log keeps no name: deleting the customer leaves nothing readable.
+    assert deleted.details == '{"projects":1}'
 
 
 def test_deleted_rows_are_overwritten_in_the_database_file(engine) -> None:
@@ -378,3 +384,126 @@ def test_project_numbers_are_never_reused(
     headers = full_session(user)
     assert client.post(f"{CUSTOMERS}/{other['id']}/projects", headers=headers,
                        json={"name": "new year"}).json()["number"] == "P-2027-0001"
+
+
+# TLP:RED projects are for their team
+
+
+@pytest.fixture
+def red_setup(client, admin, nordlys, person):
+    """Bob and Bo are assigned technicians. Projects: TLP:RED with Bob responsible,
+    TLP:RED with nobody responsible, and TLP:CLEAR."""
+    _, as_admin = admin
+    bob, as_bob = person("bob", T)
+    bo, as_bo = person("bo", T)
+    assign(client, admin, nordlys["id"], bob, bo)
+    url = f"{CUSTOMERS}/{nordlys['id']}/projects"
+    ransomware = client.post(url, headers=as_admin, json={
+        "name": "Ransomware", "responsible_id": bob.id, "classification": "TLP:RED"}).json()
+    pentest = client.post(url, headers=as_admin, json={
+        "name": "Pentest", "classification": "TLP:RED"}).json()
+    clear = client.post(url, headers=as_admin, json={
+        "name": "Open day", "classification": "TLP:CLEAR"}).json()
+    return {"bob": (bob, as_bob), "bo": (bo, as_bo), "ransomware": ransomware,
+            "pentest": pentest, "clear": clear}
+
+
+def test_a_red_project_is_only_for_administrators_and_its_team(
+    client, admin, nordlys, red_setup, session
+) -> None:
+    _, as_admin = admin
+    _, as_bob = red_setup["bob"]
+    _, as_bo = red_setup["bo"]
+    url = f"{CUSTOMERS}/{nordlys['id']}/projects"
+
+    names = lambda headers: [p["name"] for p in client.get(url, headers=headers).json()]  # noqa: E731
+    assert names(as_admin) == ["Open day", "Pentest", "Ransomware"]
+    assert names(as_bob) == ["Open day", "Ransomware"]  # responsible for Ransomware
+    assert names(as_bo) == ["Open day"]
+    assert [p["name"] for p in client.get("/api/projects", headers=as_bo).json()] == ["Open day"]
+
+    hidden = client.get(f"/api/projects/{red_setup['pentest']['id']}", headers=as_bob)
+    assert hidden.status_code == 404 and hidden.json()["detail"] == "That project doesn't exist."
+    assert len(audit_entries(session, "project.access_denied")) == 1
+    # The counts don't give it away either.
+    bob_sees = client.get(f"{CUSTOMERS}/{nordlys['id']}", headers=as_bob).json()
+    assert bob_sees["active_projects"] == 2
+
+
+def test_an_auditors_overview_counts_every_project(client, nordlys, red_setup, person) -> None:
+    _, as_auditor = person("ulf", U)
+    assert client.get(f"{CUSTOMERS}/{nordlys['id']}", headers=as_auditor
+                      ).json()["active_projects"] == 3
+
+
+def test_adding_someone_to_the_team_opens_a_red_project_to_them(
+    client, admin, red_setup
+) -> None:
+    _, as_admin = admin
+    bo, as_bo = red_setup["bo"]
+    pentest = red_setup["pentest"]["id"]
+    team = client.put(f"/api/projects/{pentest}/team", headers=as_admin,
+                      json={"user_ids": [bo.id]}).json()["team"]
+    assert [m["name"] for m in team] == ["Bo"]
+    assert client.get(f"/api/projects/{pentest}", headers=as_bo).status_code == 200
+
+
+def test_only_people_assigned_to_the_customer_join_a_team(
+    client, admin, red_setup, person
+) -> None:
+    _, as_admin = admin
+    outsider, _ = person("olga", T)
+    refused = client.put(f"/api/projects/{red_setup['pentest']['id']}/team", headers=as_admin,
+                         json={"user_ids": [outsider.id]})
+    assert refused.status_code == 400
+
+
+def test_whoever_creates_or_reds_a_project_stays_on_its_team(
+    client, nordlys, red_setup
+) -> None:
+    bo, as_bo = red_setup["bo"]
+    url = f"{CUSTOMERS}/{nordlys['id']}/projects"
+    mine = client.post(url, headers=as_bo, json={"name": "Bo's red", "classification": "TLP:RED"})
+    assert [m["name"] for m in mine.json()["team"]] == ["Bo"]
+    assert client.get(f"/api/projects/{mine.json()['id']}", headers=as_bo).status_code == 200
+
+    clear = red_setup["clear"]["id"]
+    reddened = client.patch(f"/api/projects/{clear}", headers=as_bo,
+                            json={"classification": "TLP:RED"}).json()
+    assert "Bo" in [m["name"] for m in reddened["team"]]
+    assert client.get(f"/api/projects/{clear}", headers=as_bo).status_code == 200
+
+
+def test_you_cannot_take_yourself_off_a_red_team(client, nordlys, red_setup) -> None:
+    bo, as_bo = red_setup["bo"]
+    url = f"{CUSTOMERS}/{nordlys['id']}/projects"
+    mine = client.post(url, headers=as_bo, json={"name": "Bo's red", "classification": "TLP:RED"})
+    refused = client.put(f"/api/projects/{mine.json()['id']}/team", headers=as_bo,
+                         json={"user_ids": []})
+    assert refused.status_code == 400 and "lose access" in refused.json()["detail"]
+
+
+def test_project_names_and_dates_are_sealed(client, admin, nordlys, session) -> None:
+    _, headers = admin
+    project = client.post(f"{CUSTOMERS}/{nordlys['id']}/projects", headers=headers, json={
+        "name": "Ransomware incident", "start_date": "2026-10-20"}).json()
+    assert (project["name"], project["start_date"]) == ("Ransomware incident", "2026-10-20")
+    sealed = session.execute(text("SELECT sealed FROM projects")).scalar()
+    columns = {row[1] for row in session.execute(text("PRAGMA table_info(projects)"))}
+    session.commit()
+    assert b"Ransomware" not in sealed and b"2026-10-20" not in sealed
+    assert not columns & {"name", "start_date", "end_date"}
+    renamed = client.patch(f"/api/projects/{project['id']}", headers=headers,
+                           json={"name": "Renamed", "end_date": "2026-10-30"}).json()
+    assert (renamed["name"], renamed["start_date"], renamed["end_date"]) == (
+        "Renamed", "2026-10-20", "2026-10-30")
+
+
+def test_search_finds_sealed_names_and_cvr_numbers(client, admin, nordlys) -> None:
+    _, headers = admin
+    client.post(CUSTOMERS, headers=headers, json={"name": "Fjeldstue A/S"})
+    found = lambda q: [c["name"] for c in client.get(f"{CUSTOMERS}?q={q}", headers=headers).json()]  # noqa: E731
+    assert found("nordlys") == ["Nordlys IT ApS"]
+    assert found("5678") == ["Nordlys IT ApS"]
+    assert found("") == ["Fjeldstue A/S", "Nordlys IT ApS"]
+

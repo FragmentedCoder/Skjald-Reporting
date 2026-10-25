@@ -1,10 +1,13 @@
 """Customers: the records everything else hangs off (see docs/architecture.md).
 
-Each customer gets its own 256-bit key when it's created, kept wrapped by the
-master key and bound to the customer's ID. Addresses and contact details are
-sealed with it (app/crypto/sealing.py); the name and CVR stay plain, for lists
-and search. Deleting a customer deletes its key with it, so nothing sealed with
-it can be read again (crypto-shredding).
+A customer is a sealed container. It gets its own 256-bit key when it's created,
+kept wrapped by the master key and bound to the customer's ID, and everything
+that says anything about the customer is sealed with it (app/crypto/sealing.py):
+its name, CVR and address, its sites and contacts, its projects' names and dates,
+and later its reports and files. Only IDs, project numbers and what access needs
+(assignments, classification) stay plain. The audit log names customers by ID.
+Deleting a customer deletes its key with it, so nothing sealed with it can be
+read again (crypto-shredding).
 
 Who sees which customers follows the spec's access table: Administrators all of
 them, technicians and reviewers the ones they're assigned to, report designers
@@ -46,11 +49,9 @@ class Customer(Base):
     __table_args__ = {"sqlite_autoincrement": True}
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(200), index=True)
-    cvr: Mapped[str | None] = mapped_column(String(8))
     # The customer's own key, wrapped by the master key.
     wrapped_key: Mapped[bytes] = mapped_column(LargeBinary)
-    # {"address": ...}, sealed with the customer's key.
+    # {"name", "cvr", "address"}, sealed with the customer's key.
     sealed: Mapped[bytes] = mapped_column(LargeBinary)
     language: Mapped[str] = mapped_column(String(5))
     # How long raw data is kept after a project is archived.
@@ -67,8 +68,7 @@ class CustomerSite(Base):
     customer_id: Mapped[int] = mapped_column(
         ForeignKey("customers.id", ondelete="CASCADE"), index=True
     )
-    name: Mapped[str] = mapped_column(String(150))
-    # {"address": ...}
+    # {"name", "address"}
     sealed: Mapped[bytes] = mapped_column(LargeBinary)
 
 
@@ -108,31 +108,54 @@ def bound_to(customer_id: int, kind: str, record_id: int) -> bytes:
     return f"skjald/customer/{customer_id}/{kind}/{record_id}".encode()
 
 
-def customer_key(customer: Customer) -> bytes:
-    master = load_master_key(settings.master_key_path)
-    return unwrap_key(master, customer.wrapped_key, context=_key_context(customer.id))
-
-
-def give_new_key(customer: Customer) -> bytes:
-    """Make the customer's key (it needs its ID: flush first). Returns the key."""
-    key = generate_key()
-    master = load_master_key(settings.master_key_path)
-    customer.wrapped_key = wrap_key(master, key, context=_key_context(customer.id))
-    return key
-
-
 class Sealer:
-    """Seals and opens one customer's records with its key, unwrapped once."""
+    """Seals and opens one customer's records with its key."""
 
-    def __init__(self, customer: Customer) -> None:
-        self.customer_id = customer.id
-        self._key = customer_key(customer)
+    def __init__(self, customer_id: int, key: bytes) -> None:
+        self.customer_id = customer_id
+        self._key = key
 
     def seal(self, kind: str, record_id: int, value: dict[str, Any]) -> bytes:
         return seal(self._key, value, bound_to=bound_to(self.customer_id, kind, record_id))
 
     def open(self, kind: str, record_id: int, sealed: bytes) -> dict[str, Any]:
         return unseal(self._key, sealed, bound_to=bound_to(self.customer_id, kind, record_id))
+
+
+class Keyring:
+    """Customer keys for one request: the master key is read once, and each
+    customer's key unwrapped once however many of its records are opened."""
+
+    def __init__(self) -> None:
+        self._master: bytes | None = None
+        self._sealers: dict[int, Sealer] = {}
+
+    def _master_key(self) -> bytes:
+        if self._master is None:
+            self._master = load_master_key(settings.master_key_path)
+        return self._master
+
+    def sealer(self, customer: Customer) -> Sealer:
+        if customer.id not in self._sealers:
+            key = unwrap_key(self._master_key(), customer.wrapped_key,
+                             context=_key_context(customer.id))
+            self._sealers[customer.id] = Sealer(customer.id, key)
+        return self._sealers[customer.id]
+
+    def give_new_key(self, customer: Customer) -> Sealer:
+        """Make a new customer's key (it needs the ID: flush first)."""
+        key = generate_key()
+        customer.wrapped_key = wrap_key(self._master_key(), key,
+                                        context=_key_context(customer.id))
+        self._sealers[customer.id] = Sealer(customer.id, key)
+        return self._sealers[customer.id]
+
+    def details(self, customer: Customer) -> dict[str, Any]:
+        """The customer's sealed name, CVR and address."""
+        return self.sealer(customer).open("customer", customer.id, customer.sealed)
+
+    def name(self, customer: Customer) -> str:
+        return str(self.details(customer)["name"])
 
 
 # Who sees what

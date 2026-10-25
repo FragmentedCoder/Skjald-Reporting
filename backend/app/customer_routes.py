@@ -3,6 +3,8 @@
 Creating and changing customers is for Administrators (MANAGE_CUSTOMERS);
 everyone else sees what app/customers.py allows. A customer someone may not see
 answers 404, the same as one that doesn't exist, and the refusal is logged.
+Everything about a customer is sealed with its key and opened per request, only
+for those allowed to see it; the audit log names customers by ID only.
 """
 
 from __future__ import annotations
@@ -23,10 +25,10 @@ from app.customers import (
     CustomerAssignment,
     CustomerContact,
     CustomerSite,
+    Keyring,
     Sealer,
     Visibility,
     assigned_customer_ids,
-    give_new_key,
     level_for,
     may_create_projects,
     may_manage,
@@ -43,7 +45,7 @@ from app.images import (
     remove_image,
     store_image,
 )
-from app.projects import Project
+from app.projects import TEAM_ONLY, Project, projects_joined
 from app.roles import Capability, Role, UserRole, roles_of
 from app.users import User
 
@@ -188,25 +190,32 @@ def visible_customer(
     return customer, level
 
 
-def _project_counts(db: Session) -> dict[int, tuple[int, int]]:
-    rows = db.execute(
-        select(Project.customer_id, Project.archived_at.is_(None), func.count())
-        .group_by(Project.customer_id, Project.archived_at.is_(None))
-    )
+def _project_counts(db: Session, user_id: int) -> dict[int, tuple[int, int]]:
+    """Active and archived projects per customer, counting only what this person may
+    open: a TLP:RED project counts for its team and Administrators. An auditor's
+    overview counts them all."""
+    sight = sights(roles_of(db, user_id))
+    joined = projects_joined(db, user_id)
+    every = bool(sight & {"all", "metadata"})
+    rows = db.execute(select(Project.id, Project.customer_id, Project.archived_at,
+                             Project.classification))
     counts: dict[int, list[int]] = {}
-    for customer_id, active, count in rows:
-        counts.setdefault(customer_id, [0, 0])[0 if active else 1] += count
+    for project_id, customer_id, archived_at, classification in rows:
+        if classification == TEAM_ONLY and not every and project_id not in joined:
+            continue
+        counts.setdefault(customer_id, [0, 0])[0 if archived_at is None else 1] += 1
     return {k: (v[0], v[1]) for k, v in counts.items()}
 
 
-def _summary(db: Session, customer: Customer, level: Visibility,
+def _summary(db: Session, keyring: Keyring, customer: Customer, level: Visibility,
              counts: dict[int, tuple[int, int]]) -> dict[str, Any]:
-    fields: dict[str, Any] = {"id": customer.id, "name": customer.name, "visibility": level}
+    details = keyring.details(customer)
+    fields: dict[str, Any] = {"id": customer.id, "name": details["name"], "visibility": level}
     if level != "names":
         active, archived = counts.get(customer.id, (0, 0))
         fields |= {"active_projects": active, "archived_projects": archived}
     if level == "full":
-        fields |= {"cvr": customer.cvr, "logo_url": _logo_url(db, customer.id)}
+        fields |= {"cvr": details["cvr"], "logo_url": _logo_url(db, customer.id)}
     return fields
 
 
@@ -228,36 +237,33 @@ def _assignable_ids(db: Session) -> list[int]:
 
 
 def sites_of(db: Session, sealer: Sealer, customer_id: int) -> list[SiteOut]:
-    sites = db.scalars(
-        select(CustomerSite).where(CustomerSite.customer_id == customer_id)
-        .order_by(CustomerSite.name)
-    )
-    return [SiteOut(id=s.id, name=s.name, **sealer.open("site", s.id, s.sealed)) for s in sites]
+    sites = db.scalars(select(CustomerSite).where(CustomerSite.customer_id == customer_id))
+    found = [SiteOut(id=s.id, **sealer.open("site", s.id, s.sealed)) for s in sites]
+    return sorted(found, key=lambda s: s.name.casefold())
 
 
 def contacts_of(db: Session, sealer: Sealer, customer_id: int) -> list[ContactOut]:
     contacts = db.scalars(
         select(CustomerContact).where(CustomerContact.customer_id == customer_id)
-        .order_by(CustomerContact.id)
     )
     found = [ContactOut(id=c.id, **sealer.open("contact", c.id, c.sealed)) for c in contacts]
     return sorted(found, key=lambda c: c.name.casefold())
 
 
-def _detail(db: Session, record: UserSession, customer: Customer,
+def _detail(db: Session, record: UserSession, keyring: Keyring, customer: Customer,
             level: Visibility) -> CustomerDetail:
-    summary = _summary(db, customer, level, _project_counts(db))
+    summary = _summary(db, keyring, customer, level, _project_counts(db, record.user_id))
     if level != "full":
         return CustomerDetail(**summary)
     roles = roles_of(db, record.user_id)
-    sealer = Sealer(customer)
+    sealer = keyring.sealer(customer)
     assigned = list(db.scalars(
         select(CustomerAssignment.user_id).where(CustomerAssignment.customer_id == customer.id)
     ))
     manage = may_manage(roles)
     return CustomerDetail(
         **summary,
-        address=sealer.open("customer", customer.id, customer.sealed)["address"],
+        address=keyring.details(customer)["address"],
         language=customer.language,
         retention_months=customer.retention_months,
         created_at=customer.created_at,
@@ -275,75 +281,75 @@ def _detail(db: Session, record: UserSession, customer: Customer,
 
 @router.get("")
 def list_customers(record: FullSession, db: DB, q: str = "") -> list[CustomerSummary]:
+    """The customers this person sees, by name; q searches names and CVR numbers.
+    Names are sealed, so the search runs here, over the opened ones."""
     sight = sights(roles_of(db, record.user_id))
     assigned = assigned_customer_ids(db, record.user_id)
-    query = select(Customer).order_by(Customer.name)
-    if q.strip():
-        pattern = f"%{q.strip()}%"
-        query = query.where(Customer.name.ilike(pattern) | Customer.cvr.ilike(pattern))
-    counts = _project_counts(db)
+    counts = _project_counts(db, record.user_id)
+    keyring = Keyring()
+    needle = q.strip().casefold().replace(" ", "")
     found = []
-    for customer in db.scalars(query):
+    for customer in db.scalars(select(Customer)):
         level = level_for(sight, customer.id in assigned)
-        if level is not None:
-            found.append(CustomerSummary(**_summary(db, customer, level, counts)))
-    return found
+        if level is None:
+            continue
+        summary = CustomerSummary(**_summary(db, keyring, customer, level, counts))
+        details = keyring.details(customer)
+        haystack = (details["name"] + " " + (details["cvr"] or "")).casefold().replace(" ", "")
+        if needle in haystack:
+            found.append(summary)
+    return sorted(found, key=lambda c: c.name.casefold())
 
 
 @router.post("")
 def create_customer(body: CustomerIn, request: Request, admin: Manager, db: DB) -> CustomerDetail:
     customer = Customer(
-        name=body.name.strip(), cvr=body.cvr, wrapped_key=b"", sealed=b"",
-        language=body.language, retention_months=body.retention_months,
-        created_at=clock.utcnow(), created_by=admin.user_id,
+        wrapped_key=b"", sealed=b"", language=body.language,
+        retention_months=body.retention_months, created_at=clock.utcnow(),
+        created_by=admin.user_id,
     )
     db.add(customer)
     db.flush()  # the key is bound to the customer's ID
-    give_new_key(customer)
-    customer.sealed = Sealer(customer).seal(
-        "customer", customer.id, {"address": body.address.strip()}
-    )
-    _log(db, request, admin, "customer.created", customer.id, {"name": customer.name})
+    keyring = Keyring()
+    customer.sealed = keyring.give_new_key(customer).seal("customer", customer.id, {
+        "name": body.name.strip(), "cvr": body.cvr, "address": body.address.strip(),
+    })
+    _log(db, request, admin, "customer.created", customer.id)
     db.commit()
-    return _detail(db, admin, customer, "full")
+    return _detail(db, admin, keyring, customer, "full")
 
 
 @router.get("/{customer_id}")
 def get_customer(customer_id: int, request: Request, record: FullSession, db: DB
                  ) -> CustomerDetail:
     customer, level = visible_customer(db, request, record, customer_id, need="names")
-    return _detail(db, record, customer, level)
+    return _detail(db, record, Keyring(), customer, level)
 
 
 @router.patch("/{customer_id}")
 def update_customer(customer_id: int, body: CustomerUpdate, request: Request, admin: Manager,
                     db: DB) -> CustomerDetail:
     customer, _ = visible_customer(db, request, admin, customer_id)
+    keyring = Keyring()
+    details = dict(keyring.details(customer))
     changed: list[str] = []
-    details: dict[str, object] = {}
-    sent = body.model_fields_set
-    if body.name is not None and body.name.strip() != customer.name:
-        details["name"] = [customer.name, body.name.strip()]
-        customer.name = body.name.strip()
-        changed.append("name")
-    if "cvr" in sent and body.cvr != customer.cvr:
-        customer.cvr = body.cvr
-        changed.append("cvr")
+    wanted = {
+        "name": body.name.strip() if body.name is not None else details["name"],
+        "cvr": body.cvr if "cvr" in body.model_fields_set else details["cvr"],
+        "address": body.address.strip() if body.address is not None else details["address"],
+    }
+    if wanted != details:
+        changed += sorted(name for name in wanted if wanted[name] != details[name])
+        customer.sealed = keyring.sealer(customer).seal("customer", customer.id, wanted)
     for field in ("language", "retention_months"):
         value = getattr(body, field)
         if value is not None and value != getattr(customer, field):
             setattr(customer, field, value)
             changed.append(field)
-    if body.address is not None:
-        sealer = Sealer(customer)
-        address = body.address.strip()
-        if sealer.open("customer", customer.id, customer.sealed)["address"] != address:
-            customer.sealed = sealer.seal("customer", customer.id, {"address": address})
-            changed.append("address")
     if changed:
-        _log(db, request, admin, "customer.updated", customer.id, {"fields": changed, **details})
+        _log(db, request, admin, "customer.updated", customer.id, {"fields": changed})
     db.commit()
-    return _detail(db, admin, customer, "full")
+    return _detail(db, admin, keyring, customer, "full")
 
 
 @router.delete("/{customer_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -352,7 +358,7 @@ def delete_customer(customer_id: int, body: Annotated[DeleteRequest, Body()], re
     """Delete a customer and everything under it. Its key goes with it, so whatever
     was sealed with it is unreadable from then on (crypto-shredding)."""
     customer, _ = visible_customer(db, request, admin, customer_id)
-    if body.confirm_name.strip() != customer.name:
+    if body.confirm_name.strip() != Keyring().name(customer):
         raise HTTPException(status.HTTP_400_BAD_REQUEST,
                             "Type the customer's name exactly to confirm.")
     require_step_up(admin)
@@ -360,25 +366,11 @@ def delete_customer(customer_id: int, body: Annotated[DeleteRequest, Body()], re
                          .where(Project.customer_id == customer.id)) or 0
     remove_image(db, logo_key(customer.id))
     db.delete(customer)
-    _log(db, request, admin, "customer.deleted", customer_id,
-         {"name": customer.name, "projects": projects})
+    _log(db, request, admin, "customer.deleted", customer_id, {"projects": projects})
     db.commit()
 
 
-# Sites and contacts
-
-
-@router.post("/{customer_id}/sites")
-def add_site(customer_id: int, body: SiteIn, request: Request, admin: Manager, db: DB
-             ) -> CustomerDetail:
-    customer, _ = visible_customer(db, request, admin, customer_id)
-    site = CustomerSite(customer_id=customer.id, name=body.name.strip(), sealed=b"")
-    db.add(site)
-    db.flush()
-    site.sealed = Sealer(customer).seal("site", site.id, {"address": body.address.strip()})
-    _log(db, request, admin, "customer.site_added", customer.id, {"site": site.id})
-    db.commit()
-    return _detail(db, admin, customer, "full")
+# Sites and contacts. Both are sealed; the audit log names them by ID only.
 
 
 def _site(db: Session, customer: Customer, site_id: int) -> CustomerSite:
@@ -388,16 +380,34 @@ def _site(db: Session, customer: Customer, site_id: int) -> CustomerSite:
     return site
 
 
+def _site_fields(body: SiteIn) -> dict[str, str]:
+    return {"name": body.name.strip(), "address": body.address.strip()}
+
+
+@router.post("/{customer_id}/sites")
+def add_site(customer_id: int, body: SiteIn, request: Request, admin: Manager, db: DB
+             ) -> CustomerDetail:
+    customer, _ = visible_customer(db, request, admin, customer_id)
+    keyring = Keyring()
+    site = CustomerSite(customer_id=customer.id, sealed=b"")
+    db.add(site)
+    db.flush()
+    site.sealed = keyring.sealer(customer).seal("site", site.id, _site_fields(body))
+    _log(db, request, admin, "customer.site_added", customer.id, {"site": site.id})
+    db.commit()
+    return _detail(db, admin, keyring, customer, "full")
+
+
 @router.put("/{customer_id}/sites/{site_id}")
 def update_site(customer_id: int, site_id: int, body: SiteIn, request: Request, admin: Manager,
                 db: DB) -> CustomerDetail:
     customer, _ = visible_customer(db, request, admin, customer_id)
+    keyring = Keyring()
     site = _site(db, customer, site_id)
-    site.name = body.name.strip()
-    site.sealed = Sealer(customer).seal("site", site.id, {"address": body.address.strip()})
+    site.sealed = keyring.sealer(customer).seal("site", site.id, _site_fields(body))
     _log(db, request, admin, "customer.site_changed", customer.id, {"site": site.id})
     db.commit()
-    return _detail(db, admin, customer, "full")
+    return _detail(db, admin, keyring, customer, "full")
 
 
 @router.delete("/{customer_id}/sites/{site_id}")
@@ -407,7 +417,7 @@ def remove_site(customer_id: int, site_id: int, request: Request, admin: Manager
     db.delete(_site(db, customer, site_id))
     _log(db, request, admin, "customer.site_removed", customer.id, {"site": site_id})
     db.commit()
-    return _detail(db, admin, customer, "full")
+    return _detail(db, admin, Keyring(), customer, "full")
 
 
 def _contact(db: Session, customer: Customer, contact_id: int) -> CustomerContact:
@@ -421,32 +431,30 @@ def _contact_fields(body: ContactIn) -> dict[str, str]:
     return {name: getattr(body, name).strip() for name in ("name", "role", "email", "phone")}
 
 
-# Contacts are personal data: the audit log names them by ID only, so deleting the
-# customer leaves nothing about them behind.
-
-
 @router.post("/{customer_id}/contacts")
 def add_contact(customer_id: int, body: ContactIn, request: Request, admin: Manager, db: DB
                 ) -> CustomerDetail:
     customer, _ = visible_customer(db, request, admin, customer_id)
+    keyring = Keyring()
     contact = CustomerContact(customer_id=customer.id, sealed=b"")
     db.add(contact)
     db.flush()
-    contact.sealed = Sealer(customer).seal("contact", contact.id, _contact_fields(body))
+    contact.sealed = keyring.sealer(customer).seal("contact", contact.id, _contact_fields(body))
     _log(db, request, admin, "customer.contact_added", customer.id, {"contact": contact.id})
     db.commit()
-    return _detail(db, admin, customer, "full")
+    return _detail(db, admin, keyring, customer, "full")
 
 
 @router.put("/{customer_id}/contacts/{contact_id}")
 def update_contact(customer_id: int, contact_id: int, body: ContactIn, request: Request,
                    admin: Manager, db: DB) -> CustomerDetail:
     customer, _ = visible_customer(db, request, admin, customer_id)
+    keyring = Keyring()
     contact = _contact(db, customer, contact_id)
-    contact.sealed = Sealer(customer).seal("contact", contact.id, _contact_fields(body))
+    contact.sealed = keyring.sealer(customer).seal("contact", contact.id, _contact_fields(body))
     _log(db, request, admin, "customer.contact_changed", customer.id, {"contact": contact.id})
     db.commit()
-    return _detail(db, admin, customer, "full")
+    return _detail(db, admin, keyring, customer, "full")
 
 
 @router.delete("/{customer_id}/contacts/{contact_id}")
@@ -456,7 +464,7 @@ def remove_contact(customer_id: int, contact_id: int, request: Request, admin: M
     db.delete(_contact(db, customer, contact_id))
     _log(db, request, admin, "customer.contact_removed", customer.id, {"contact": contact_id})
     db.commit()
-    return _detail(db, admin, customer, "full")
+    return _detail(db, admin, Keyring(), customer, "full")
 
 
 # Who's assigned
@@ -489,7 +497,7 @@ def set_assignments(customer_id: int, body: Assignments, request: Request, admin
         for user_id in sorted(ids):
             _log(db, request, admin, action, customer.id, {"user": usernames.get(user_id)})
     db.commit()
-    return _detail(db, admin, customer, "full")
+    return _detail(db, admin, Keyring(), customer, "full")
 
 
 # Logo
@@ -508,7 +516,7 @@ def upload_logo(
     store_image(db, logo_key(customer.id), png)
     _log(db, request, admin, "customer.logo_changed", customer.id)
     db.commit()
-    return _detail(db, admin, customer, "full")
+    return _detail(db, admin, Keyring(), customer, "full")
 
 
 @router.delete("/{customer_id}/logo")
@@ -517,7 +525,7 @@ def remove_logo(customer_id: int, request: Request, admin: Manager, db: DB) -> C
     if remove_image(db, logo_key(customer.id)):
         _log(db, request, admin, "customer.logo_removed", customer.id)
     db.commit()
-    return _detail(db, admin, customer, "full")
+    return _detail(db, admin, Keyring(), customer, "full")
 
 
 @router.get("/{customer_id}/logo")

@@ -1,16 +1,20 @@
 """Projects: a customer's piece of work, which holds its reports.
 
-Each gets a number of its own, P-<year>-<sequence>, never reused. Archiving a
-project makes it, and later its reports, read-only; retention periods count from
-the archive date.
+Each gets a number of its own, P-<year>-<sequence>, never reused. Its name and
+dates are sealed with the customer's key. Archiving a project makes it, and
+later its reports, read-only; retention periods count from the archive date.
+
+Everyone who sees a customer fully sees its projects, except a TLP:RED one:
+that's for Administrators and the project's team only (the responsible
+technician and the people added to it).
 """
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import datetime
 from typing import Literal
 
-from sqlalchemy import Date, ForeignKey, String, select
+from sqlalchemy import ForeignKey, LargeBinary, String, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app import clock
@@ -20,6 +24,8 @@ from app.policy import Setting
 # Traffic Light Protocol 2.0 labels, printed on every page of a report.
 Classification = Literal["TLP:CLEAR", "TLP:GREEN", "TLP:AMBER", "TLP:AMBER+STRICT", "TLP:RED"]
 DEFAULT_CLASSIFICATION: Classification = "TLP:AMBER"
+# Shared only with the people it was given to: the project's team.
+TEAM_ONLY = "TLP:RED"
 
 
 class Project(Base):
@@ -31,9 +37,8 @@ class Project(Base):
         ForeignKey("customers.id", ondelete="CASCADE"), index=True
     )
     number: Mapped[str] = mapped_column(String(20), unique=True)
-    name: Mapped[str] = mapped_column(String(200))
-    start_date: Mapped[date | None] = mapped_column(Date)
-    end_date: Mapped[date | None] = mapped_column(Date)
+    # {"name", "start_date", "end_date"}, sealed with the customer's key.
+    sealed: Mapped[bytes] = mapped_column(LargeBinary)
     responsible_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL")
     )
@@ -56,6 +61,48 @@ class ProjectSite(Base):
     site_id: Mapped[int] = mapped_column(
         ForeignKey("customer_sites.id", ondelete="CASCADE"), primary_key=True, index=True
     )
+
+
+class ProjectMember(Base):
+    """Someone added to a project's team, besides its responsible technician."""
+
+    __tablename__ = "project_members"
+
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, index=True
+    )
+    added_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    added_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+
+def member_ids(db: Session, project_id: int) -> set[int]:
+    return set(db.scalars(
+        select(ProjectMember.user_id).where(ProjectMember.project_id == project_id)
+    ))
+
+
+def team_ids(db: Session, project: Project) -> set[int]:
+    """The responsible technician and everyone added to the project."""
+    team = member_ids(db, project.id)
+    if project.responsible_id is not None:
+        team.add(project.responsible_id)
+    return team
+
+
+def projects_joined(db: Session, user_id: int) -> set[int]:
+    """Projects someone is on the team of, as member or responsible."""
+    joined = set(db.scalars(
+        select(ProjectMember.project_id).where(ProjectMember.user_id == user_id)
+    ))
+    joined |= set(db.scalars(select(Project.id).where(Project.responsible_id == user_id)))
+    return joined
+
+
+def on_team_only(project: Project) -> bool:
+    return project.classification == TEAM_ONLY
 
 
 def next_number(db: Session) -> str:
