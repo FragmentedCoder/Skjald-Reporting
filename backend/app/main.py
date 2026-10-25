@@ -7,6 +7,7 @@ from app import (
     account,
     admin,
     audit_routes,
+    backup_routes,
     branding,
     customer_routes,
     maintenance,
@@ -45,5 +46,6 @@ app.include_router(admin.router, prefix="/api")
 app.include_router(maintenance.router, prefix="/api")
 app.include_router(branding.router, prefix="/api")
 app.include_router(audit_routes.router, prefix="/api")
+app.include_router(backup_routes.router, prefix="/api")
 app.include_router(customer_routes.router, prefix="/api")
 app.include_router(project_routes.router, prefix="/api")

@@ -56,6 +56,9 @@ services:
     volumes:
       - skjald_data:/data
       - /etc/skjald:/etc/skjald:ro
+      # Backups kept on this server: a volume by default, or a folder on the host
+      # (owned by UID 10001) when SKJALD_BACKUP_DIR names one, such as a mounted disk.
+      - ${SKJALD_BACKUP_DIR:-skjald_backups}:/backups
     depends_on:
       - app
 
@@ -63,3 +66,4 @@ volumes:
   caddy_data:
   caddy_config:
   skjald_data:
+  skjald_backups:

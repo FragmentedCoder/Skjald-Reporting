@@ -138,3 +138,27 @@ def test_the_worker_waits_for_an_up_to_date_schema(engine, data_dir, master_key_
     upgrade(older, "0011")
     assert not is_current(older)
     older.dispose()
+
+
+def test_the_worker_runs_jobs_in_a_process_of_its_own(engine, data_dir, master_key_path) -> None:
+    """The worker loads no routes, so it must load every table itself: a job links
+    to a user, and that link has to resolve there too."""
+    import subprocess
+    import sys
+
+    script = """
+from sqlalchemy.orm import Session
+import app.worker
+import app.backups
+from app import clock, jobs
+from app.db import get_engine
+with Session(get_engine()) as db:
+    jobs.queue_due(db, clock.utcnow())
+    print(jobs.run_one(db).state)
+"""
+    done = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, timeout=120,
+        env={"PATH": "/usr/local/bin:/usr/bin:/bin", "SKJALD_DATA_DIR": str(data_dir),
+             "SKJALD_MASTER_KEY_PATH": str(master_key_path)})
+    assert done.returncode == 0, done.stderr[-2000:]
+    assert done.stdout.strip() in {"done", "queued", "failed"}

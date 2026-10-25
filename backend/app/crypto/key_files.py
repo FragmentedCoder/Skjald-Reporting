@@ -12,6 +12,7 @@ from app.crypto.keys import generate_key, load_master_key, unwrap_key, wrap_key
 
 DATABASE_KEY_CONTEXT = b"skjald/database-key"
 BACKUP_KEY_CONTEXT = b"skjald/backup-key"
+CONFIG_KEY_CONTEXT = b"skjald/config-key"
 
 
 def load_or_create_wrapped_key(
@@ -35,6 +36,13 @@ def load_or_create_backup_key(data_dir: str | Path, master_key_path: str | Path)
     since the wrapped copy is inside the encrypted backups themselves."""
     return load_or_create_wrapped_key(
         Path(data_dir) / "backup.key.enc", master_key_path, BACKUP_KEY_CONTEXT
+    )
+
+
+def load_or_create_config_key(data_dir: str | Path, master_key_path: str | Path) -> bytes:
+    """The key that seals secrets in settings, such as a backup target's password."""
+    return load_or_create_wrapped_key(
+        Path(data_dir) / "config.key.enc", master_key_path, CONFIG_KEY_CONTEXT
     )
 
 

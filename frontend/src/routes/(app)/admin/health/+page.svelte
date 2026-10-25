@@ -52,6 +52,8 @@
     { key: "disk", label: "Disk space" },
     { key: "breach_check", label: "Breached-password check" },
     { key: "worker", label: "Background worker" },
+    { key: "backups", label: "Backups" },
+    { key: "restore_test", label: "Restore test" },
     { key: "clock", label: "Clock" },
   ];
   const PILLS: Record<Status, { tone: "ok" | "warning" | "critical" | "neutral"; text: string }> = {

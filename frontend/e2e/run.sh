@@ -51,6 +51,7 @@ with Session(get_engine()) as db:
         ("e2e-tech", "Tor Tekniker", Role.TECHNICIAN),
         ("e2e-manager", "Maja Manager", Role.MANAGER),
         ("e2e-reviewer", "Rikke Reviewer", Role.REVIEWER),
+        ("e2e-keeper", "Kari Keeper", Role.ADMINISTRATOR),
         ("e2e-mette", "Mette Madsen", Role.ADMINISTRATOR),
         ("e2e-bob", "Bob Bager", Role.TECHNICIAN),
     ):

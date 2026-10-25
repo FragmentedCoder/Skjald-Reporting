@@ -17,6 +17,9 @@ from types import FrameType
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
+# Every table, so links between them resolve in this process too (the API loads
+# them through its routes; the worker has none).
+import app.models  # noqa: F401
 from app import clock, jobs
 from app.db import get_engine
 from app.migrate import is_current
@@ -49,6 +52,9 @@ def _prune_jobs(db: Session, job: jobs.Job) -> dict[str, object]:
 
 
 def main() -> None:
+    # Modules whose jobs the worker runs register them when imported.
+    import app.backups  # noqa: F401
+
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     engine = get_engine()

@@ -133,7 +133,8 @@ def test_the_health_page_checks_everything_that_matters(client, admin, reachable
     _, headers = admin
     health = client.get("/api/admin/health", headers=headers).json()
     checks = health_checks(client, headers)
-    assert set(checks) == {"database", "audit_chain", "keys", "disk", "breach_check", "worker"}
+    assert set(checks) == {"database", "audit_chain", "keys", "disk", "breach_check", "worker",
+                           "backups", "restore_test"}
     assert checks["database"]["status"] == "ok"
     assert checks["audit_chain"]["status"] == "ok"
     assert checks["audit_chain"]["detail"].startswith("Chain intact")

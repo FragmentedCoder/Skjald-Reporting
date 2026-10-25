@@ -19,6 +19,7 @@
   import Shield from "@lucide/svelte/icons/shield-check";
   import Building from "@lucide/svelte/icons/building";
   import ChevronDown from "@lucide/svelte/icons/chevron-down";
+  import DatabaseBackup from "@lucide/svelte/icons/database-backup";
   import Sun from "@lucide/svelte/icons/sun";
   import Users from "@lucide/svelte/icons/users";
   import UsersRound from "@lucide/svelte/icons/users-round";
@@ -131,13 +132,14 @@
 
   const adminItems = $derived.by((): Item[] => {
     const items: Item[] = [];
-    const add = (route: `/(app)/admin/${"users" | "security" | "branding" | "health" | "audit"}`,
+    const add = (route: `/(app)/admin/${"users" | "security" | "branding" | "backups" | "health" | "audit"}`,
                  label: string, icon: Item["icon"]) =>
       items.push({ href: resolve(route), label, icon, current: path.startsWith(resolve(route)) });
     if (can(current, "administer")) {
       add("/(app)/admin/users", "Users", Users);
       add("/(app)/admin/security", "Security", Shield);
       add("/(app)/admin/branding", "Branding", Palette);
+      add("/(app)/admin/backups", "Backups", DatabaseBackup);
       add("/(app)/admin/health", "Server health", HeartPulse);
     }
     if (can(current, "read_audit_log")) add("/(app)/admin/audit", "Audit log", ScrollText);

@@ -96,7 +96,9 @@ def require_recent_confirmation(record: UserSession) -> None:
         )
 
 
-def require_step_up(record: UserSession) -> None:
+def require_step_up(
+    record: UserSession, message: str = "Confirm it's you to lower security settings."
+) -> None:
     """Refuse unless the person confirmed it's them just now, for this change.
 
     Signing in doesn't count, and the confirmation is used up: lowering security
@@ -104,11 +106,7 @@ def require_step_up(record: UserSession) -> None:
     """
     confirmed = record.step_up_at
     if confirmed is None or clock.utcnow() - confirmed > STEP_UP_WINDOW:
-        raise refuse(
-            status.HTTP_403_FORBIDDEN,
-            "Confirm it's you to lower security settings.",
-            "step_up_required",
-        )
+        raise refuse(status.HTTP_403_FORBIDDEN, message, "step_up_required")
     record.step_up_at = None
 
 

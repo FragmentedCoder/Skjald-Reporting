@@ -21,12 +21,13 @@ from pydantic import BaseModel
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
-from app import audit, clock, worker
+from app import audit, clock, jobs, worker
 from app.admin import Admin
 from app.audit import AuditEntry
 from app.auth import pwned
 from app.auth.dependencies import DB
 from app.auth.sessions import UserSession
+from app.backups import Target, load_target
 from app.db import check_integrity, engine_of, reading
 from app.images import StoredImage
 from app.jobs import Job
@@ -194,6 +195,69 @@ def _run_worker(db: Session) -> Check:
     return _worker_check(worker.last_beat(db), failed, now)
 
 
+TARGET_NAMES = {"local": "this server", "smb": "the SMB share", "s3": "S3-compatible storage"}
+
+
+def _ago(moment: datetime, now: datetime) -> str:
+    hours = int((now - moment).total_seconds() // 3600)
+    if hours < 1:
+        return "less than an hour ago"
+    if hours < 48:
+        return f"{hours} hour{'s' if hours != 1 else ''} ago"
+    return f"{hours // 24} days ago"
+
+
+def _backups_check(target: Target, done: Job | None, failed: Job | None,
+                   now: datetime) -> Check:
+    label = "Backups"
+    if target.kind == "off":
+        return Check(key="backups", label=label, status="warning",
+                     detail="Switched off in Backups: nothing is being backed up.")
+    if failed is not None and (done is None or (failed.finished_at or now) > (
+            done.finished_at or now)):
+        return Check(key="backups", label=label, status="problem",
+                     detail=f"The last backup failed: {failed.error or 'no reason given'}")
+    if done is None or done.finished_at is None:
+        return Check(key="backups", label=label, status="warning", detail="No backup yet.")
+    age = now - done.finished_at
+    where = TARGET_NAMES[target.kind]
+    detail = f"Backed up {_ago(done.finished_at, now)} to {where}."
+    if age > timedelta(days=2):
+        return Check(key="backups", label=label, status="problem", detail=detail)
+    if age > timedelta(hours=26):
+        return Check(key="backups", label=label, status="warning", detail=detail)
+    if target.kind == "local":
+        return Check(key="backups", label=label, status="warning", detail=detail + (
+            " A backup on the same server doesn't survive losing it: keep one on an SMB "
+            "share or S3-compatible storage."))
+    return Check(key="backups", label=label, status="ok", detail=detail)
+
+
+def _restore_test_check(last: Job | None, now: datetime) -> Check:
+    label = "Restore test"
+    if last is None or last.finished_at is None:
+        return Check(key="restore_test", label=label, status="warning",
+                     detail="Not tested yet. The worker tests one a week, after a backup.")
+    if last.state == "failed":
+        return Check(key="restore_test", label=label, status="problem",
+                     detail=f"The last restore test failed: {last.error or 'no reason given'}")
+    entries = (last.outcome() or {}).get("audit_entries", 0)
+    detail = (f"Restored and checked {_ago(last.finished_at, now)}: the database, and "
+              f"{entries:,} audit log entries.")
+    if now - last.finished_at > timedelta(days=8):
+        return Check(key="restore_test", label=label, status="warning", detail=detail)
+    return Check(key="restore_test", label=label, status="ok", detail=detail)
+
+
+def _run_backups(db: Session) -> Check:
+    return _backups_check(load_target(db), jobs.latest(db, "backup", "done"),
+                          jobs.latest(db, "backup", "failed"), clock.utcnow())
+
+
+def _run_restore_test(db: Session) -> Check:
+    return _restore_test_check(jobs.latest(db, "restore_test", "done", "failed"), clock.utcnow())
+
+
 def _run_database(db: Session) -> Check:
     db.commit()  # the check reads every page: hold no write lock meanwhile
     return _database_check(check_integrity(engine_of(db)))
@@ -229,6 +293,8 @@ CHECKS: dict[str, Callable[[Session], Check]] = {
     "disk": _run_disk,
     "breach_check": _run_breach_check,
     "worker": _run_worker,
+    "backups": _run_backups,
+    "restore_test": _run_restore_test,
 }
 
 
