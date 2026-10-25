@@ -1,10 +1,11 @@
 {
-	# Caddy's own CA for development; replace with a real certificate for production (see docs/architecture.md, D8).
 	auto_https disable_redirects
 }
 
 {$SKJALD_ADDRESS:https://localhost} {
-	tls internal
+	# Caddy's own certificate authority, the organisation's certificate, or Let's
+	# Encrypt: chosen in Skjald (Admin -> Certificate), put here by caddy-start.sh.
+	import /etc/caddy/active-tls.caddy
 
 	header {
 		Strict-Transport-Security "max-age=31536000"
@@ -32,6 +33,16 @@
 				read_timeout 60s
 			}
 		}
+	}
+
+	# The root certificate of Caddy's own authority, for computers to trust. Only
+	# that one file: the folder also holds the authority's keys.
+	handle /skjald-root.crt {
+		root * /data/caddy/pki/authorities/local
+		rewrite * /root.crt
+		header Content-Type application/x-x509-ca-cert
+		header Content-Disposition "attachment; filename=\"skjald-root.crt\""
+		file_server
 	}
 
 	handle {

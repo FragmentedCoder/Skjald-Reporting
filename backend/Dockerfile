@@ -34,13 +34,14 @@ COPY app ./app
 RUN pip install --no-cache-dir .
 
 # /backups: where backups go when the target is this server (a volume, or a folder
-# on the host set by SKJALD_BACKUP_DIR).
-RUN mkdir -p /data /backups && chown skjald:skjald /data /backups
+# on the host set by SKJALD_BACKUP_DIR). /tls: the TLS settings the app gives Caddy.
+RUN mkdir -p /data /backups /tls && chown skjald:skjald /data /backups /tls
 
 USER skjald
 EXPOSE 8000
 
 # Trust X-Forwarded-For from any peer: the app port is published to nobody but Caddy
 # on the internal network, and Caddy replaces the header for untrusted clients.
-# app.setup prints a fresh setup token to the log while setup is pending.
-CMD ["sh", "-c", "python -m app.migrate && python -m app.setup && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips '*'"]
+# app.setup prints a fresh setup token to the log while setup is pending; app.tls
+# gives Caddy the TLS settings that are saved.
+CMD ["sh", "-c", "python -m app.migrate && python -m app.setup && python -m app.tls && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips '*'"]
