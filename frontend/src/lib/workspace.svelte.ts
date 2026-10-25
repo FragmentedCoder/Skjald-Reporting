@@ -13,7 +13,11 @@ export const workspace = $state<{
   customerId: number | null;
   projects: ProjectSummary[] | null;
   project: ProjectSummary | null;
-}>({ customers: null, customerId: null, projects: null, project: null });
+  // Goes up on every refresh, so open pages can check they're still allowed.
+  checks: number;
+}>({ customers: null, customerId: null, projects: null, project: null, checks: 0 });
+
+let lastRefresh = 0;
 
 export function openCustomer(): CustomerSummary | null {
   return workspace.customers?.find((c) => c.id === workspace.customerId) ?? null;
@@ -47,10 +51,41 @@ async function loadProjects(): Promise<void> {
 
 /** Fetch the customers again (names, counts) and the open one's projects. */
 export async function refreshWorkspace(): Promise<void> {
-  workspace.customers = await api<CustomerSummary[]>("GET", "/customers").catch(() => []);
+  lastRefresh = Date.now();
+  const found = await api<CustomerSummary[]>("GET", "/customers").catch(() => null);
+  // A failed request (offline, signed out) keeps what's there rather than emptying it.
+  if (found === null && workspace.customers !== null) return;
+  workspace.customers = found ?? [];
   if (workspace.customerId === null) workspace.customerId = remembered();
   if (workspace.customerId !== null && !openCustomer()) workspace.customerId = null;
   await loadProjects();
+  workspace.checks++;
+}
+
+/** Refresh unless that happened in the last few seconds (as on every page change). */
+export function refreshSoon(): void {
+  if (Date.now() - lastRefresh > 15_000) void refreshWorkspace();
+}
+
+/**
+ * Notice access that changed while the app is open (someone unassigned you, a
+ * customer was deleted): refresh every minute while the page is in view, and on
+ * coming back to it. Returns the function that stops watching.
+ */
+export function watchWorkspace(): () => void {
+  const visible = () => {
+    if (document.visibilityState === "visible") refreshSoon();
+  };
+  const timer = setInterval(() => {
+    if (document.visibilityState === "visible") void refreshWorkspace();
+  }, 60_000);
+  document.addEventListener("visibilitychange", visible);
+  window.addEventListener("focus", visible);
+  return () => {
+    clearInterval(timer);
+    document.removeEventListener("visibilitychange", visible);
+    window.removeEventListener("focus", visible);
+  };
 }
 
 /** Open a customer in the menu, and one of its projects (and remember the customer). */

@@ -10,7 +10,7 @@
   import type { CustomerDetail } from "#lib/customers.js";
   import { withStepUp } from "#lib/stepUp.svelte.js";
   import { toast } from "#lib/toast.svelte.js";
-  import { clearWorkspace, refreshWorkspace } from "#lib/workspace.svelte.js";
+  import { refreshWorkspace } from "#lib/workspace.svelte.js";
 
   // The customer's own details and logo, for Managers and Administrators; deleting
   // it, for Administrators only.
@@ -64,9 +64,9 @@
     try {
       await withStepUp(() => api("DELETE", `/customers/${customer?.id}`, { confirm_name: deleteName }));
       toast(`${customer?.name} is deleted, and its key with it.`, "ok");
-      clearWorkspace();
-      await refreshWorkspace();
+      // Away from its pages first, so they don't take it for lost access.
       await goto(resolve("/(app)/customers"));
+      await refreshWorkspace();
     } catch (e) {
       if (e instanceof ApiError && e.reason === "step_up_cancelled") return;
       if (!sessionGone(e)) deleteError = e instanceof ApiError ? e.message : "The customer could not be deleted.";

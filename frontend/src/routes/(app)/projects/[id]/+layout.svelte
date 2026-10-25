@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { goto } from "$app/navigation";
   import { resolve } from "$app/paths";
   import { page } from "$app/state";
   import Archive from "@lucide/svelte/icons/archive";
@@ -13,7 +14,7 @@
   import { classificationTone, type CustomerDetail, type ProjectDetail } from "#lib/customers.js";
   import { dateTime } from "#lib/format.js";
   import { toast } from "#lib/toast.svelte.js";
-  import { chooseCustomer, refreshWorkspace } from "#lib/workspace.svelte.js";
+  import { chooseCustomer, refreshWorkspace, workspace } from "#lib/workspace.svelte.js";
 
   // A project's pages share this: the project, its header with archiving, and the
   // side menu opened on its customer and on it. Those who may change the project
@@ -30,15 +31,49 @@
   const customerId = $derived(project?.customer.id);
   const editable = $derived(project?.may_edit ?? false);
 
+  let leaving = false;
+  let checked = workspace.checks;
+
+  // Access that ends while the project is open (you're taken off its team or
+  // the customer, it's deleted): back to its customer, or to your customers.
+  async function lost(name: string) {
+    if (leaving) return;
+    leaving = true;
+    toast(`You no longer have access to ${name}.`, "warning", { key: "access" });
+    const customerId = project?.customer.id;
+    await refreshWorkspace();
+    const back = workspace.customers?.find((c) => c.id === customerId && c.visibility === "full");
+    await goto(back
+      ? resolve("/(app)/customers/[id]", { id: String(back.id) })
+      : resolve("/(app)/customers"), { replace: true });
+  }
+
   async function load() {
+    const known = project?.id === Number(id) ? project.name : null;
     try {
       project = await api<ProjectDetail>("GET", `/projects/${id}`);
       error = null;
     } catch (e) {
+      if (e instanceof ApiError && e.status === 404 && known) {
+        void lost(known);
+        return;
+      }
       project = null;
       if (!sessionGone(e)) error = e instanceof ApiError ? e.message : "Not found.";
     }
   }
+
+  // Each time the menu refreshes, check the project is still yours to open. Only
+  // a refusal counts: the page keeps what it has, so nothing being typed is lost.
+  $effect(() => {
+    const now = workspace.checks;
+    if (now === checked || !project) return;
+    checked = now;
+    const name = project.name;
+    api("GET", `/projects/${id}`).catch((e) => {
+      if (e instanceof ApiError && e.status === 404) void lost(name);
+    });
+  });
 
   shareProject({
     get current() {
@@ -68,6 +103,7 @@
 
   $effect(() => {
     void id;
+    leaving = false;
     void load();
   });
 
