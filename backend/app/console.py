@@ -169,8 +169,8 @@ def rotate_master_key() -> int:
         engine.dispose()
     print(
         f"The master key is replaced: {rotated.old_id} -> {rotated.new_id}. The database, "
-        f"backup and config keys and {rotated.customer_keys} customer keys are wrapped "
-        "with the new one.\n\n"
+        f"backup and config keys and {rotated.customer_keys} customer "
+        f"key{'' if rotated.customer_keys == 1 else 's'} are wrapped with the new one.\n\n"
         "The new master key, for the recovery kit (put it in place of the old one):\n\n"
         f"    {to_kit_text(rotated.new_key)}\n\n"
         f"Keep the old master key ({rotated.old_id}) with the kit until the backups made "

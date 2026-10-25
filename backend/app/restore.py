@@ -31,6 +31,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import clock
@@ -47,10 +48,27 @@ from app.backups import (
 from app.crypto.keys import from_kit_text, load_master_key
 from app.crypto.rotation import key_id, opens, rewrap_restored
 from app.db import make_engine
+from app.jobs import Job
 from app.sealed_settings import load_secrets
 from app.settings import settings
 
 DATA_FILES = ("skjald.db", "skjald.db-wal", "skjald.db-shm", *KEY_FILES)
+
+
+def _settle_jobs(folder: Path) -> None:
+    """Jobs the copy shows running were running when the backup was made (the backup
+    itself, at least). Nothing runs them after a restore, so they're marked failed:
+    left running, they'd look busy forever and keep the same job from being asked
+    for again."""
+    engine = make_engine(folder, settings.master_key_path)
+    try:
+        with Session(engine) as db:
+            for job in db.scalars(select(Job).where(Job.state == "running")):
+                job.state, job.finished_at = "failed", clock.utcnow()
+                job.error = "It was running when the backup was made; the restore ended it."
+            db.commit()
+    finally:
+        engine.dispose()
 
 
 # Asked for the master key a backup was made under (named by its ID, if the backup
@@ -77,6 +95,7 @@ def restore(env: dict[str, str], snapshot: str, data_dir: Path,
                 raise BackupError("That master key doesn't open this backup either.")
             rewrap_restored(restored, old, settings.master_key_path)
         found = check_restored(restored)
+        _settle_jobs(restored)
         kept = data_dir / f".before-restore-{clock.utcnow().strftime('%Y%m%dT%H%M%SZ')}"
         kept.mkdir(mode=0o700)
         for name in DATA_FILES:
@@ -134,7 +153,7 @@ def main(argv: list[str] | None = None) -> int:
 
     def ask(made_under: str | None) -> bytes:
         print(f"This backup was made under master key {made_under or 'an earlier one'}, "
-              f"not this server's ({current}): the master key was rotated since.")
+              f"not this server's ({current}): the master key was rotated since.", flush=True)
         text = getpass.getpass("That master key, from the recovery kit kept then: ")
         try:
             return from_kit_text(text)
@@ -148,7 +167,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     print(f"Restored: schema {found['schema']}, {found['audit_entries']:,} audit log entries, "
           f"backed up {found['made_at']}. The data that was there is in {found['kept']}.")
-    print("Start Skjald again with: skjald start (or docker compose up -d)")
+    if not os.environ.get("SKJALD_COMMAND"):  # skjald restore starts it again itself
+        print("Start Skjald again with: skjald start (or docker compose up -d)")
     return 0
 
 

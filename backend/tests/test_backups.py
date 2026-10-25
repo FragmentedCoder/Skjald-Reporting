@@ -263,8 +263,11 @@ def test_a_restore_puts_the_backup_back_and_keeps_what_was_there(
     restored = make_engine(data_dir, master_key_path)
     with Session(restored) as db:
         usernames = set(db.scalars(select(User.username)))
+        # The copy was made while its own backup job ran; nothing runs it now.
+        own = db.scalar(select(jobs.Job).where(jobs.Job.kind == "backup"))
     restored.dispose()
     assert "before" in usernames and "after" not in usernames
+    assert own.state == "failed" and "the restore ended it" in own.error
 
 
 @needs_restic

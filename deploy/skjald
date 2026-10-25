@@ -10,8 +10,8 @@ SKJALD_HOME="${SKJALD_HOME:-/opt/skjald}"
 # Copies of the data from before each update, to roll back to; the newest few stay.
 ROLLBACK_DIR="${SKJALD_HOME}/rollback"
 KEEP_ROLLBACKS=3
-# How long Skjald may take to answer after starting (the first build takes longer).
-START_SECONDS=300
+# How long Skjald may take to answer after starting.
+START_SECONDS=${SKJALD_START_SECONDS:-300}
 
 log() { printf '==> %s\n' "$1"; }
 warn() { printf 'WARNING: %s\n' "$1" >&2; }
@@ -123,7 +123,10 @@ cmd_start() {
 
 # The data, copied aside with Skjald stopped, and put back.
 copy_data_to() {
-	compose run --rm --no-deps -T tools tar -C /data -czf - . >"$1.part"
+	(
+		umask 077 # encrypted, but no one else's business either
+		compose run --rm --no-deps -T tools tar -C /data -czf - . >"$1.part"
+	)
 	mv "$1.part" "$1"
 }
 
@@ -135,7 +138,7 @@ cmd_restore() {
 	log "Stopping Skjald for the restore."
 	compose stop app worker
 	local code=0
-	compose run --rm --no-deps worker python -m app.restore "$@" || code=$?
+	compose run --rm --no-deps -e SKJALD_COMMAND=1 worker python -m app.restore "$@" || code=$?
 	log "Starting Skjald again."
 	compose up -d
 	wait_until_up || true
