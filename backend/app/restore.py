@@ -8,9 +8,10 @@ It asks for the backup key from the recovery kit, restores the snapshot (the
 newest unless --snapshot says otherwise) into a scratch folder and checks it as
 the weekly restore test does. Only then does it move the current data aside, into
 a folder named for the time (nothing is deleted), and put the restored copy in
-its place. The restored database opens with the master key that made it: on a
-new server, put the recovery kit's master key in /etc/skjald/master.key first
-(the installer does it with --restore-master-key).
+its place. On a new server, put the recovery kit's master key in
+/etc/skjald/master.key first (the installer does it with --restore-master-key).
+A backup made before the master key was rotated asks for the master key it was
+made under, and the restored copy is moved to the server's current one.
 
 The target comes from Skjald's own settings when the database still opens;
 otherwise give --repository (such as /backups/restic, or an s3: or rclone:
@@ -22,9 +23,11 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import json
 import os
 import shutil
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -41,7 +44,8 @@ from app.backups import (
     password,
     restic,
 )
-from app.crypto.keys import from_kit_text
+from app.crypto.keys import from_kit_text, load_master_key
+from app.crypto.rotation import key_id, opens, rewrap_restored
 from app.db import make_engine
 from app.sealed_settings import load_secrets
 from app.settings import settings
@@ -49,7 +53,13 @@ from app.settings import settings
 DATA_FILES = ("skjald.db", "skjald.db-wal", "skjald.db-shm", *KEY_FILES)
 
 
-def restore(env: dict[str, str], snapshot: str, data_dir: Path) -> dict[str, Any]:
+# Asked for the master key a backup was made under (named by its ID, if the backup
+# says), when it isn't the server's own.
+OlderKey = Callable[[str | None], bytes]
+
+
+def restore(env: dict[str, str], snapshot: str, data_dir: Path,
+            older_key: OlderKey | None = None) -> dict[str, Any]:
     """Restore a snapshot into data_dir, keeping what was there in a folder beside it.
     Returns what the check found, and where the old data went."""
     scratch = data_dir / ".restore"
@@ -60,6 +70,12 @@ def restore(env: dict[str, str], snapshot: str, data_dir: Path) -> dict[str, Any
         if manifest is None:
             raise BackupError("That snapshot has no manifest; it isn't Skjald's.")
         restored = manifest.parent
+        made_under = json.loads(manifest.read_text()).get("master_key_id")
+        if older_key is not None and not opens(restored, load_master_key(settings.master_key_path)):
+            old = older_key(made_under)
+            if not opens(restored, old):
+                raise BackupError("That master key doesn't open this backup either.")
+            rewrap_restored(restored, old, settings.master_key_path)
         found = check_restored(restored)
         kept = data_dir / f".before-restore-{clock.utcnow().strftime('%Y%m%dT%H%M%SZ')}"
         kept.mkdir(mode=0o700)
@@ -114,14 +130,25 @@ def main(argv: list[str] | None = None) -> int:
         if input("Type restore to go on: ").strip() != "restore":
             print("Nothing changed.")
             return 1
+    current = key_id(load_master_key(settings.master_key_path))
+
+    def ask(made_under: str | None) -> bytes:
+        print(f"This backup was made under master key {made_under or 'an earlier one'}, "
+              f"not this server's ({current}): the master key was rotated since.")
+        text = getpass.getpass("That master key, from the recovery kit kept then: ")
+        try:
+            return from_kit_text(text)
+        except ValueError as exc:
+            raise BackupError("That isn't a master key as the recovery kit writes it.") from exc
+
     try:
-        found = restore(env, args.snapshot, data_dir)
+        found = restore(env, args.snapshot, data_dir, older_key=ask)
     except BackupError as exc:
         print(f"Not restored: {exc}", file=sys.stderr)
         return 1
     print(f"Restored: schema {found['schema']}, {found['audit_entries']:,} audit log entries, "
           f"backed up {found['made_at']}. The data that was there is in {found['kept']}.")
-    print("Start Skjald again with: docker compose up -d")
+    print("Start Skjald again with: skjald start (or docker compose up -d)")
     return 0
 
 

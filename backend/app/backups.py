@@ -35,6 +35,8 @@ from sqlalchemy.orm import Session
 
 from app import audit, clock, jobs
 from app.crypto.key_files import load_or_create_backup_key, load_or_create_database_key
+from app.crypto.keys import load_master_key
+from app.crypto.rotation import key_id, opens
 from app.db import check_integrity, make_engine, reading
 from app.policy import Setting
 from app.sealed_settings import load_secrets
@@ -240,6 +242,8 @@ def run_backup(db: Session, job: jobs.Job) -> dict[str, Any]:
         "made_at": clock.utcnow().isoformat(),
         "schema": db.execute(text("SELECT version_num FROM alembic_version")).scalar(),
         "audit_entries": head or 0,
+        # Restoring needs this master key (the kit's, or an older one after a rotation).
+        "master_key_id": key_id(load_master_key(settings.master_key_path)),
     }
     db.commit()  # long work follows: hold no lock meanwhile
     folder = Path(settings.data_dir) / ".backup"
@@ -270,6 +274,13 @@ def run_backup(db: Session, job: jobs.Job) -> dict[str, Any]:
 def check_restored(folder: Path) -> dict[str, Any]:
     """Open a restored copy with the master key and check it end to end."""
     manifest = json.loads((folder / "manifest.json").read_text())
+    current = load_master_key(settings.master_key_path)
+    if not opens(folder, current):
+        made_under = manifest.get("master_key_id") or "an earlier one"
+        raise BackupError(
+            f"It was made under master key {made_under}, before the master key was rotated "
+            f"(this server's is {key_id(current)}). skjald restore asks for that key; the "
+            "next backup is made under this one.")
     engine = make_engine(folder, settings.master_key_path)
     try:
         problems = check_integrity(engine)

@@ -29,6 +29,8 @@ from app.auth import pwned
 from app.auth.dependencies import DB
 from app.auth.sessions import UserSession
 from app.backups import Target, load_target
+from app.crypto.keys import load_master_key
+from app.crypto.rotation import key_id
 from app.db import check_integrity, engine_of, reading
 from app.images import StoredImage
 from app.jobs import Job
@@ -143,8 +145,9 @@ def _keys_check() -> Check:
     if not (data_dir / "backup.key.enc").exists():
         return Check(key="keys", label="Keys", status="warning",
                      detail="There's no backup key yet. It's made with the recovery kit.")
+    master = key_id(load_master_key(settings.master_key_path))
     return Check(key="keys", label="Keys", status="ok",
-                 detail="The master, database and backup keys are in place.")
+                 detail=f"The master key ({master}), database and backup keys are in place.")
 
 
 def _disk_check(total: int, free: int) -> Check:

@@ -267,6 +267,55 @@ def test_a_restore_puts_the_backup_back_and_keeps_what_was_there(
     assert "before" in usernames and "after" not in usernames
 
 
+@needs_restic
+def test_a_backup_from_before_a_rotation_restores_with_its_master_key(
+    local_repository, session, engine, make_user, data_dir, master_key_path
+) -> None:
+    from sqlalchemy.orm import Session
+
+    from app.crypto import rotation
+    from app.db import make_engine
+    from app.restore import restore
+    from app.users import User
+
+    make_user("before")
+    old = master_key_path.read_bytes()
+    backup = run(session, "backup")
+    assert backup.state == "done", backup.error
+    session.close()
+    engine.dispose()
+    rotated = rotation.rotate(data_dir, master_key_path)
+
+    # The weekly test can't ask for the old key: it says why it can't check this one.
+    with Session(make_engine(data_dir, master_key_path)) as db:
+        tested = run(db, "restore_test")
+        assert tested.state == "queued"
+        assert f"made under master key {rotation.key_id(old)}" in tested.error
+        assert rotated.new_id in tested.error
+
+    key_text = backups.password(load_or_create_backup_key(data_dir, master_key_path))
+    env = backups.environment(Target(), {}, key_text)
+    asked: list[str | None] = []
+
+    def wrong(made_under):
+        asked.append(made_under)
+        return bytes(32)
+
+    with pytest.raises(BackupError, match="doesn't open this backup either"):
+        restore(env, "latest", data_dir, older_key=wrong)
+    assert asked == [rotation.key_id(old)]
+
+    found = restore(env, "latest", data_dir, older_key=lambda made_under: old)
+    assert found["audit_entries"] >= 1
+    restored = make_engine(data_dir, master_key_path)  # the server's current master key
+    with Session(restored) as db:
+        assert "before" in set(db.scalars(select(User.username)))
+        moved = db.scalar(select(AuditEntry).where(
+            AuditEntry.action == "keys.restored_under_current_master_key"))
+        assert moved is not None and rotated.new_id in moved.details
+    restored.dispose()
+
+
 def test_a_damaged_copy_fails_the_integrity_check(local_repository, session, tmp_path) -> None:
     from app import audit
 
