@@ -36,6 +36,9 @@ SKJALD_RELEASE_URL="${SKJALD_RELEASE_URL:-https://github.com/${SKJALD_REPOSITORY
 # Images re-signed with an organisation's own key are checked against it instead
 # (the key alone: such signatures aren't in the public transparency log).
 SKJALD_COSIGN_KEY="${SKJALD_COSIGN_KEY:-}"
+# As the release names them (no leading dot: GitHub renames such files), and as
+# they're kept in Skjald's folder.
+RELEASE_ASSETS="docker-compose.yml install.sh skjald env.example"
 RELEASE_FILES="docker-compose.yml install.sh skjald .env.example"
 COSIGN_VERSION=v3.1.3
 COSIGN_SHA256_AMD64=4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71
@@ -264,15 +267,19 @@ fetch_release() {
 	[[ "${version}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || die "${version} isn't a release."
 	mapfile -t signed < <(signer "${version}")
 	install -d -m 0750 "${into}"
-	for name in ${RELEASE_FILES} SHA256SUMS SHA256SUMS.sigstore.json; do
+	for name in ${RELEASE_ASSETS} SHA256SUMS SHA256SUMS.sigstore.json; do
 		curl -fsSLo "${into}/${name}" "${SKJALD_RELEASE_URL}/${version}/${name}" ||
 			die "Couldn't download ${name} of Skjald ${version}."
 	done
 	cosign verify-blob --bundle "${into}/SHA256SUMS.sigstore.json" "${signed[@]}" \
 		"${into}/SHA256SUMS" >/dev/null 2>&1 ||
 		die "Skjald ${version}'s checksums aren't signed by its release workflow: nothing was changed."
-	(cd "${into}" && grep -E ' (docker-compose\.yml|install\.sh|skjald|\.env\.example)$' SHA256SUMS |
+	for name in ${RELEASE_ASSETS}; do
+		grep -q " ${name}\$" "${into}/SHA256SUMS" || die "Skjald ${version}'s checksums leave out ${name}."
+	done
+	(cd "${into}" && grep -E ' (docker-compose\.yml|install\.sh|skjald|env\.example)$' SHA256SUMS |
 		sha256sum -c --quiet -) || die "A file of Skjald ${version} doesn't match its signed checksum."
+	mv "${into}/env.example" "${into}/.env.example"
 	chmod 0755 "${into}/install.sh" "${into}/skjald"
 	printf '%s\n' "${version}" >"${into}/VERSION"
 }

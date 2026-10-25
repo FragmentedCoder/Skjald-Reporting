@@ -109,9 +109,11 @@ jobs:
             >dist/docker-compose.yml
           sed "s|^SKJALD_RELEASE=.*|SKJALD_RELEASE=\${SKJALD_RELEASE:-$VERSION}|" install.sh >dist/install.sh
           grep -qx "SKJALD_RELEASE=\${SKJALD_RELEASE:-$VERSION}" dist/install.sh
-          cp deploy/skjald deploy/.env.example dist/
+          # No leading dot in a release file's name: GitHub renames such files.
+          cp deploy/skjald dist/skjald
+          cp deploy/.env.example dist/env.example
           chmod 0755 dist/install.sh dist/skjald
-          (cd dist && sha256sum docker-compose.yml install.sh skjald .env.example \
+          (cd dist && sha256sum docker-compose.yml install.sh skjald env.example \
             skjald-app.spdx.json skjald-caddy.spdx.json >SHA256SUMS)
           cosign sign-blob --yes --bundle dist/SHA256SUMS.sigstore.json dist/SHA256SUMS
           cosign sign-blob --yes --bundle dist/install.sh.sigstore.json dist/install.sh
@@ -139,5 +141,18 @@ jobs:
 
           Images: \`$APP_REF\` and \`$CADDY_REF\`
           EOF
-          gh release create "$VERSION" dist/* --verify-tag --title "Skjald $VERSION" \
-            --notes-file notes.md "${prerelease[@]}"
+          files=(docker-compose.yml install.sh install.sh.sigstore.json skjald env.example
+                 SHA256SUMS SHA256SUMS.sigstore.json skjald-app.spdx.json skjald-caddy.spdx.json)
+          # A draft first, read back and checked as the installer will check it, and
+          # published only then: a release missing a file never goes out.
+          gh release create "$VERSION" "${files[@]/#/dist/}" --draft --verify-tag \
+            --title "Skjald $VERSION" --notes-file notes.md "${prerelease[@]}"
+          gh release download "$VERSION" --dir published
+          for name in "${files[@]}"; do
+            test -f "published/$name" || { echo "The release lacks $name." >&2; exit 1; }
+          done
+          cosign verify-blob --bundle published/SHA256SUMS.sigstore.json \
+            --certificate-identity "$identity" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com published/SHA256SUMS
+          (cd published && sha256sum -c SHA256SUMS)
+          gh release edit "$VERSION" --draft=false
