@@ -87,6 +87,32 @@ def recovery_kit_shown(db: Session) -> bool:
     return bool(_get(db, SETUP_KEY).get("recovery_kit_shown_at"))
 
 
+def mark_kit_saved(db: Session) -> None:
+    state = _get(db, SETUP_KEY)
+    state.setdefault("kit_saved_at", timestamp(clock.utcnow()))
+    _put(db, SETUP_KEY, state)
+
+
+def kit_saved(db: Session) -> bool:
+    return bool(_get(db, SETUP_KEY).get("kit_saved_at"))
+
+
+# The steps after the recovery kit, each set up or left for later.
+LATER_STEPS = ("backups", "email", "tls")
+
+
+def mark_step_done(db: Session, step: str) -> None:
+    state = _get(db, SETUP_KEY)
+    done = set(state.get("steps_done", []))
+    done.add(step)
+    state["steps_done"] = sorted(done)
+    _put(db, SETUP_KEY, state)
+
+
+def steps_done(db: Session) -> list[str]:
+    return [str(step) for step in _get(db, SETUP_KEY).get("steps_done", [])]
+
+
 def complete_setup(db: Session) -> None:
     """Finish setup for good: the token stops working and the wizard closes."""
     state = _get(db, SETUP_KEY)

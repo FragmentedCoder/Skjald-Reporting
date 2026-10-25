@@ -102,6 +102,13 @@ def backup_status(_: Admin, db: DB) -> BackupStatus:
 
 @router.put("")
 def change_target(body: TargetIn, request: Request, admin: Admin, db: DB) -> BackupStatus:
+    return apply_target(db, request, admin, body, confirm=True)
+
+
+def apply_target(db: Session, request: Request, admin: UserSession, body: TargetIn,
+                 confirm: bool) -> BackupStatus:
+    """Save where backups go; with confirm, changing it asks for step-up (the setup
+    wizard saves without: the one setting up has just signed in)."""
     target = Target.model_validate(body.model_dump(exclude={"smb_password",
                                                             "s3_secret_access_key"}))
     secrets = load_secrets(db, SECRETS)
@@ -117,8 +124,8 @@ def change_target(body: TargetIn, request: Request, admin: Admin, db: DB) -> Bac
     if missing:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, missing)
     before = load_target(db)
-    if repository(target) != repository(before) or target.kind != before.kind or (
-            body.smb_password is not None or body.s3_secret_access_key is not None):
+    if confirm and (repository(target) != repository(before) or target.kind != before.kind or (
+            body.smb_password is not None or body.s3_secret_access_key is not None)):
         require_step_up(admin, "Confirm it's you to change where backups go.")
     save_target(db, target)
     save_secrets(db, SECRETS, secrets)

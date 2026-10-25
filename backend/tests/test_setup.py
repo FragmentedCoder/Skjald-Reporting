@@ -5,6 +5,7 @@ from sqlalchemy import select
 
 from app import db as db_module
 from app import setup as setup_state
+from app import tls
 from app.audit import AuditEntry, verify
 from app.auth import pwned
 from app.crypto.key_files import load_or_create_backup_key
@@ -19,11 +20,13 @@ ADMIN = {"username": "admin", "display_name": "Ingrid Admin", "password": PASSWO
 
 
 @pytest.fixture
-def server(monkeypatch, data_dir, master_key_path):
+def server(monkeypatch, data_dir, master_key_path, tmp_path):
     """The app reads its keys from settings; point them at this test's files."""
     monkeypatch.setattr(settings, "data_dir", str(data_dir))
     monkeypatch.setattr(settings, "master_key_path", str(master_key_path))
     monkeypatch.setattr(settings, "address", "https://skjald.example.internal")
+    monkeypatch.setattr(settings, "tls_dir", str(tmp_path / "tls"))
+    monkeypatch.setattr(tls, "served_certificate", lambda: None)
 
 
 @pytest.fixture
@@ -130,7 +133,25 @@ def test_the_whole_wizard(client, token, session, server, no_breach_found, maste
         "Nordlys IT ApS", "https://skjald.example.internal"
     )
 
-    done = client.post("/api/setup/complete", json={"kit_saved": True}, headers=h(token, csrf))
+    early = client.post("/api/setup/backups", json={"kind": "local"}, headers=h(token, csrf))
+    assert early.json()["detail"] == "Save the recovery kit first."
+    saved = client.post("/api/setup/kit-saved", headers=h(token, csrf)).json()
+    assert saved["kit_saved"] and saved["steps_done"] == []
+
+    # Then backups, email and the certificate: no step-up asked, each can wait.
+    backups = client.post("/api/setup/backups", json={"kind": "local", "hour": 3},
+                          headers=h(token, csrf))
+    assert backups.json()["target"]["hour"] == 3
+    unfinished = client.post("/api/setup/complete", headers=h(token, csrf))
+    assert unfinished.json()["detail"] == "Set up email, or leave it for later, first."
+    mail = client.post("/api/setup/email", headers=h(token, csrf), json={
+        "host": "smtp.nordlys.example", "from_address": "skjald@nordlys.example",
+        "username": "skjald", "password": "mail-secret"})
+    assert mail.json()["password_set"] and "mail-secret" not in mail.text
+    later = client.post("/api/setup/later/tls", headers=h(token, csrf)).json()
+    assert later["steps_done"] == ["backups", "email", "tls"]
+
+    done = client.post("/api/setup/complete", headers=h(token, csrf))
     assert done.json() == {"needed": False}
     assert client.get("/api/setup/status").json() == {"needed": False}
 
@@ -138,7 +159,10 @@ def test_the_whole_wizard(client, token, session, server, no_breach_found, maste
     assert client.post("/api/setup/recovery-kit", headers=h(token, csrf)).status_code == 410
     assert create_admin(client, token, username="second").status_code == 410
     assert actions(session)[-1] == "setup.completed"
-    assert "setup.recovery_kit_shown" in actions(session)
+    for logged in ("setup.recovery_kit_shown", "setup.recovery_kit_saved",
+                   "backup.settings_changed", "mail.settings_changed",
+                   "setup.step_left_for_later"):
+        assert logged in actions(session), logged
     assert verify(session).ok
 
 
@@ -201,7 +225,7 @@ def test_setup_cannot_finish_before_security_is_reviewed(
     client.post("/api/setup/company", json={"name": "Nordlys IT ApS"}, headers=h(token))
     csrf = enrol_app(client, create_admin(client, token).json()["csrf_token"])
     client.post("/api/setup/recovery-kit", headers=h(token, csrf))
-    response = client.post("/api/setup/complete", json={"kit_saved": True}, headers=h(token, csrf))
+    response = client.post("/api/setup/complete", headers=h(token, csrf))
     assert response.json()["detail"] == "Review the security settings first."
 
 
@@ -211,7 +235,11 @@ def test_setup_cannot_finish_before_the_kit_is_shown(
     client.post("/api/setup/company", json={"name": "Nordlys IT ApS"}, headers=h(token))
     client.post("/api/setup/security", json=SECURITY, headers=h(token))
     csrf = enrol_app(client, create_admin(client, token).json()["csrf_token"])
-    response = client.post("/api/setup/complete", json={"kit_saved": True}, headers=h(token, csrf))
+    assert client.post("/api/setup/kit-saved", headers=h(token, csrf)).status_code == 409
+    response = client.post("/api/setup/complete", headers=h(token, csrf))
+    assert response.json()["detail"] == "Save the recovery kit before finishing setup."
+    client.post("/api/setup/recovery-kit", headers=h(token, csrf))
+    response = client.post("/api/setup/complete", headers=h(token, csrf))
     assert response.json()["detail"] == "Save the recovery kit before finishing setup."
 
 
