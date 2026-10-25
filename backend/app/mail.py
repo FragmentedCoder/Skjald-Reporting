@@ -60,6 +60,7 @@ def save_server(db: Session, server: MailServer) -> None:
 
 def _connect(server: MailServer) -> smtplib.SMTP:
     context = ssl.create_default_context()
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
     if server.security == "tls":
         return smtplib.SMTP_SSL(server.host, server.port, timeout=TIMEOUT, context=context)
     smtp = smtplib.SMTP(server.host, server.port, timeout=TIMEOUT)

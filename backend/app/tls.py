@@ -174,7 +174,9 @@ def save_tls(db: Session, tls: TlsSettings) -> None:
 def served_certificate(timeout: float = 5) -> Certificate | None:
     """What Caddy serves for the address right now, asked of Caddy itself."""
     port = urlsplit(settings.address).port or 443
+    # Only to read the certificate Caddy serves, so it isn't checked here.
     context = ssl.create_default_context()
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE
     try:

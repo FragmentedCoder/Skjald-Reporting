@@ -36,6 +36,7 @@ class FakeSMTP:
 
     def starttls(self, context=None):
         assert context is not None and context.verify_mode == ssl.CERT_REQUIRED
+        assert context.minimum_version == ssl.TLSVersion.TLSv1_2
         self.record["starttls"] = True
 
     def login(self, username, password):

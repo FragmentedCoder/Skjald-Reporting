@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -180,7 +181,8 @@ def test_uploading_a_certificate_needs_a_fresh_confirmation(client, admin, tls_d
     assert saved.json()["root_url"] is None and "PRIVATE KEY" not in saved.text
     assert (tls_dir / "key.pem").read_text() == key
     logged = session.scalar(select(AuditEntry.details).where(AuditEntry.action == "tls.changed"))
-    assert "skjald.nordlys.example.com" in logged and "PRIVATE" not in logged
+    assert json.loads(logged)["certificate"] == "skjald.nordlys.example.com"
+    assert "PRIVATE" not in logged
 
 
 def test_a_certificate_for_another_address_is_refused(client, admin, tls_dir) -> None:
