@@ -44,7 +44,8 @@
   // The app's frame: a side menu with the customer you're working in, its
   // projects, and the open project's sections; the page beside it. On a narrow
   // screen the menu slides in from a button in a slim top bar. The menu runs from
-  // the top, so a group that opens pushes what's below it down, never up.
+  // the top (Home and All customers, the customer, Admin), so a group that opens
+  // pushes what's below it down, never up.
   let { info, children }: { info: SessionInfo; children: Snippet } = $props();
 
   interface Item {
@@ -108,7 +109,7 @@
   });
 
   // The customer's own settings (details, logo, deleting it), for Managers and Administrators:
-  // last in the customer's part of the menu, just above Home.
+  // last in the customer's part of the menu.
   const customerSettings = $derived.by((): Item | null => {
     if (!customer || !full || !can(current, "manage_customers")) return null;
     const href = resolve("/(app)/customers/[id]/settings", { id: String(customer.id) });
@@ -257,49 +258,54 @@
       </div>
 
       <nav bind:this={nav} class="nav" aria-label="Main">
-        {#if sees}
-          <CustomerPicker />
-          {#if customer && full}
-            <ul class="items">
-              {#each customerItems as item (item.href)}
-                <li>
-                  {@render link(item)}
-                  {#if item.label === "Projects" && item.group?.open}
-                    <ul class="items nested">
-                      {#each workspace.projects as project (project.id)}
-                        <li>{@render projectEntry(project)}</li>
-                      {/each}
-                    </ul>
-                  {:else if item.label === "Archived" && workspace.project?.archived_at}
-                    <ul class="items nested">
-                      <li>{@render projectEntry(workspace.project)}</li>
-                    </ul>
-                  {/if}
-                </li>
-              {/each}
-            </ul>
-            {#if customerSettings}
-              <ul class="items">
-                <li>{@render link(customerSettings)}</li>
-              </ul>
-            {/if}
-          {:else if customer}
-            <p class="small muted hint">
-              {customer.visibility === "names" ? "You see this customer's name only." : "You see an overview of this customer."}
-            </p>
-          {:else}
-            <p class="small muted hint">Choose a customer to see its projects, contacts and people.</p>
-          {/if}
-        {/if}
-
-        <ul class="items global">
+        <ul class="items">
           <li>{@render link({ href: resolve("/(app)"), label: "Home", icon: House, current: path === "/" })}</li>
           {#if sees}
             <li>{@render link({ href: resolve("/(app)/customers"), label: "All customers", icon: Building,
               current: path === "/customers" || path === "/customers/new" })}</li>
           {/if}
-          {#if showAdmin}
-            {@const admin = group("admin", path.startsWith("/admin"), path.startsWith("/admin"))}
+        </ul>
+
+        {#if sees}
+          <div class="customer-part divided">
+            <CustomerPicker />
+            {#if customer && full}
+              <ul class="items">
+                {#each customerItems as item (item.href)}
+                  <li>
+                    {@render link(item)}
+                    {#if item.label === "Projects" && item.group?.open}
+                      <ul class="items nested">
+                        {#each workspace.projects as project (project.id)}
+                          <li>{@render projectEntry(project)}</li>
+                        {/each}
+                      </ul>
+                    {:else if item.label === "Archived" && workspace.project?.archived_at}
+                      <ul class="items nested">
+                        <li>{@render projectEntry(workspace.project)}</li>
+                      </ul>
+                    {/if}
+                  </li>
+                {/each}
+              </ul>
+              {#if customerSettings}
+                <ul class="items">
+                  <li>{@render link(customerSettings)}</li>
+                </ul>
+              {/if}
+            {:else if customer}
+              <p class="small muted hint">
+                {customer.visibility === "names" ? "You see this customer's name only." : "You see an overview of this customer."}
+              </p>
+            {:else}
+              <p class="small muted hint">Choose a customer to see its projects, contacts and people.</p>
+            {/if}
+          </div>
+        {/if}
+
+        {#if showAdmin}
+          {@const admin = group("admin", path.startsWith("/admin"), path.startsWith("/admin"))}
+          <ul class="items divided">
             <li>
               {@render link({ href: resolve("/(app)/admin"), label: "Admin", icon: Shield,
                 current: path === "/admin", group: admin })}
@@ -311,8 +317,8 @@
                 </ul>
               {/if}
             </li>
-          {/if}
-        </ul>
+          </ul>
+        {/if}
       </nav>
 
       <div class="you">
@@ -400,9 +406,15 @@
   .nested {
     margin-top: 2px;
   }
-  .global {
+  /* Your own places, then the customer you're in, then Admin. */
+  .divided {
     padding-top: var(--space-3);
     border-top: 1px solid var(--border);
+  }
+  .customer-part {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
   }
   .chevron {
     display: grid;
