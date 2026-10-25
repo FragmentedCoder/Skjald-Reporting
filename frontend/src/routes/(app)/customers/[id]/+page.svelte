@@ -1,5 +1,7 @@
 <script lang="ts">
   import { resolve } from "$app/paths";
+  import Circle from "@lucide/svelte/icons/circle";
+  import CircleCheck from "@lucide/svelte/icons/circle-check";
   import Plus from "@lucide/svelte/icons/plus";
   import { pageTitle } from "#lib/branding.svelte.js";
   import ProjectTable from "#lib/components/ProjectTable.svelte";
@@ -13,12 +15,44 @@
   const customer = $derived(shared.current);
   const id = $derived(String(customer?.id ?? ""));
   const recent = $derived((workspace.projects ?? []).slice(0, 5));
+
+  // For administrators, until a new customer is ready for work.
+  const steps = $derived(customer ? [
+    { label: "Add its contacts and sites", done: !!(customer.contacts?.length || customer.sites?.length),
+      href: resolve("/(app)/customers/[id]/contacts", { id }) },
+    { label: "Choose who works with it", done: !!customer.assigned?.length,
+      href: resolve("/(app)/customers/[id]/people", { id }) },
+    { label: "Start its first project",
+      done: (customer.active_projects ?? 0) + (customer.archived_projects ?? 0) > 0,
+      href: resolve("/(app)/customers/[id]/projects/new", { id }) },
+  ] : []);
+  const gettingStarted = $derived(!!customer?.may_manage && steps.some((step) => !step.done));
 </script>
 
 <svelte:head><title>{pageTitle(customer?.name ?? "Customer")}</title></svelte:head>
 
 {#if customer}
   <div class="grid">
+    {#if gettingStarted}
+      <section class="section wide" aria-labelledby="start-title">
+        <h2 class="section-title" id="start-title">Getting started</h2>
+        <ol class="steps">
+          {#each steps as step (step.label)}
+            <li class:done={step.done}>
+              {#if step.done}
+                <CircleCheck size={18} aria-hidden="true" />
+                <span>{step.label}<span class="visually-hidden">: done</span></span>
+              {:else}
+                <Circle size={18} aria-hidden="true" />
+                <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- each step's href comes from resolve() -->
+                <a href={step.href}>{step.label}</a>
+              {/if}
+            </li>
+          {/each}
+        </ol>
+      </section>
+    {/if}
+
     <section class="section wide" aria-labelledby="work-title">
       <div class="heading-row">
         <h2 class="section-title" id="work-title">Projects under way</h2>
@@ -109,6 +143,27 @@
     justify-content: space-between;
     gap: var(--space-3);
   }
+  .steps {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .steps li {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--text-muted);
+  }
+  .steps .done {
+    color: var(--ok-text);
+  }
+  .steps .done span {
+    color: var(--text-muted);
+    text-decoration: line-through;
+  }
   .plain {
     display: flex;
     flex-direction: column;
@@ -126,7 +181,7 @@
   }
   @media (max-width: 760px) {
     .grid {
-      grid-template-columns: 1fr;
+      grid-template-columns: minmax(0, 1fr);
     }
   }
 </style>
