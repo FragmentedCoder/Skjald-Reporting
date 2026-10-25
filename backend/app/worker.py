@@ -21,9 +21,11 @@ from sqlalchemy.orm import Session, sessionmaker
 # them through its routes; the worker has none).
 import app.models  # noqa: F401
 from app import clock, jobs
+from app.crypto import rotation
 from app.db import get_engine
 from app.migrate import is_current
 from app.policy import Setting
+from app.settings import settings
 
 log = logging.getLogger("skjald.worker")
 
@@ -58,6 +60,10 @@ def main() -> None:
 
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    if rotation.pending(settings.master_key_path):
+        log.error("A master key rotation didn't finish. Finish it on the server with: "
+                  "skjald keys rotate")
+        raise SystemExit(1)
     engine = get_engine()
     while not is_current(engine):
         log.info("Waiting for the app to bring the database up to date.")

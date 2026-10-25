@@ -110,7 +110,7 @@ class CustomerAssignment(Base):
 # Keys and sealing
 
 
-def _key_context(customer_id: int) -> bytes:
+def customer_key_context(customer_id: int) -> bytes:
     return f"skjald/customer-key/{customer_id}".encode()
 
 
@@ -148,7 +148,7 @@ class Keyring:
     def sealer(self, customer: Customer) -> Sealer:
         if customer.id not in self._sealers:
             key = unwrap_key(self._master_key(), customer.wrapped_key,
-                             context=_key_context(customer.id))
+                             context=customer_key_context(customer.id))
             self._sealers[customer.id] = Sealer(customer.id, key)
         return self._sealers[customer.id]
 
@@ -156,7 +156,7 @@ class Keyring:
         """Make a new customer's key (it needs the ID: flush first)."""
         key = generate_key()
         customer.wrapped_key = wrap_key(self._master_key(), key,
-                                        context=_key_context(customer.id))
+                                        context=customer_key_context(customer.id))
         self._sealers[customer.id] = Sealer(customer.id, key)
         return self._sealers[customer.id]
 

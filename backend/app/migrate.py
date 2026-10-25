@@ -34,4 +34,13 @@ def is_current(engine: Engine) -> bool:
 
 
 if __name__ == "__main__":
+    import sys
+
+    from app.crypto.rotation import pending
+    from app.settings import settings
+
+    if pending(settings.master_key_path):
+        print("A master key rotation didn't finish. Finish it on the server with: "
+              "skjald keys rotate", file=sys.stderr, flush=True)
+        sys.exit(1)
     upgrade()
