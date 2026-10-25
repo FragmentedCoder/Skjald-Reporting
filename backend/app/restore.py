@@ -34,6 +34,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+import app.models  # noqa: F401 - run on their own, these load every table
 from app import clock
 from app.backups import (
     HOST,
