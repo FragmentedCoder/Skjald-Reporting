@@ -269,6 +269,24 @@ def test_each_target_keeps_its_own_secret(client, as_admin, session) -> None:
                        "s3-2": {"s3_secret_access_key": "other"}}
 
 
+def test_a_new_target_never_takes_a_removed_ones_secret(client, as_admin, session) -> None:
+    """A second bucket added after the first was removed gets the ID "s3" again: it
+    must not quietly use the old bucket's secret key."""
+    client.post("/api/auth/confirm-password", headers=as_admin, json={"password": PASSWORD})
+    client.put(BACKUPS, headers=as_admin, json={"targets": [S3]})
+    client.post("/api/auth/confirm-password", headers=as_admin, json={"password": PASSWORD})
+    other_bucket = {**S3, "s3_bucket": "vault-2", "s3_secret_access_key": None}
+    refused = client.put(BACKUPS, headers=as_admin, json={"targets": [other_bucket]})
+    assert refused.status_code == 400 and "secret key" in refused.json()["detail"]
+
+
+def test_a_job_from_before_several_targets_counts_for_the_first_only(session) -> None:
+    old = jobs.enqueue(session, "backup")  # no target named: there was only one
+    jobs.finish(session, old, {})
+    assert backups.latest(session, "backup", Target(), True, "done") is old
+    assert backups.latest(session, "backup", NAS, False, "done") is None
+
+
 @pytest.mark.parametrize(("targets", "said"), [
     ([{"kind": "smb", "smb_host": "nas"}], "share name"),
     ([{"kind": "smb", "smb_host": "nas", "smb_share": "b", "smb_username": "u"}], "password"),
