@@ -1,8 +1,11 @@
 <script lang="ts">
+  import Pencil from "@lucide/svelte/icons/pencil";
   import Plus from "@lucide/svelte/icons/plus";
+  import Trash from "@lucide/svelte/icons/trash-2";
   import { api, ApiError, sessionGone } from "#lib/api.js";
   import { pageTitle } from "#lib/branding.svelte.js";
   import Dialog from "#lib/components/Dialog.svelte";
+  import RowMenu from "#lib/components/RowMenu.svelte";
   import { sharedCustomer } from "#lib/context.js";
   import type { Contact, CustomerDetail, Site } from "#lib/customers.js";
   import { toast } from "#lib/toast.svelte.js";
@@ -17,6 +20,8 @@
   let contact = $state<(Omit<Contact, "id"> & { id: number | null }) | null>(null);
   let siteOpen = $state(false);
   let contactOpen = $state(false);
+  let removing = $state<{ kind: "sites" | "contacts"; id: number; name: string } | null>(null);
+  let removeOpen = $state(false);
   let error = $state<string | null>(null);
   let busy = $state(false);
 
@@ -68,8 +73,15 @@
     () => (contactOpen = false));
   }
 
-  function remove(kind: "sites" | "contacts", itemId: number, name: string) {
-    run(() => api("DELETE", `${base}/${kind}/${itemId}`), `${name} is removed.`);
+  function askToRemove(kind: "sites" | "contacts", itemId: number, name: string) {
+    removing = { kind, id: itemId, name };
+    removeOpen = true;
+  }
+
+  function remove() {
+    const chosen = removing;
+    removeOpen = false;
+    if (chosen) run(() => api("DELETE", `${base}/${chosen.kind}/${chosen.id}`), `${chosen.name} is removed.`);
   }
 </script>
 
@@ -92,19 +104,26 @@
       <ul class="cards">
         {#each customer.contacts as item (item.id)}
           <li>
-            <p class="check-title">{item.name}</p>
+            <div class="card-head">
+              <p class="check-title">{item.name}</p>
+              {#if customer.may_manage}
+                <RowMenu label="Actions for {item.name}" items={[
+                  { label: "Change contact", icon: Pencil, run: () => editContact(item) },
+                  { label: "Remove contact", icon: Trash, danger: true,
+                    run: () => askToRemove("contacts", item.id, item.name) },
+                ]} />
+              {/if}
+            </div>
             {#if item.role}<p class="small">{item.role}</p>{/if}
-            <p class="small muted">{item.email || "No email"}{item.phone ? ` · ${item.phone}` : ""}</p>
-            {#if customer.may_manage}
-              <div class="row-actions">
-                <button class="link-button" type="button" onclick={() => editContact(item)}>
-                  Change<span class="visually-hidden"> {item.name}</span>
-                </button>
-                <button class="link-button" type="button" onclick={() => remove("contacts", item.id, item.name)}>
-                  Remove<span class="visually-hidden"> {item.name}</span>
-                </button>
-              </div>
+            {#if item.email}
+              <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- an email address, not a page -->
+              <a class="small" href="mailto:{item.email}">{item.email}</a>
             {/if}
+            {#if item.phone}
+              <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- a phone number, not a page -->
+              <a class="small" href="tel:{item.phone.replace(/[^0-9+]/g, '')}">{item.phone}</a>
+            {/if}
+            {#if !item.email && !item.phone}<p class="small muted">No email or phone</p>{/if}
           </li>
         {/each}
       </ul>
@@ -127,18 +146,17 @@
       <ul class="cards">
         {#each customer.sites as item (item.id)}
           <li>
-            <p class="check-title">{item.name}</p>
+            <div class="card-head">
+              <p class="check-title">{item.name}</p>
+              {#if customer.may_manage}
+                <RowMenu label="Actions for {item.name}" items={[
+                  { label: "Change site", icon: Pencil, run: () => editSite(item) },
+                  { label: "Remove site", icon: Trash, danger: true,
+                    run: () => askToRemove("sites", item.id, item.name) },
+                ]} />
+              {/if}
+            </div>
             <p class="small muted address">{item.address || "No address"}</p>
-            {#if customer.may_manage}
-              <div class="row-actions">
-                <button class="link-button" type="button" onclick={() => editSite(item)}>
-                  Change<span class="visually-hidden"> {item.name}</span>
-                </button>
-                <button class="link-button" type="button" onclick={() => remove("sites", item.id, item.name)}>
-                  Remove<span class="visually-hidden"> {item.name}</span>
-                </button>
-              </div>
-            {/if}
           </li>
         {/each}
       </ul>
@@ -198,6 +216,22 @@
   {/if}
 </Dialog>
 
+<Dialog bind:open={removeOpen} title="Remove {removing?.name ?? ''}">
+  <p>
+    {#if removing?.kind === "contacts"}
+      Projects with this contact will have none.
+    {:else}
+      Projects that cover this site will no longer list it.
+    {/if}
+  </p>
+  {#snippet actions()}
+    <button class="button button-secondary" type="button" onclick={() => (removeOpen = false)}>Cancel</button>
+    <button class="button button-primary" type="button" disabled={busy} onclick={remove}>
+      Remove {removing?.kind === "contacts" ? "contact" : "site"}
+    </button>
+  {/snippet}
+</Dialog>
+
 <style>
   .heading-row {
     display: flex;
@@ -222,10 +256,13 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
   }
-  .row-actions {
+  /* The ⋮ button sits in the corner without making the first line taller. */
+  .card-head {
     display: flex;
-    gap: var(--space-3);
-    margin-top: var(--space-1);
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    margin: calc(-1 * var(--space-2)) calc(-1 * var(--space-2)) calc(-1 * var(--space-1)) 0;
   }
   .address {
     white-space: pre-line;
