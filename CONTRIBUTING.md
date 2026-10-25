@@ -21,8 +21,8 @@ The design is in [docs/architecture.md](docs/architecture.md); read it before ch
 
 - **Backend** (`backend/`): `pip install -e ".[dev]"`, then `ruff check .`, `mypy app` and `pytest`. The backup tests run restic itself and need restic 0.18 or later on the PATH; without it they're skipped.
 - **Frontend** (`frontend/`): `npm ci`, then `npm run lint`, `npm run check`, `npm run test` and `npm run build`.
-- **Browser tests** against the whole stack behind Caddy: `frontend/e2e/run.sh` from the repository root. It starts its own stack (project `skjald-e2e`, port 8443) and removes it with its data afterwards, so it runs beside a test install. It needs a master key at `/etc/skjald/master.key`, as `deploy/install.sh` makes it.
-- **Installer and scripts**: `deploy/install.test.sh`, `deploy/skjald.test.sh`, and `shellcheck -x deploy/*.sh deploy/skjald frontend/e2e/run.sh`.
+- **Browser tests** against the whole stack behind Caddy: `frontend/e2e/run.sh` from the repository root. It starts its own stack (project `skjald-e2e`, port 8443) and removes it with its data afterwards, so it runs beside a test install. It needs a master key at `/etc/skjald/master.key`, as `install.sh` makes it.
+- **Installer and scripts**: `deploy/install.test.sh`, `deploy/skjald.test.sh`, `python3 deploy/release-compose.test.py`, `shellcheck -x install.sh deploy/*.sh deploy/skjald frontend/e2e/run.sh`, and actionlint on the workflows.
 
 CI runs all of these on every pull request, and the browser tests keep their screenshots as an artifact.
 

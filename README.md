@@ -25,17 +25,23 @@ A *skald* (Danish *skjald*) was the Norse poet who turned events into a lasting 
 
 ## Try it
 
-On an Ubuntu Server LTS VM (4 vCPU, 8 GB RAM, 100 GB disk), from a checkout of this repository:
+On an Ubuntu Server LTS VM (4 vCPU, 8 GB RAM, 100 GB disk), once the first release is out:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/FragmentedCoder/Skjald-Reporting/main/install.sh | sudo bash
+```
+
+The installer installs Docker Engine if needed, generates the master key, downloads the release and checks its files and every image against the release's signatures, starts Skjald, and prints a one-time setup token. Open the address followed by `/setup` and the wizard takes it from there: the company, the first Administrator with MFA, the recovery kit, backups, email and the certificate. Until you choose another certificate, Skjald's own authority signs it: install `https://<address>/skjald-root.crt` as a trusted root on each computer that uses it. Each release's notes show how to check the installer with cosign before running it.
+
+Until then, or to try the newest code, install from a checkout instead: it builds the images there.
 
 ```sh
 git clone https://github.com/FragmentedCoder/Skjald-Reporting.git
 cd Skjald-Reporting
-sudo deploy/install.sh --address https://skjald.example.internal
+sudo ./install.sh --address https://skjald.example.internal
 ```
 
-The installer installs Docker Engine if needed, generates the master key, builds and starts Skjald, and prints a one-time setup token. Open the address followed by `/setup` and the wizard takes it from there: the company, the first Administrator with MFA, the recovery kit, backups, email and the certificate. Until you choose another certificate, Skjald's own authority signs it: install `https://<address>/skjald-root.crt` as a trusted root on each computer that uses it.
-
-For now the images are built from the checkout. Released versions will come as signed images, with a one-line install.
+On the server, `sudo skjald help` lists what the web UI can't do: status, logs, backups and restores, updates, and replacing the master key.
 
 ## Roadmap
 
