@@ -1,6 +1,6 @@
 # Contributing to Skjald
 
-Skjald is in early development, and ideas, questions and bug reports are welcome.
+Skjald is in early development, and ideas, questions and bug reports are welcome. Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md).
 
 ## Issues
 

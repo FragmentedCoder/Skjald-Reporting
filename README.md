@@ -55,7 +55,7 @@ SvelteKit and TypeScript · Python and FastAPI · SQLite with SQLCipher · Weasy
 
 ## Contributing and security
 
-Ideas, questions and bug reports are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md), which also says how to run the tests. Please report security problems privately as described in [SECURITY.md](SECURITY.md), never in a public issue.
+Ideas, questions and bug reports are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md), which also says how to run the tests, and the [code of conduct](CODE_OF_CONDUCT.md). Please report security problems privately as described in [SECURITY.md](SECURITY.md), never in a public issue.
 
 ## Licence
 
