@@ -47,11 +47,30 @@ export const session = $state<{
   setupNeeded: boolean;
 }>({ current: null, loaded: false, setupNeeded: false });
 
-/** Light or dark as the user chose; "system" leaves it to the browser's setting. */
+// Goes up each time light or dark is set on the page, so what follows it (the
+// colours) is worked out again, also when the change waits for a fade.
+export const appearance = $state({ applied: 0 });
+
+/**
+ * Light or dark as the user chose; "system" leaves it to the browser's setting. A
+ * change you'd see (as when someone's own choice applies after their password)
+ * fades across, where the browser can and motion is welcome.
+ */
 export function applyTheme(theme: Theme | undefined): void {
   if (typeof document === "undefined") return;
-  if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
-  else delete document.documentElement.dataset.theme;
+  const root = document.documentElement;
+  const systemDark = matchMedia("(prefers-color-scheme: dark)").matches;
+  const darkWith = (chosen: string | undefined) =>
+    chosen === "dark" || (chosen !== "light" && systemDark);
+  const set = () => {
+    if (theme === "light" || theme === "dark") root.dataset.theme = theme;
+    else delete root.dataset.theme;
+    appearance.applied++;
+  };
+  const changes = darkWith(root.dataset.theme) !== darkWith(theme);
+  const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (changes && !calm && "startViewTransition" in document) document.startViewTransition(set);
+  else set();
 }
 
 export function useSession(info: SessionInfo | null): void {

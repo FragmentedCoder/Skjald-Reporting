@@ -5,7 +5,7 @@
   import Toaster from "#lib/components/Toaster.svelte";
   import { branding, loadBranding } from "#lib/branding.svelte.js";
   import { applyColours, effectiveColours } from "#lib/colours.js";
-  import { session } from "#lib/session.svelte.js";
+  import { appearance, session } from "#lib/session.svelte.js";
 
   let { children }: { children: Snippet } = $props();
 
@@ -23,7 +23,7 @@
   // The colours follow the site, the person's choice and the light or dark mode.
   $effect(() => {
     void deviceMode;
-    void session.current?.user.theme;
+    void appearance.applied;
     applyColours(effectiveColours(branding.current, session.current?.user.colours));
   });
 </script>

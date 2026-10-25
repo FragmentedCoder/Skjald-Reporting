@@ -29,6 +29,12 @@ body {
   min-height: 100vh;
 }
 
+/* Switching between light and dark fades the page across (see applyTheme). */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 700ms;
+}
+
 h1,
 h2,
 h3 {
