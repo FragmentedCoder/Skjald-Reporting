@@ -41,13 +41,13 @@
   }
 
   function open(user: UserSummary) {
-    void goto(resolve("/admin/users/[id]", { id: String(user.id) }));
+    void goto(resolve("/(app)/admin/users/[id]", { id: String(user.id) }));
   }
 
   function menu(user: UserSummary): MenuItem[] {
     const items: MenuItem[] = [{ label: "Edit user", icon: Pencil, run: () => open(user) }];
     if (user.id === session.current?.user.id) {
-      items.push({ label: "Your account", icon: UserPen, run: () => goto(resolve("/account")) });
+      items.push({ label: "Your account", icon: UserPen, run: () => goto(resolve("/(app)/account")) });
       return items;
     }
     items.push({ label: "Reset password…", icon: KeyRound, run: () => actions.start("reset-password", user) });
@@ -74,7 +74,7 @@
     <h1 class="title">Users</h1>
     <p class="small muted">Everyone who can sign in, and what their roles let them do.</p>
   </div>
-  <a class="button button-primary" href={resolve("/admin/users/new")}>
+  <a class="button button-primary" href={resolve("/(app)/admin/users/new")}>
     <UserPlus size={18} aria-hidden="true" />
     Add user
   </a>
@@ -99,7 +99,7 @@
               <div class="person">
                 <Avatar name={user.display_name} url={user.avatar_url} size={32} />
                 <div>
-                  <a class="row-link" href={resolve("/admin/users/[id]", { id: String(user.id) })}>
+                  <a class="row-link" href={resolve("/(app)/admin/users/[id]", { id: String(user.id) })}>
                     {user.display_name}
                   </a>
                   <div class="small muted mono">{user.username}</div>

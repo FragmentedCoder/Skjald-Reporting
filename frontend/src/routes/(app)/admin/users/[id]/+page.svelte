@@ -82,7 +82,7 @@
 
 <div class="page-header">
   <div>
-    <a class="small" href={resolve("/admin/users")}>Users</a>
+    <a class="small" href={resolve("/(app)/admin/users")}>Users</a>
     <div class="who">
       {#if user}<Avatar name={user.display_name} url={user.avatar_url} size={48} />{/if}
       <div>
@@ -200,7 +200,7 @@
     {#if isSelf}
       <p class="small muted">
         For your own password, multifactor and sessions, use
-        <a href={resolve("/account")}>Your account</a>.
+        <a href={resolve("/(app)/account")}>Your account</a>.
       </p>
     {:else}
       <div class="button-row">

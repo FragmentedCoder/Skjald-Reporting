@@ -49,7 +49,7 @@
       text={recoveryCodesText(info.user.username, codes)}
       filename="skjald-recovery-codes.txt"
       confirmation="I have saved these codes somewhere safe"
-      onContinue={() => goto(resolve("/"))}
+      onContinue={() => goto(resolve("/(app)"))}
     >
       <ol class="codes mono">
         {#each codes as code (code)}<li>{code}</li>{/each}

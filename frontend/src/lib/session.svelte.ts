@@ -79,7 +79,7 @@ export async function loadSession(): Promise<SessionInfo | null> {
 }
 
 export type Place =
-  | "/"
+  | "/(app)"
   | "/setup"
   | "/sign-in"
   | "/sign-in/set-up"
@@ -96,7 +96,7 @@ export function placeFor(info: SessionInfo | null, setupNeeded = session.setupNe
   if (info.second_factor === "verify") return "/sign-in/verify";
   if (info.password_change_required) return "/sign-in/new-password";
   if (info.second_factor === "enrol") return "/sign-in/set-up";
-  return "/";
+  return "/(app)";
 }
 
 /**
@@ -107,7 +107,7 @@ export function placeFor(info: SessionInfo | null, setupNeeded = session.setupNe
 export async function settle(here: Place | "app"): Promise<SessionInfo | null> {
   const info = session.loaded ? session.current : await loadSession();
   const place = placeFor(info);
-  const belongs = here === "app" ? place === "/" : place === here;
+  const belongs = here === "app" ? place === "/(app)" : place === here;
   if (!belongs) await goto(resolve(place), { replace: true });
   return belongs ? info : null;
 }
@@ -159,7 +159,7 @@ async function reload(): Promise<void> {
     page.url?.pathname.startsWith("/admin") &&
     !can(info, "administer") &&
     !can(info, "read_audit_log");
-  if (place !== "/" || adminGone) await goto(resolve(place), { replace: true });
+  if (place !== "/(app)" || adminGone) await goto(resolve(place), { replace: true });
 }
 
 // Every page gets the same answer to a refusal: an ended session goes to the
@@ -271,7 +271,7 @@ if (typeof document !== "undefined") {
 function warnAboutRecoveryCodes(info: SessionInfo): void {
   const left = info.recovery_codes_left;
   if (left === null || left > 3) return;
-  const open = { label: "Go to Your account", run: () => void goto(resolve("/account")) };
+  const open = { label: "Go to Your account", run: () => void goto(resolve("/(app)/account")) };
   const text =
     left === 0
       ? "You've used your last recovery code. Get new codes in Your account, or set up multifactor again if you've lost your phone or key."

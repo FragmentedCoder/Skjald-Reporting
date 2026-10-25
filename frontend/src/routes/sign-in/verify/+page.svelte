@@ -21,7 +21,7 @@
 
   async function done(result: SecondFactorResult) {
     useSession(result.session);
-    await goto(resolve("/"));
+    await goto(resolve("/(app)"));
   }
 </script>
 

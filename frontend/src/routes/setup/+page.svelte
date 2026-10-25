@@ -81,7 +81,7 @@
     } catch (e) {
       if (e instanceof ApiError && e.status === 410) {
         session.setupNeeded = false; // finished in another window
-        await goto(resolve("/"));
+        await goto(resolve("/(app)"));
         return null;
       }
       error = e instanceof ApiError ? e.message : "Something went wrong. Try again.";
@@ -201,7 +201,7 @@
     );
     if (!done) return;
     session.setupNeeded = false;
-    await goto(resolve("/"));
+    await goto(resolve("/(app)"));
   }
 </script>
 

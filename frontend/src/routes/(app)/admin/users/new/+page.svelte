@@ -52,7 +52,7 @@
 
 <div class="page-header">
   <div>
-    <a class="small" href={resolve("/admin/users")}>Users</a>
+    <a class="small" href={resolve("/(app)/admin/users")}>Users</a>
     <h1 class="title">Add user</h1>
   </div>
 </div>
@@ -72,8 +72,8 @@
     {/if}
     <div class="button-row">
       <a class="button button-primary"
-        href={resolve("/admin/users/[id]", { id: String(created.user.id) })}>Open user</a>
-      <a class="button button-secondary" href={resolve("/admin/users")}>Back to users</a>
+        href={resolve("/(app)/admin/users/[id]", { id: String(created.user.id) })}>Open user</a>
+      <a class="button button-secondary" href={resolve("/(app)/admin/users")}>Back to users</a>
     </div>
   </section>
 {:else}
@@ -117,7 +117,7 @@
     <PasswordChoiceFields bind:choice />
     <div class="button-row">
       <button class="button button-primary" type="submit" disabled={busy}>Add user</button>
-      <a class="button button-secondary" href={resolve("/admin/users")}>Cancel</a>
+      <a class="button button-secondary" href={resolve("/(app)/admin/users")}>Cancel</a>
     </div>
   </form>
 {/if}

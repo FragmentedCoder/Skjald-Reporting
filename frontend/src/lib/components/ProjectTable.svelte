@@ -29,7 +29,7 @@
         {#each projects as project (project.id)}
           <tr>
             <td>
-              <a class="row-link" href={resolve("/projects/[id]", { id: String(project.id) })}>
+              <a class="row-link" href={resolve("/(app)/projects/[id]", { id: String(project.id) })}>
                 {project.name}
               </a>
               <div class="small muted mono">{project.number}</div>

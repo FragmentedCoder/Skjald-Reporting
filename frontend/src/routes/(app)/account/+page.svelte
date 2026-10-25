@@ -13,7 +13,6 @@
   import { ACCENT, PRIMARY, swatchFor } from "#lib/colours.js";
   import PasswordRules from "#lib/components/PasswordRules.svelte";
   import SwatchPicker from "#lib/components/SwatchPicker.svelte";
-  import AppShell from "#lib/components/AppShell.svelte";
   import Avatar from "#lib/components/Avatar.svelte";
   import Dialog from "#lib/components/Dialog.svelte";
   import Pill from "#lib/components/Pill.svelte";
@@ -26,7 +25,6 @@
     applyTheme,
     session,
     sessionEnded,
-    settle,
     useSession,
     type SecondFactorResult,
     type SessionInfo,
@@ -88,7 +86,7 @@
   const lastRequired = $derived(account !== null && account.mfa_required && account.factors.length < 2);
 
   onMount(async () => {
-    info = await settle("app");
+    info = session.current;
     if (!info) return;
     try {
       await load();
@@ -276,7 +274,6 @@
 {/snippet}
 
 {#if info && account}
-  <AppShell {info}>
     <main class="page-content">
       <div class="page-header">
         <div>
@@ -527,7 +524,6 @@
         </div>
       </section>
     </main>
-  </AppShell>
 
   <Dialog bind:open={confirmOpen} title={confirming?.title ?? ""}>
     <form class="stack" onsubmit={confirm}>

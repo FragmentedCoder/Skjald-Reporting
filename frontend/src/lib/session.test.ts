@@ -31,7 +31,7 @@ describe("placeFor", () => {
     [null, "/sign-in"],
     [sessionIn("enrol"), "/sign-in/set-up"],
     [sessionIn("verify"), "/sign-in/verify"],
-    [sessionIn("done"), "/"],
+    [sessionIn("done"), "/(app)"],
   ])("sends %o to %s", (info, place) => {
     expect(placeFor(info, false)).toBe(place);
   });

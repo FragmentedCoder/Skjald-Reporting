@@ -6,9 +6,9 @@
 
   // The admin panel opens on the first section the user may see.
   onMount(() => {
-    if (can(session.current, "administer")) goto(resolve("/admin/users"), { replace: true });
+    if (can(session.current, "administer")) goto(resolve("/(app)/admin/users"), { replace: true });
     else if (can(session.current, "read_audit_log")) {
-      goto(resolve("/admin/audit"), { replace: true });
+      goto(resolve("/(app)/admin/audit"), { replace: true });
     }
   });
 </script>
