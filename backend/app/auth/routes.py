@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app import audit
+from app import audit, clock
 from app.auth.dependencies import (
     DB,
     AnySession,
@@ -38,6 +38,7 @@ from app.auth.sign_in import (
     too_many_failures_from,
 )
 from app.images import avatar_url
+from app.notices import notify_administrators
 from app.policy import load_policy, login_allowed_from
 from app.roles import Capability, Role, roles_of
 
@@ -173,6 +174,11 @@ def sign_in(body: SignInRequest, request: Request, response: Response, db: DB) -
     details: dict[str, object] = {"session": record.id}
     if account.is_break_glass:
         details["break_glass"] = True
+        notify_administrators(db, f"Break-glass sign-in to Skjald: {account.username}", (
+            f"Someone signed in to the break-glass account {account.username} with its "
+            f"password, from {ip}, at {clock.utcnow():%Y-%m-%dT%H:%M:%SZ}.\n\n"
+            "It's for setup and emergencies. If none of you used it, change its password "
+            "and look at the audit log."))
     audit.append(
         db, "auth.sign_in.succeeded", actor_id=actor_id, actor_name=actor_name, ip=ip,
         details=details,

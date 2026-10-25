@@ -217,6 +217,18 @@ def _stage(folder: Path, manifest: dict[str, Any]) -> None:
     (folder / "manifest.json").write_text(json.dumps(manifest, indent=2))
 
 
+TARGET_WORDS = {"off": "nowhere", "local": "this server", "smb": "the SMB share",
+                "s3": "S3-compatible storage"}
+
+
+def _tell(db: Session, subject: str, body: str) -> None:
+    """An email to the Administrators, if email is set up."""
+    from app.notices import notify_administrators
+
+    notify_administrators(db, subject, body)
+    db.commit()
+
+
 def _log(db: Session, action: str, job: jobs.Job, details: dict[str, Any]) -> None:
     audit.append(db, action, actor_id=job.requested_by, target_type="job",
                  target_id=str(job.id), details=details)
@@ -256,6 +268,10 @@ def run_backup(db: Session, job: jobs.Job) -> dict[str, Any]:
                f"{target.keep_days}d", "--prune")
     except (BackupError, OSError, subprocess.SubprocessError, sqlcipher3.Error) as exc:
         _log(db, "backup.failed", job, {"target": target.kind, "error": str(exc)[:300]})
+        if job.attempts >= jobs.MAX_ATTEMPTS:
+            _tell(db, "Skjald couldn't back up", (
+                f"The backup to {TARGET_WORDS[target.kind]} failed {job.attempts} times in a "
+                f"row; the last time: {exc}\n\nAdmin, Backups has the details."))
         raise
     finally:
         shutil.rmtree(folder, ignore_errors=True)
@@ -323,10 +339,19 @@ def run_restore_test(db: Session, job: jobs.Job) -> dict[str, Any]:
     except (BackupError, OSError, subprocess.SubprocessError, ValueError) as exc:
         _log(db, "backup.restore_test_failed", job, {"target": target.kind,
                                                       "error": str(exc)[:300]})
+        if job.attempts >= jobs.MAX_ATTEMPTS:
+            _tell(db, "Skjald's restore test failed", (
+                f"Restoring the newest backup from {TARGET_WORDS[target.kind]} failed "
+                f"{job.attempts} times in a row; the last time: {exc}\n\n"
+                "Until it passes, don't count on that backup. Admin, Backups has the details."))
         raise
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
     _log(db, "backup.restore_tested", job, result)
+    _tell(db, "Skjald's restore test passed", (
+        f"The newest backup ({result['snapshot']}, made {str(result.get('made_at'))[:16]}Z) was "
+        f"restored from {TARGET_WORDS[target.kind]} into a scratch folder and checked: the "
+        f"database, and {result['audit_entries']:,} audit log entries in an unbroken chain."))
     return result
 
 

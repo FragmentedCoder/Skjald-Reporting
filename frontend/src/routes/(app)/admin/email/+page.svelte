@@ -66,7 +66,8 @@
     <h1 class="title">Email</h1>
     <p class="small muted">
       The mail server Skjald sends reports and notices through. Its certificate is always
-      checked.
+      checked. Every Administrator with an email address hears about each break-glass sign-in,
+      each restore test, and backups that keep failing.
     </p>
   </div>
 </div>
