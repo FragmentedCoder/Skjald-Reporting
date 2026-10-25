@@ -12,16 +12,10 @@
 </script>
 
 {#if allowed}
-  <main class="page-content wide">{@render children()}</main>
+  <main class="page-content">{@render children()}</main>
 {:else}
   <main class="page-content">
     <h1 class="title">Admin</h1>
     <p class="alert alert-warning">You don't have access to the admin panel.</p>
   </main>
 {/if}
-
-<style>
-  .wide {
-    max-width: 1180px;
-  }
-</style>
