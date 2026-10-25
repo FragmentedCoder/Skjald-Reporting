@@ -19,6 +19,16 @@ export const workspace = $state<{
 
 let lastRefresh = 0;
 
+/** The customer's active projects. The open project is newer than the list: one just
+ * archived goes under Archived at once, not in both places until the list is fetched
+ * again. */
+export function activeProjects(
+  projects: ProjectSummary[] | null,
+  open: ProjectSummary | null,
+): ProjectSummary[] {
+  return (projects ?? []).filter((project) => !(open?.archived_at && project.id === open.id));
+}
+
 export function openCustomer(): CustomerSummary | null {
   return workspace.customers?.find((c) => c.id === workspace.customerId) ?? null;
 }

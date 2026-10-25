@@ -33,6 +33,7 @@
   import { applyTheme, can, session, signOut, type SessionInfo } from "#lib/session.svelte.js";
   import { toast } from "#lib/toast.svelte.js";
   import {
+    activeProjects,
     clearWorkspace,
     openCustomer,
     refreshSoon,
@@ -184,6 +185,8 @@
     showCurrent();
   });
 
+  const listedProjects = $derived(activeProjects(workspace.projects, workspace.project));
+
   // The menu fills in after a page change (the customer's projects and counts
   // arrive, Admin opens), which can push the page you're on out of view again:
   // keep it in view, whatever changed in the menu, until you scroll it yourself.
@@ -302,7 +305,7 @@
                     {@render link(item)}
                     {#if item.label === "Projects" && item.group?.open}
                       <ul class="items nested">
-                        {#each workspace.projects as project (project.id)}
+                        {#each listedProjects as project (project.id)}
                           <li>{@render projectEntry(project)}</li>
                         {/each}
                       </ul>

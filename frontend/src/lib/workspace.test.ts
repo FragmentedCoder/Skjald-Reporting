@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { chooseCustomer, clearWorkspace, refreshSoon, refreshWorkspace, workspace } from "./workspace.svelte";
+import type { ProjectSummary } from "./customers";
+import {
+  activeProjects,
+  chooseCustomer,
+  clearWorkspace,
+  refreshSoon,
+  refreshWorkspace,
+  workspace,
+} from "./workspace.svelte";
 
 const { api } = vi.hoisted(() => ({ api: vi.fn() }));
 vi.mock("./api", () => ({ api }));
@@ -64,5 +72,21 @@ describe("the workspace", () => {
     vi.advanceTimersByTime(16_000);
     refreshSoon();
     expect(api.mock.calls.length).toBe(calls + 1);
+  });
+});
+
+describe("activeProjects", () => {
+  function project(id: number, archived_at: string | null = null): ProjectSummary {
+    return { id, number: `P-2026-${id}`, name: `Project ${id}`, customer: { id: 1, name: "Nordlys" },
+      responsible: null, reviewer: null, start_date: null, end_date: null,
+      classification: "TLP:GREEN", archived_at };
+  }
+
+  it("leaves out the open project once it's archived, before the list is fetched again", () => {
+    const listed = [project(1), project(2)];
+    expect(activeProjects(listed, project(1)).map((p) => p.id)).toEqual([1, 2]);
+    expect(activeProjects(listed, project(1, "2026-10-25T20:36:00Z")).map((p) => p.id)).toEqual([2]);
+    expect(activeProjects(listed, null).map((p) => p.id)).toEqual([1, 2]);
+    expect(activeProjects(null, project(1))).toEqual([]);
   });
 });
