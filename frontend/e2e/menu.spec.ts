@@ -84,7 +84,16 @@ test("the side menu, with customers and projects", async ({ browser }) => {
     await expect(menu(mette).getByRole("link", { name: /^Insider investigation/ })).toBeVisible();
     await shot("1-customer");
 
-    await menu(mette).getByRole("button", { name: /^Customer/ }).click();
+    // The picker is under its button the moment it opens, never anywhere else
+    // first: measured in the same step as the click.
+    const opened = await mette.evaluate(() => {
+      const button = document.querySelector<HTMLButtonElement>("nav[aria-label=Main] button[popovertarget]")!;
+      button.click();
+      const panel = document.getElementById(button.getAttribute("popovertarget")!)!;
+      return { button: button.getBoundingClientRect().toJSON(), panel: panel.getBoundingClientRect().toJSON() };
+    });
+    expect(opened.panel.top).toBeGreaterThan(opened.button.bottom);
+    expect(opened.panel.left).toBe(opened.button.left);
     await expect(mette.getByRole("dialog", { name: "Choose a customer" })).toBeVisible();
     await shot("2-picker");
     await mette.keyboard.press("Escape");

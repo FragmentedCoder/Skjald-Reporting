@@ -4,7 +4,7 @@
   import Building from "@lucide/svelte/icons/building";
   import ChevronsUpDown from "@lucide/svelte/icons/chevrons-up-down";
   import Search from "@lucide/svelte/icons/search";
-  import { tick } from "svelte";
+  import { onDestroy, tick } from "svelte";
   import { openCustomer, workspace } from "#lib/workspace.svelte.js";
 
   // The customer switcher at the top of the side menu: a button naming the open
@@ -31,14 +31,28 @@
     panel.style.width = `${Math.max(box.width, 260)}px`;
   }
 
+  // Placed under its button before it shows, so it never appears anywhere else.
+  function opening(event: ToggleEvent) {
+    if (event.newState === "open") place();
+  }
+
+  // While open it follows its button when the menu or page scrolls or resizes.
+  function follow(on: boolean) {
+    const method = on ? "addEventListener" : "removeEventListener";
+    window[method]("scroll", place, true);
+    window[method]("resize", place);
+  }
+
   async function toggled(event: ToggleEvent) {
     expanded = event.newState === "open";
+    follow(expanded);
     if (!expanded) return;
     query = "";
-    place();
     await tick();
     search?.focus();
   }
+
+  onDestroy(() => follow(false));
 
   async function pick(id: number) {
     panel.hidePopover();
@@ -72,7 +86,7 @@
 </button>
 
 <div bind:this={panel} id="{uid}-panel" class="panel" popover="auto" role="dialog"
-  aria-label="Choose a customer" ontoggle={toggled}>
+  aria-label="Choose a customer" onbeforetoggle={opening} ontoggle={toggled}>
   <div class="search">
     <Search size={16} aria-hidden="true" />
     <input bind:this={search} type="search" placeholder="Search by name or CVR"
