@@ -1,29 +1,45 @@
 <script lang="ts">
+  import BadgeCheck from "@lucide/svelte/icons/badge-check";
+  import PenLine from "@lucide/svelte/icons/pen-line";
   import { api, ApiError, sessionGone } from "#lib/api.js";
   import { pageTitle } from "#lib/branding.svelte.js";
-  import Pill from "#lib/components/Pill.svelte";
+  import RoleGroups, { ROLE_GROUPS } from "#lib/components/RoleGroups.svelte";
   import { sharedCustomer, sharedProject } from "#lib/context.js";
-  import { TEAM_ONLY, type ProjectDetail } from "#lib/customers.js";
-  import { roleName } from "#lib/roles.js";
+  import { reviewers, technicians, TEAM_ONLY, type ProjectDetail } from "#lib/customers.js";
   import { toast } from "#lib/toast.svelte.js";
 
-  // Who works on the project. Its responsible technician and reviewer always do
-  // (chosen on Details); Managers and Administrators pick the others from the
-  // people assigned to the customer.
+  // Who works on the project, as what: technicians do the work, reviewers check it.
+  // The responsible technician and the reviewer are chosen on Details; Managers and
+  // Administrators add the others from the people assigned to the customer as
+  // that. Someone who could be either is on the team as one of them only.
   const shared = sharedProject();
   const project = $derived(shared.current);
   const customer = $derived(sharedCustomer().current);
   const red = $derived(project?.classification === TEAM_ONLY);
-  // Starts from the team now (responsible and reviewer included); the checkboxes change it.
-  let chosen = $derived((project?.team ?? []).map((m) => m.id));
+  const fixed = $derived(new Set([project?.responsible?.id, project?.reviewer?.id]));
+  const added = (role: string) =>
+    (project?.team ?? []).filter((m) => !m.responsible && !m.reviewer && m.as_role === role).map((m) => m.id);
+  // Start from the team now; the checkboxes change it until it's saved.
+  let asTechnician = $derived(added("technician"));
+  let asReviewer = $derived(added("reviewer"));
   let busy = $state(false);
+
+  const sections = $derived([
+    { role: "technician" as const, icon: PenLine, lead: project?.responsible,
+      leadNote: "Responsible", missing: "No responsible technician yet: choose one on Details.",
+      people: technicians(customer?.assigned ?? null).filter((p) => !fixed.has(p.id)) },
+    { role: "reviewer" as const, icon: BadgeCheck, lead: project?.reviewer,
+      leadNote: "The project's reviewer", missing: "No reviewer yet: choose one on Details.",
+      people: reviewers(customer?.assigned ?? null).filter((p) => !fixed.has(p.id)) },
+  ]);
 
   async function save(event: SubmitEvent) {
     event.preventDefault();
     if (!project) return;
     busy = true;
     try {
-      shared.use(await api<ProjectDetail>("PUT", `/projects/${project.id}/team`, { user_ids: chosen }));
+      shared.use(await api<ProjectDetail>("PUT", `/projects/${project.id}/team`,
+        { technicians: asTechnician, reviewers: asReviewer }));
       toast("The team is saved.", "ok", { key: "saved" });
     } catch (e) {
       if (!sessionGone(e)) toast(e instanceof ApiError ? e.message : "Something went wrong.", "critical");
@@ -50,63 +66,83 @@
     </p>
     {#if project.may_edit && customer}
       <form class="stack" onsubmit={save}>
-        {#if customer.assigned?.length}
-          <fieldset class="checks people">
-            <legend class="visually-hidden">Team members</legend>
-            {#each customer.assigned as person (person.id)}
-              {@const role = person.id === project.responsible?.id ? "Responsible"
-                : person.id === project.reviewer?.id ? "Reviewer" : null}
-              <label class="check">
-                <input type="checkbox" value={person.id} bind:group={chosen} disabled={!!role} />
-                <span>
-                  <span class="check-title">{person.display_name}</span>
-                  <span class="small muted">
-                    {role ? `${role} · ` : ""}{person.roles.map(roleName).join(", ")}
+        <div class="roles">
+          {#each sections as section (section.role)}
+            {@const about = ROLE_GROUPS[section.role]}
+            <fieldset class="checks role {section.role}">
+              <legend class="role-title">
+                <section.icon size={16} aria-hidden="true" />{about.title}
+              </legend>
+              <p class="small muted">{about.about}</p>
+              {#if section.lead}
+                <label class="check">
+                  <input type="checkbox" checked disabled />
+                  <span>
+                    <span class="check-title">{section.lead.name}</span>
+                    <span class="small muted">{section.leadNote}</span>
                   </span>
-                </span>
-              </label>
-            {/each}
-          </fieldset>
-          <div><button class="button button-primary" type="submit" disabled={busy}>Save team</button></div>
-        {:else}
-          <p class="muted">Nobody is assigned to {project.customer.name} yet. Assign people on the customer first.</p>
-        {/if}
+                </label>
+              {:else}
+                <p class="small muted">{section.missing}</p>
+              {/if}
+              {#each section.people as person (person.id)}
+                {@const other = section.role === "technician" ? asReviewer : asTechnician}
+                {@const elsewhere = other.includes(person.id)}
+                <label class="check">
+                  {#if section.role === "technician"}
+                    <input type="checkbox" value={person.id} bind:group={asTechnician} disabled={elsewhere} />
+                  {:else}
+                    <input type="checkbox" value={person.id} bind:group={asReviewer} disabled={elsewhere} />
+                  {/if}
+                  <span>
+                    <span class="check-title">{person.display_name}</span>
+                    {#if elsewhere}
+                      <span class="small muted">
+                        On the team as a {section.role === "technician" ? "reviewer" : "technician"}
+                      </span>
+                    {/if}
+                  </span>
+                </label>
+              {/each}
+            </fieldset>
+          {/each}
+        </div>
+        <div><button class="button button-primary" type="submit" disabled={busy}>Save team</button></div>
       </form>
-    {:else if project.team.length}
-      <ul class="members">
-        {#each project.team as member (member.id)}
-          <li>
-            <span class="check-title">{member.name}</span>
-            <span class="small muted">{member.roles.map(roleName).join(", ")}</span>
-            {#if member.responsible}<Pill tone="info" text="Responsible" />{/if}
-            {#if member.reviewer}<Pill tone="info" text="Reviewer" />{/if}
-          </li>
-        {/each}
-      </ul>
     {:else}
-      <p class="muted">Nobody is on the team yet.</p>
+      <RoleGroups groups={[
+        { role: "technician", empty: "Nobody yet.",
+          people: project.team.filter((m) => m.as_role === "technician")
+            .map((m) => ({ id: m.id, name: m.name, note: m.responsible ? "Responsible" : undefined })) },
+        { role: "reviewer", empty: "Nobody yet.",
+          people: project.team.filter((m) => m.as_role === "reviewer")
+            .map((m) => ({ id: m.id, name: m.name, note: m.reviewer ? "The project's reviewer" : undefined })) },
+      ]} />
     {/if}
   </section>
 {/if}
 
 <style>
-  .people {
-    margin: 0;
-    padding: 0;
-    border: 0;
+  .roles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: var(--space-4);
   }
-  .members {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
+  .role {
     margin: 0;
-    padding: 0;
-    list-style: none;
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--link);
+    border-radius: var(--radius-md);
   }
-  .members li {
+  .role.reviewer {
+    border-left-color: var(--accent);
+  }
+  .role-title {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
     gap: var(--space-2);
+    padding: 0 var(--space-1);
+    font: var(--type-label);
   }
 </style>

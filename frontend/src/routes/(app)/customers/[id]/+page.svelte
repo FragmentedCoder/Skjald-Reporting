@@ -5,9 +5,10 @@
   import Plus from "@lucide/svelte/icons/plus";
   import { pageTitle } from "#lib/branding.svelte.js";
   import ProjectTable from "#lib/components/ProjectTable.svelte";
+  import RoleGroups from "#lib/components/RoleGroups.svelte";
   import { sharedCustomer } from "#lib/context.js";
   import { dateTime } from "#lib/format.js";
-  import { roleName } from "#lib/roles.js";
+  import { reviewers, technicians } from "#lib/customers.js";
   import { workspace } from "#lib/workspace.svelte.js";
 
   // A customer at a glance: its work under way, who to talk to, who works on it.
@@ -92,14 +93,12 @@
     <section class="section" aria-labelledby="people-title">
       <h2 class="section-title" id="people-title">People on this customer</h2>
       {#if customer.assigned?.length}
-        <ul class="plain">
-          {#each customer.assigned as person (person.id)}
-            <li>
-              <span class="check-title">{person.display_name}</span>
-              <span class="small muted">{person.roles.map(roleName).join(", ")}</span>
-            </li>
-          {/each}
-        </ul>
+        <RoleGroups compact groups={[
+          { role: "technician", empty: "No technicians yet.",
+            people: technicians(customer.assigned).map((p) => ({ id: p.id, name: p.display_name })) },
+          { role: "reviewer", empty: "No reviewers yet.",
+            people: reviewers(customer.assigned).map((p) => ({ id: p.id, name: p.display_name })) },
+        ]} />
       {:else}
         <p class="muted">Nobody is assigned yet.</p>
       {/if}

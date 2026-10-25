@@ -24,6 +24,11 @@ export interface Person {
   roles: Role[];
 }
 
+/** Someone assigned to a customer, and what as: technician, reviewer or both. */
+export interface Assigned extends Person {
+  assigned_as: Role[];
+}
+
 export interface CustomerSummary {
   id: number;
   name: string;
@@ -31,6 +36,7 @@ export interface CustomerSummary {
   cvr: string | null;
   active_projects: number | null;
   archived_projects: number | null;
+  people: number | null;
   logo_url: string | null;
 }
 
@@ -41,7 +47,7 @@ export interface CustomerDetail extends CustomerSummary {
   created_at: string | null;
   sites: Site[] | null;
   contacts: Contact[] | null;
-  assigned: Person[] | null;
+  assigned: Assigned[] | null;
   may_manage: boolean;
   may_delete: boolean;
   may_manage_projects: boolean;
@@ -71,6 +77,8 @@ export interface Member extends Named {
   roles: Role[];
   responsible: boolean;
   reviewer: boolean;
+  // What they're on the project as.
+  as_role: Role;
 }
 
 export interface ProjectDetail extends ProjectSummary {
@@ -116,10 +124,12 @@ export function formatCvr(cvr: string | null): string {
   return cvr ? cvr.replace(/(\d{2})(?=\d)/g, "$1 ") : "—";
 }
 
-export function technicians(people: Person[] | null): Person[] {
-  return (people ?? []).filter((p) => p.roles.includes("technician"));
+/** The people assigned to a customer as technicians. */
+export function technicians(people: Assigned[] | null): Assigned[] {
+  return (people ?? []).filter((p) => p.assigned_as.includes("technician"));
 }
 
-export function reviewers(people: Person[] | null): Person[] {
-  return (people ?? []).filter((p) => p.roles.includes("reviewer"));
+/** The people assigned to a customer as reviewers. */
+export function reviewers(people: Assigned[] | null): Assigned[] {
+  return (people ?? []).filter((p) => p.assigned_as.includes("reviewer"));
 }

@@ -62,7 +62,7 @@ test("the side menu, with customers and projects", async ({ browser }) => {
   const solvbjerg = await addCustomer(mette, "Sølvbjerg Kommune", "29189900", [], []);
   const bob = fjordlys.assignable.find((p) => p.username === "e2e-bob")!.id;
   for (const customer of [fjordlys, nordhavn]) {
-    await call(mette, "PUT", `/customers/${customer.id}/assignments`, { user_ids: [bob] });
+    await call(mette, "PUT", `/customers/${customer.id}/assignments`, { technicians: [bob] });
   }
 
   const project = (customer: Created, name: string, classification: string, responsible: number | null) =>
