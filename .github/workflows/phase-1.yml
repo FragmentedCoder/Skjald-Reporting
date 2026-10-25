@@ -30,9 +30,20 @@ jobs:
           python-version: "3.13"
       - name: Install
         run: pip install .[dev]
-      # The backup tests run restic itself against a local repository.
+      # The backup tests run restic itself against a local repository: the version the
+      # app image has (Ubuntu 24.04's 0.16 lacks the exit codes Skjald reads), pinned to
+      # the SHA-256 in restic's signed checksum list (key CF8F18F2844575973F79D4E191A6868BD3F7A907).
       - name: Install restic
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq restic
+        env:
+          RESTIC_VERSION: "0.18.0"
+          RESTIC_SHA256: 98f6dd8bf5b59058d04bfd8dab58e196cc2a680666ccee90275a3b722374438e
+        run: |
+          curl -fsSLo /tmp/restic.bz2 \
+            "https://github.com/restic/restic/releases/download/v${RESTIC_VERSION}/restic_${RESTIC_VERSION}_linux_amd64.bz2"
+          echo "${RESTIC_SHA256}  /tmp/restic.bz2" | sha256sum -c -
+          bunzip2 -c /tmp/restic.bz2 >/tmp/restic
+          sudo install -m 0755 /tmp/restic /usr/local/bin/restic
+          restic version
       - name: Lint
         run: ruff check .
       - name: Type check

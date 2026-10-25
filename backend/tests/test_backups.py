@@ -1,4 +1,5 @@
 import json
+import os
 import shutil
 import subprocess
 from datetime import UTC, datetime
@@ -134,7 +135,7 @@ def test_a_backup_restores_and_checks_out(local_repository, session, make_user, 
     kit = to_kit_text(load_or_create_backup_key(data_dir, master_key_path))
     listed = subprocess.run(
         ["restic", "snapshots", "--json"], capture_output=True, text=True, check=True,
-        env={"RESTIC_REPOSITORY": str(local_repository), "PATH": "/usr/bin:/bin",
+        env={"RESTIC_REPOSITORY": str(local_repository), "PATH": os.environ["PATH"],
              "RESTIC_PASSWORD": kit.replace(" ", "")})
     assert len(json.loads(listed.stdout)) == 1
 
@@ -144,7 +145,7 @@ def test_a_repository_made_with_another_key_is_refused_plainly(local_repository,
                                                               session) -> None:
     subprocess.run(["restic", "init"], capture_output=True, check=True, env={
         "RESTIC_REPOSITORY": str(local_repository), "RESTIC_PASSWORD": "someone else's",
-        "PATH": "/usr/bin:/bin"})
+        "PATH": os.environ["PATH"]})
     backup = run(session, "backup")
     assert backup.state == "queued" and "another key" in backup.error
     failed = session.scalar(select(AuditEntry).where(AuditEntry.action == "backup.failed"))
