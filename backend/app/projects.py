@@ -5,8 +5,8 @@ dates are sealed with the customer's key. Archiving a project makes it, and
 later its reports, read-only; retention periods count from the archive date.
 
 Everyone who sees a customer fully sees its projects, except a TLP:RED one:
-that's for Administrators and the project's team only (the responsible
-technician and the people added to it).
+that's for Administrators, Managers and the project's team only (its responsible
+technician, its reviewer and the people added to it).
 """
 
 from __future__ import annotations
@@ -42,6 +42,8 @@ class Project(Base):
     responsible_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL")
     )
+    # Reviews and countersigns the project's reports; never its responsible technician.
+    reviewer_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     contact_id: Mapped[int | None] = mapped_column(
         ForeignKey("customer_contacts.id", ondelete="SET NULL")
     )
@@ -64,7 +66,7 @@ class ProjectSite(Base):
 
 
 class ProjectMember(Base):
-    """Someone added to a project's team, besides its responsible technician."""
+    """Someone added to a project's team, besides its responsible technician and reviewer."""
 
     __tablename__ = "project_members"
 
@@ -85,19 +87,19 @@ def member_ids(db: Session, project_id: int) -> set[int]:
 
 
 def team_ids(db: Session, project: Project) -> set[int]:
-    """The responsible technician and everyone added to the project."""
+    """The responsible technician, the reviewer and everyone added to the project."""
     team = member_ids(db, project.id)
-    if project.responsible_id is not None:
-        team.add(project.responsible_id)
+    team |= {i for i in (project.responsible_id, project.reviewer_id) if i is not None}
     return team
 
 
 def projects_joined(db: Session, user_id: int) -> set[int]:
-    """Projects someone is on the team of, as member or responsible."""
+    """Projects someone is on the team of, as member, responsible or reviewer."""
     joined = set(db.scalars(
         select(ProjectMember.project_id).where(ProjectMember.user_id == user_id)
     ))
-    joined |= set(db.scalars(select(Project.id).where(Project.responsible_id == user_id)))
+    joined |= set(db.scalars(select(Project.id).where(
+        (Project.responsible_id == user_id) | (Project.reviewer_id == user_id))))
     return joined
 
 

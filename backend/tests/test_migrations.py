@@ -7,9 +7,33 @@ from app.db import Base, make_engine
 from app.migrate import upgrade
 
 
+def _pragma_agrees(conn, removed, added) -> bool:
+    """SQLAlchemy reads ON DELETE only from table-level FOREIGN KEY clauses, but a
+    column added later (ALTER TABLE ... ADD COLUMN ... REFERENCES) can only have a
+    column-level one; it is reflected without it, so a remove_fk/add_fk pair turns
+    up. Such a pair is no difference if SQLite's own record of the key agrees with
+    the model in every part."""
+    model = added[1]
+    if (removed[1].table.name != model.table.name
+            or [c.name for c in removed[1].columns] != [c.name for c in model.columns]):
+        return False
+    rows = conn.exec_driver_sql(f"PRAGMA foreign_key_list({model.table.name})").all()
+    return any(
+        (row[2], row[3], row[4], row[6]) == (
+            model.referred_table.name, model.columns[0].name, model.elements[0].column.name,
+            (model.ondelete or "NO ACTION").upper())
+        for row in rows
+    )
+
+
 def test_the_migrations_build_exactly_the_schema_the_models_describe(engine) -> None:
     with engine.connect() as conn:
         differences = compare_metadata(MigrationContext.configure(conn), Base.metadata)
+        removed = [d for d in differences if d[0] == "remove_fk"]
+        added = [d for d in differences if d[0] == "add_fk"]
+        explained = [(r, a) for r in removed for a in added if _pragma_agrees(conn, r, a)]
+    for pair in explained:
+        differences = [d for d in differences if d not in pair]
     assert differences == []
 
 
