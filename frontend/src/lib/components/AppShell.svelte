@@ -276,7 +276,8 @@
 <style>
   .frame {
     display: grid;
-    grid-template-columns: 264px minmax(0, 1fr);
+    /* Wide enough for the customer picker's search and list under its button. */
+    grid-template-columns: 284px minmax(0, 1fr);
     min-height: 100vh;
   }
   .topbar,

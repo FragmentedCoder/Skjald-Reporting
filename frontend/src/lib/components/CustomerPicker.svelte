@@ -28,7 +28,7 @@
     const box = button.getBoundingClientRect();
     panel.style.top = `${box.bottom + 4}px`;
     panel.style.left = `${box.left}px`;
-    panel.style.width = `${Math.max(box.width, 260)}px`;
+    panel.style.width = `${box.width}px`;
   }
 
   // Placed under its button before it shows, so it never appears anywhere else.

@@ -94,6 +94,7 @@ test("the side menu, with customers and projects", async ({ browser }) => {
     });
     expect(opened.panel.top).toBeGreaterThan(opened.button.bottom);
     expect(opened.panel.left).toBe(opened.button.left);
+    expect(opened.panel.right).toBe(opened.button.right);
     await expect(mette.getByRole("dialog", { name: "Choose a customer" })).toBeVisible();
     await shot("2-picker");
     await mette.keyboard.press("Escape");
