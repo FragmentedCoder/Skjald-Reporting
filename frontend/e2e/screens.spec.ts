@@ -1,5 +1,5 @@
 import { test } from "@playwright/test";
-import { signIn, totp } from "./helpers";
+import { signIn, signOut, totp } from "./helpers";
 
 // Not assertions: screenshots of each screen in both themes and at phone width,
 // written to e2e-results/screens for a person to look over.
@@ -46,7 +46,13 @@ for (const colorScheme of ["light", "dark"] as const) {
       await page.getByRole("heading", { name: /Welcome/ }).waitFor();
       await shot("6-home");
 
-      await page.getByRole("button", { name: "Sign out" }).click();
+      if (label === "phone") {
+        await page.getByRole("button", { name: "Open the menu" }).click();
+        await page.getByRole("button", { name: "Close the menu" }).last().waitFor();
+        await shot("6-menu");
+        await page.keyboard.press("Escape");
+      }
+      await signOut(page);
       await signIn(page, username);
       await page.getByRole("heading", { name: "Confirm it's you" }).waitFor();
       await shot("7-verify");

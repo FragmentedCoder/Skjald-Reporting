@@ -43,12 +43,14 @@ with Session(get_engine()) as db:
     for username in os.environ["USERS"].split():
         password = vet_new_password(os.environ["E2E_PASSWORD"], policy, username=username)
         create_user(db, username, "Astrid Fjeld", password)
-    # Administrators and a technician for the admin panel and customer tests (the
-    # wizard's Administrator has a passkey only).
+    # Administrators and technicians for the admin panel, customer and menu tests
+    # (the wizard's Administrator has a passkey only).
     for username, name, role in (
         ("e2e-admin", "Eir Admin", Role.ADMINISTRATOR),
         ("e2e-boss", "Bodil Boss", Role.ADMINISTRATOR),
         ("e2e-tech", "Tor Tekniker", Role.TECHNICIAN),
+        ("e2e-mette", "Mette Madsen", Role.ADMINISTRATOR),
+        ("e2e-bob", "Bob Bager", Role.TECHNICIAN),
     ):
         password = vet_new_password(os.environ["E2E_PASSWORD"], policy, username=username)
         grant_role(db, create_user(db, username, name, password), role, actor=None, ip=None)

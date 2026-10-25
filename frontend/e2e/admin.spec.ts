@@ -5,9 +5,9 @@ import { setUpAuthenticatorApp, signIn, toastWith, totp, watchForCspViolations }
 
 const BJORN_PASSWORD = "bjørns egen lange adgangssætning";
 
-/** A section link in the admin panel's own menu (not a breadcrumb of the same name). */
+/** A section link in the side menu (not a breadcrumb of the same name). */
 function adminMenu(page: Page, name: string) {
-  return page.getByRole("navigation", { name: "Admin" }).getByRole("link", { name });
+  return page.getByRole("navigation", { name: "Main" }).getByRole("link", { name, exact: true });
 }
 
 async function shot(page: Page, name: string) {
@@ -156,7 +156,7 @@ test("the admin panel, from adding a user to their first sign-in", async ({ brow
   await expect
     .poll(() => admin.evaluate(() => document.documentElement.style.getPropertyValue("--link")))
     .toBe("");
-  await expect(admin.getByRole("banner")).toContainText("Nordlys Rapport");
+  await expect(admin.getByRole("complementary", { name: "Side menu" })).toContainText("Nordlys Rapport");
   await expect(admin).toHaveTitle(/Nordlys Rapport/);
   await shot(admin, "9-branding");
 
@@ -187,7 +187,7 @@ test("the admin panel, from adding a user to their first sign-in", async ({ brow
   expect(csv).toContain("admin.user_created");
 
   // Your account: light or dark and the colours apply at once and are kept;
-  // the button in the top bar switches between light and dark too.
+  // the button in the side menu switches between light and dark too.
   const link = () =>
     admin.evaluate(() => document.documentElement.style.getPropertyValue("--link"));
   await admin.getByRole("link", { name: "Your account" }).click();

@@ -75,6 +75,9 @@ export async function setUpAuthenticatorApp(page: Page): Promise<string> {
 }
 
 export async function signOut(page: Page): Promise<void> {
+  // At phone width the side menu, with the button, opens first.
+  const opener = page.getByRole("button", { name: "Open the menu" });
+  if (await opener.isVisible()) await opener.click();
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/sign-in$/);
 }
