@@ -45,10 +45,10 @@ def test_a_backup_from_the_console_waits_for_the_worker(server, the_worker, caps
                                                "added": 1300}
     assert console.main(["backup"]) == 0
     out = capsys.readouterr().out
-    assert "Backup 1: waiting for the worker" in out
-    assert "backed up 4,200 bytes (1,300 new), snapshot 0b37addf." in out
+    assert "Backup 1 to this server: waiting for the worker" in out
+    assert "Backup to this server: backed up 4,200 bytes (1,300 new), snapshot 0b37addf." in out
     job = the_worker.scalar(select(jobs.Job))
-    assert job.data() == {"via": "console"}
+    assert job.data() == {"target": "local", "via": "console"}
     logged = the_worker.scalar(select(AuditEntry).where(
         AuditEntry.action == "backup.backup_requested"))
     assert logged.actor_name == "console"
@@ -61,7 +61,8 @@ def test_a_failed_restore_test_says_why(server, the_worker, capsys) -> None:
     jobs.HANDLERS["restore_test"] = broken
     assert console.main(["restore-test"]) == 1
     err = capsys.readouterr().err
-    assert "Restore test failed: RuntimeError: the disk is full; the worker tries again" in err
+    assert ("Restore test to this server failed: RuntimeError: the disk is full; the worker "
+            "tries again") in err
 
 
 def test_nothing_is_queued_without_a_worker(server, session, capsys) -> None:

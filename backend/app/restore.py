@@ -39,7 +39,8 @@ from app.backups import (
     BackupError,
     check_restored,
     environment,
-    load_target,
+    load_plan,
+    load_target_secrets,
     password,
     restic,
 )
@@ -47,7 +48,6 @@ from app.crypto.keys import from_kit_text, load_master_key
 from app.crypto.rotation import key_id, opens, rewrap_restored
 from app.db import make_engine
 from app.jobs import Job
-from app.sealed_settings import load_secrets
 from app.settings import settings
 
 DATA_FILES = ("skjald.db", "skjald.db-wal", "skjald.db-shm", *KEY_FILES)
@@ -107,16 +107,24 @@ def restore(env: dict[str, str], snapshot: str, data_dir: Path,
     return found | {"kept": str(kept)}
 
 
-def _target_environment(key_text: str, repository: str | None) -> dict[str, str]:
-    """restic's environment: from the saved target, or from --repository and the
-    credentials already in this process's environment."""
+def _target_environment(key_text: str, repository: str | None,
+                        target_id: str | None) -> dict[str, str]:
+    """restic's environment: from a saved target (the first, unless --target names
+    another), or from --repository and the credentials already in this process's
+    environment."""
     if repository:
         return {**os.environ, "RESTIC_REPOSITORY": repository, "RESTIC_PASSWORD": key_text,
                 "RESTIC_CACHE_DIR": "/tmp/restic-cache", "HOME": "/tmp"}
     engine = make_engine()
     try:
         with Session(engine) as db:
-            return environment(load_target(db), load_secrets(db, "backup"), key_text)
+            plan = load_plan(db)
+            target = plan.target(target_id)
+            if target is None:
+                raise BackupError(f"There's no backup target {target_id}: the targets are "
+                                  f"{', '.join(t.id for t in plan.targets) or 'none'}.")
+            secrets = load_target_secrets(db, plan).get(target.id, {})
+            return environment(target, secrets, key_text)
     finally:
         engine.dispose()
 
@@ -124,6 +132,8 @@ def _target_environment(key_text: str, repository: str | None) -> dict[str, str]
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Restore Skjald from a backup.")
     parser.add_argument("--snapshot", default="latest", help="snapshot ID (default: latest)")
+    parser.add_argument("--target", help="which backup target to restore from (default: the "
+                                          "first one in Admin, Backups)")
     parser.add_argument("--repository", help="restic repository, if Skjald's settings are gone")
     parser.add_argument("--yes", action="store_true", help="don't ask before replacing data")
     args = parser.parse_args(argv)
@@ -135,7 +145,10 @@ def main(argv: list[str] | None = None) -> int:
         print("That isn't a backup key as the recovery kit writes it.", file=sys.stderr)
         return 2
     try:
-        env = _target_environment(key_text, args.repository)
+        env = _target_environment(key_text, args.repository, args.target)
+    except BackupError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
     except Exception as exc:  # noqa: BLE001 - the database may be the thing that's lost
         print(f"Skjald's settings can't be read ({exc}); give --repository.", file=sys.stderr)
         return 2

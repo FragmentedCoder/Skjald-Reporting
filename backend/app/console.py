@@ -88,50 +88,62 @@ def _said(job: jobs.Job) -> str:
 
 
 def run_and_wait(db: Session, kind: str, timeout: float = 3 * 3600, poll: float = 2) -> int:
-    """Queue a backup or restore test for the worker (or join one already waiting),
-    and wait for it."""
-    from app.backups import load_target
+    """Queue a backup or restore test for the worker, one per target (or join one
+    already waiting), and wait for them all."""
+    from app.backups import load_plan
 
     names = {"backup": "Backup", "restore_test": "Restore test"}
-    if load_target(db).kind == "off":
+    plan = load_plan(db)
+    if not plan.targets:
         print("Backups are switched off (Admin, Backups).", file=sys.stderr)
         return 1
     if not _worker_running(db):
         print("The worker isn't running, so nothing would do it: start Skjald first.",
               file=sys.stderr)
         return 1
-    job = db.scalar(select(jobs.Job).where(jobs.Job.kind == kind,
-                                           jobs.Job.state.in_(("queued", "running"))).limit(1))
-    if job is None:
-        job = jobs.enqueue(db, kind, {"via": "console"})
-        audit.append(db, f"backup.{kind}_requested", actor_name="console",
-                     details={"job": job.id})
-    job_id = job.id
-    db.commit()
-    print(f"{names[kind]} {job_id}: waiting for the worker…", flush=True)
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        job = db.get(jobs.Job, job_id, populate_existing=True)
-        db.commit()
+    waiting = list(db.scalars(select(jobs.Job).where(
+        jobs.Job.kind == kind, jobs.Job.state.in_(("queued", "running")))))
+    followed: dict[int, str] = {}
+    for target in plan.targets:
+        job = next((j for j in waiting
+                    if j.data().get("target", plan.targets[0].id) == target.id), None)
         if job is None:
-            break
-        if job.state == "done":
-            print(f"{names[kind]}: {_said(job)}.")
-            return 0
-        if job.state == "failed" or (job.state == "queued" and job.error):
-            retry = "; the worker tries again later" if job.state == "queued" else ""
-            print(f"{names[kind]} failed: {job.error}{retry}", file=sys.stderr)
-            return 1
-        time.sleep(poll)
-    print(f"{names[kind]} {job_id} hasn't finished; it goes on in the worker.", file=sys.stderr)
-    return 1
+            job = jobs.enqueue(db, kind, {"target": target.id, "via": "console"})
+            audit.append(db, f"backup.{kind}_requested", actor_name="console",
+                         details={"job": job.id, "target": target.id})
+        followed[job.id] = target.words()
+    db.commit()
+    for job_id, words in followed.items():
+        print(f"{names[kind]} {job_id} to {words}: waiting for the worker…", flush=True)
+    failures = 0
+    deadline = time.monotonic() + timeout
+    while followed and time.monotonic() < deadline:
+        for job_id, words in list(followed.items()):
+            job = db.get(jobs.Job, job_id, populate_existing=True)
+            db.commit()
+            if job is None:
+                del followed[job_id]
+            elif job.state == "done":
+                print(f"{names[kind]} to {words}: {_said(job)}.", flush=True)
+                del followed[job_id]
+            elif job.state == "failed" or (job.state == "queued" and job.error):
+                retry = "; the worker tries again later" if job.state == "queued" else ""
+                print(f"{names[kind]} to {words} failed: {job.error}{retry}", file=sys.stderr)
+                failures += 1
+                del followed[job_id]
+        if followed:
+            time.sleep(poll)
+    for job_id, words in followed.items():
+        print(f"{names[kind]} {job_id} to {words} hasn't finished; it goes on in the worker.",
+              file=sys.stderr)
+    return 1 if failures or followed else 0
 
 
 def rotate_master_key() -> int:
     """Finish or undo a rotation left halfway, or replace the master key."""
     from sqlalchemy.orm import Session as _Session
 
-    from app.backups import load_target
+    from app.backups import load_plan
     from app.crypto import rotation
     from app.crypto.keys import to_kit_text
     from app.db import make_engine
@@ -164,7 +176,7 @@ def rotate_master_key() -> int:
     engine = make_engine(data_dir, path)
     try:
         with _Session(engine) as db:
-            keep_days = load_target(db).keep_days
+            keep_days = load_plan(db).keep_days
             db.commit()
     finally:
         engine.dispose()

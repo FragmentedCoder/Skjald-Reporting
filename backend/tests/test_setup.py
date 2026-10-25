@@ -133,15 +133,16 @@ def test_the_whole_wizard(client, token, session, server, no_breach_found, maste
         "Nordlys IT ApS", "https://skjald.example.internal"
     )
 
-    early = client.post("/api/setup/backups", json={"kind": "local"}, headers=h(token, csrf))
+    early = client.post("/api/setup/backups", json={"targets": [{"kind": "local"}]},
+                        headers=h(token, csrf))
     assert early.json()["detail"] == "Save the recovery kit first."
     saved = client.post("/api/setup/kit-saved", headers=h(token, csrf)).json()
     assert saved["kit_saved"] and saved["steps_done"] == []
 
     # Then backups, email and the certificate: no step-up asked, each can wait.
-    backups = client.post("/api/setup/backups", json={"kind": "local", "hour": 3},
+    backups = client.post("/api/setup/backups", json={"targets": [{"kind": "local"}], "hour": 3},
                           headers=h(token, csrf))
-    assert backups.json()["target"]["hour"] == 3
+    assert backups.json()["hour"] == 3 and backups.json()["targets"][0]["words"] == "this server"
     unfinished = client.post("/api/setup/complete", headers=h(token, csrf))
     assert unfinished.json()["detail"] == "Set up email, or leave it for later, first."
     mail = client.post("/api/setup/email", headers=h(token, csrf), json={

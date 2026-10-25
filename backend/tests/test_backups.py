@@ -10,10 +10,11 @@ from sqlalchemy import select, text
 
 from app import backups, jobs
 from app.audit import AuditEntry
-from app.backups import BackupError, Target
+from app.backups import BackupError, Plan, Target
 from app.crypto.key_files import load_or_create_backup_key, load_or_create_database_key
 from app.crypto.keys import from_kit_text, to_kit_text
 from app.roles import Role, grant_role
+from app.sealed_settings import save_secrets
 from tests.conftest import PASSWORD
 
 BACKUPS = "/api/admin/backups"
@@ -68,31 +69,60 @@ def test_a_target_says_what_it_still_needs() -> None:
 # When
 
 
-def test_the_nightly_backup_is_due_from_its_hour(frozen_clock, session) -> None:
+NAS = Target(id="smb", kind="smb", smb_host="nas.local", smb_share="backup",
+             smb_username="skjald")
+
+
+def test_the_nightly_backup_is_due_from_its_hour_for_each_target(frozen_clock, session) -> None:
     morning = datetime(2026, 10, 24, 1, 30, tzinfo=UTC)
     assert backups._nightly(session, morning) == []
     late = datetime(2026, 10, 24, 2, 0, tzinfo=UTC)
-    assert backups._nightly(session, late) == [("backup", "backup/2026-10-24", {})]
-    backups.save_target(session, Target(kind="off"))
+    assert backups._nightly(session, late) == [
+        ("backup", "backup/2026-10-24/local", {"target": "local"})]
+    backups.save_plan(session, Plan(targets=[Target(), NAS, Target(id="s3", kind="s3")]))
+    assert backups._nightly(session, late) == [  # the S3 target still needs its details
+        ("backup", "backup/2026-10-24/local", {"target": "local"}),
+        ("backup", "backup/2026-10-24/smb", {"target": "smb"})]
+    backups.save_plan(session, Plan(targets=[]))
     assert backups._nightly(session, late) == []
 
 
-def test_the_restore_test_waits_for_a_backup(frozen_clock, session) -> None:
+def test_each_target_is_restore_tested_once_it_has_a_backup(frozen_clock, session) -> None:
+    backups.save_plan(session, Plan(targets=[Target(), NAS]))
     assert backups._weekly_restore_test(session, frozen_clock.now) == []
-    job = jobs.enqueue(session, "backup")
+    job = jobs.enqueue(session, "backup", {"target": "smb"})
     jobs.finish(session, job, {})
     assert backups._weekly_restore_test(session, frozen_clock.now) == [
-        ("restore_test", "restore_test/2026-W43", {})]
+        ("restore_test", "restore_test/2026-W43/smb", {"target": "smb"})]
 
 
 def test_the_next_backup_time() -> None:
     now = datetime(2026, 10, 24, 1, 0, tzinfo=UTC)
-    target = Target(hour=2)
-    assert backups.next_backup(target, False, now) == datetime(2026, 10, 24, 2, tzinfo=UTC)
-    assert backups.next_backup(target, True, now) == datetime(2026, 10, 25, 2, tzinfo=UTC)
+    plan = Plan(hour=2)
+    assert backups.next_backup(plan, False, now) == datetime(2026, 10, 24, 2, tzinfo=UTC)
+    assert backups.next_backup(plan, True, now) == datetime(2026, 10, 25, 2, tzinfo=UTC)
     afternoon = datetime(2026, 10, 24, 15, 0, tzinfo=UTC)
-    assert backups.next_backup(target, False, afternoon) == afternoon  # missed: due now
-    assert backups.next_backup(Target(kind="off"), False, now) is None
+    assert backups.next_backup(plan, False, afternoon) == afternoon  # missed: due now
+    assert backups.next_backup(Plan(targets=[]), False, now) is None
+
+
+def test_a_single_target_saved_before_is_read_as_the_first(session, data_dir) -> None:
+    """Saved before there could be several targets: the target, and its secret at the
+    top of the sealed secrets."""
+    from app.policy import Setting
+    from app.sealed_settings import save_secrets
+
+    session.merge(Setting(key=backups.OLD_TARGET_SETTING, value=json.dumps({
+        "kind": "smb", "hour": 4, "keep_days": 30, "smb_host": "nas.local",
+        "smb_share": "backup", "smb_username": "skjald"})))
+    save_secrets(session, backups.SECRETS, {"smb_password": "nas-secret"})
+    session.commit()
+    plan = backups.load_plan(session)
+    assert (plan.hour, plan.keep_days, [t.id for t in plan.targets]) == (4, 30, ["smb"])
+    assert backups.load_target_secrets(session, plan) == {"smb": {"smb_password": "nas-secret"}}
+    session.merge(Setting(key=backups.OLD_TARGET_SETTING, value=json.dumps({"kind": "off"})))
+    session.commit()
+    assert backups.load_plan(session).targets == []
 
 
 # Backing up and restoring, with restic itself
@@ -187,47 +217,82 @@ def as_admin(admin):
     return admin[1]
 
 
+S3 = {"kind": "s3", "s3_endpoint": "https://s3.example.com", "s3_bucket": "vault",
+      "s3_access_key_id": "AKIA", "s3_secret_access_key": "s3cret"}
+
+
 def test_the_status_tells_where_when_and_how_it_went(client, as_admin) -> None:
     status = client.get(BACKUPS, headers=as_admin).json()
-    assert status["target"]["kind"] == "local" and status["repository"] == "/backups/restic"
-    assert status["last_backup"] is None and status["runs"] == []
-    assert status["next_backup_at"] is not None
+    [local] = status["targets"]
+    assert local["target"]["kind"] == "local" and local["repository"] == "/backups/restic"
+    assert local["words"] == "this server" and local["last_backup"] is None
+    assert status["runs"] == [] and status["next_backup_at"] is not None
 
 
 def test_changing_where_backups_go_needs_a_fresh_confirmation(client, as_admin,
                                                               session) -> None:
-    s3 = {"kind": "s3", "s3_endpoint": "https://s3.example.com", "s3_bucket": "vault",
-          "s3_access_key_id": "AKIA", "s3_secret_access_key": "s3cret", "hour": 3}
-    refused = client.put(BACKUPS, headers=as_admin, json=s3)
+    both = {"hour": 3, "targets": [{"id": "local", "kind": "local"}, S3]}
+    refused = client.put(BACKUPS, headers=as_admin, json=both)
     assert refused.headers["X-Skjald-Reason"] == "step_up_required"
     assert "where backups go" in refused.json()["detail"]
     client.post("/api/auth/confirm-password", headers=as_admin, json={"password": PASSWORD})
-    saved = client.put(BACKUPS, headers=as_admin, json=s3)
+    saved = client.put(BACKUPS, headers=as_admin, json=both)
     assert saved.status_code == 200, saved.text
-    body = saved.json()
-    assert body["s3_secret_set"] and "s3cret" not in saved.text
-    assert body["repository"] == "s3:https://s3.example.com/vault/skjald"
+    local, s3 = saved.json()["targets"]
+    assert (local["target"]["id"], s3["target"]["id"]) == ("local", "s3")
+    assert s3["secret_set"] and "s3cret" not in saved.text
+    assert s3["repository"] == "s3:https://s3.example.com/vault/skjald"
     # The hour alone changes without asking again, and the secret is kept.
-    later = client.put(BACKUPS, headers=as_admin, json={**s3, "s3_secret_access_key": None,
-                                                         "hour": 4})
-    assert later.status_code == 200 and later.json()["s3_secret_set"]
+    later = client.put(BACKUPS, headers=as_admin, json={"hour": 4, "targets": [
+        {"id": "local", "kind": "local"}, {**S3, "id": "s3", "s3_secret_access_key": None}]})
+    assert later.status_code == 200 and later.json()["targets"][1]["secret_set"]
+    # Removing a target is a change to where backups go.
+    removed = client.put(BACKUPS, headers=as_admin, json={"hour": 4, "targets": [
+        {"id": "local", "kind": "local"}]})
+    assert removed.headers["X-Skjald-Reason"] == "step_up_required"
     logged = session.scalars(select(AuditEntry.details).where(
         AuditEntry.action == "backup.settings_changed")).all()
-    assert logged == ['{"hour":3,"keep_days":90,"kind":"s3"}',
-                      '{"hour":4,"keep_days":90,"kind":"s3"}']
+    assert logged == ['{"hour":3,"keep_days":90,"targets":["local","s3"]}',
+                      '{"hour":4,"keep_days":90,"targets":["local","s3"]}']
     assert all("s3cret" not in d for d in logged)
 
 
-def test_a_target_without_what_it_needs_is_refused(client, as_admin) -> None:
-    refused = client.put(BACKUPS, headers=as_admin, json={"kind": "smb", "smb_host": "nas"})
-    assert refused.status_code == 400 and "share name" in refused.json()["detail"]
+def test_each_target_keeps_its_own_secret(client, as_admin, session) -> None:
+    client.post("/api/auth/confirm-password", headers=as_admin, json={"password": PASSWORD})
+    two = {"targets": [S3, {**S3, "s3_bucket": "vault-2", "s3_secret_access_key": "other"}]}
+    saved = client.put(BACKUPS, headers=as_admin, json=two).json()
+    assert [t["target"]["id"] for t in saved["targets"]] == ["s3", "s3-2"]
+    plan = backups.load_plan(session)
+    secrets = backups.load_target_secrets(session, plan)
+    session.commit()
+    assert secrets == {"s3": {"s3_secret_access_key": "s3cret"},
+                       "s3-2": {"s3_secret_access_key": "other"}}
 
 
-def test_running_now_queues_one_job_at_a_time(client, as_admin, session) -> None:
+@pytest.mark.parametrize(("targets", "said"), [
+    ([{"kind": "smb", "smb_host": "nas"}], "share name"),
+    ([{"kind": "smb", "smb_host": "nas", "smb_share": "b", "smb_username": "u"}], "password"),
+    ([{"kind": "local"}, {"kind": "local"}], "This server can be a target once"),
+    ([{"id": "a", "kind": "local"}, {**S3, "id": "a"}], "the same ID"),
+])
+def test_a_plan_that_wont_do_is_refused(client, as_admin, targets, said) -> None:
+    client.post("/api/auth/confirm-password", headers=as_admin, json={"password": PASSWORD})
+    refused = client.put(BACKUPS, headers=as_admin, json={"targets": targets})
+    assert refused.status_code == 400 and said in refused.json()["detail"]
+
+
+def test_running_now_queues_one_job_per_target_at_a_time(client, as_admin, session) -> None:
+    backups.save_plan(session, Plan(targets=[Target(), NAS]))
+    save_secrets(session, backups.SECRETS, {"smb": {"smb_password": "x"}})
+    session.commit()
     first = client.post(f"{BACKUPS}/run/backup", headers=as_admin).json()
-    again = client.post(f"{BACKUPS}/run/backup", headers=as_admin).json()
-    assert first["id"] == again["id"] and first["state"] == "queued"
-    assert client.get(f"{BACKUPS}/runs/{first['id']}", headers=as_admin).json()["kind"] == "backup"
+    assert [(run["target"], run["state"]) for run in first] == [
+        ("local", "queued"), ("smb", "queued")]
+    again = client.post(f"{BACKUPS}/run/backup?target=smb", headers=as_admin).json()
+    assert [run["id"] for run in again] == [first[1]["id"]]
+    assert client.get(f"{BACKUPS}/runs/{first[0]['id']}",
+                      headers=as_admin).json()["kind"] == "backup"
+    assert client.post(f"{BACKUPS}/run/backup?target=nope", headers=as_admin).status_code == 404
     assert client.post(f"{BACKUPS}/run/format_disk", headers=as_admin).status_code == 422
 
 
@@ -334,3 +399,41 @@ def test_a_damaged_copy_fails_the_integrity_check(local_repository, session, tmp
     database.write_bytes(bytes(data))
     with pytest.raises(BackupError, match="integrity check"):
         backups.check_restored(folder)
+
+
+# Server health, across targets
+
+
+def test_server_health_reports_every_target(frozen_clock, session) -> None:
+    from app.maintenance import _run_backups, _run_restore_test
+
+    backups.save_plan(session, Plan(targets=[Target(), NAS]))
+    session.commit()
+
+    def finished(kind, target, state="done", error=None):
+        job = jobs.enqueue(session, kind, {"target": target})
+        if state == "done":
+            jobs.finish(session, job, {"snapshot": "0b37addf"})
+        else:
+            job.attempts = jobs.MAX_ATTEMPTS
+            jobs.fail(session, job, error or "unreachable")
+        return job
+
+    assert _run_backups(session).detail == ("No backup to this server yet. No backup to the "
+                                            "SMB share \\\\nas.local\\backup yet.")
+    finished("backup", "local")
+    finished("backup", "smb", "failed", "The backup target can't be reached.")
+    check = _run_backups(session)
+    assert check.status == "problem"
+    assert "Backed up less than an hour ago to this server." in check.detail
+    assert "The last backup to the SMB share \\\\nas.local\\backup failed" in check.detail
+    finished("backup", "smb")
+    assert _run_backups(session).status == "ok"  # a copy away from this server
+
+    assert _run_restore_test(session).status == "warning"  # neither tested yet
+    finished("restore_test", "local")
+    assert _run_restore_test(session).status == "warning"  # the share not yet
+    finished("restore_test", "smb")
+    assert _run_restore_test(session).status == "ok"
+    finished("restore_test", "smb", "failed")
+    assert _run_restore_test(session).status == "problem"

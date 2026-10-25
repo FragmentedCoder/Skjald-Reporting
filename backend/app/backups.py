@@ -3,13 +3,14 @@
 Every night, at the hour the administrator picks (UTC), the worker copies the
 database with SQLite's backup API (the copy is still encrypted with the database
 key), puts it beside the wrapped key files and a small manifest, and has restic
-back that folder up to the target: this server's backup folder, an SMB share
-(through rclone) or S3-compatible storage. restic encrypts it all again with the
+back that folder up to each target: this server's backup folder, SMB shares
+(through rclone) or S3-compatible storage, one job per target, so one that can't
+be reached holds up no other. restic encrypts it all again with the
 backup key, as the recovery kit writes it, so a restore needs the kit: the copy
 of the backup key in the data folder is itself inside the backup. Snapshots older
 than the retention period are forgotten and pruned, and a deleted customer's data
-and key age out with them. Once a week the worker restores the newest snapshot
-into a scratch folder, opens it with the master key, and checks the database's
+and key age out with them. Once a week the worker restores each target's newest
+snapshot into a scratch folder, opens it with the master key, and checks the database's
 integrity, the audit chain and the schema version.
 
 Long work runs outside any transaction: a handler reads what it needs, commits,
@@ -42,8 +43,10 @@ from app.policy import Setting
 from app.sealed_settings import load_secrets
 from app.settings import settings
 
-Kind = Literal["off", "local", "smb", "s3"]
-TARGET_SETTING = "backup/target"
+TargetKind = Literal["local", "smb", "s3"]
+PLAN_SETTING = "backup/plan"
+# Where the one target was kept before there could be several (read once, then moved).
+OLD_TARGET_SETTING = "backup/target"
 SECRETS = "backup"
 LOCAL_REPOSITORY = "/backups/restic"
 KEY_FILES = ("db.key.enc", "backup.key.enc", "config.key.enc")
@@ -57,11 +60,10 @@ _PATH = r"^[A-Za-z0-9._/-]*$"
 
 
 class Target(BaseModel):
-    """Where backups go, when, and for how long. Secrets are kept apart, sealed."""
+    """One place backups go. Its secrets are kept apart, sealed, under its ID."""
 
-    kind: Kind = "local"
-    hour: int = Field(default=2, ge=0, le=23)
-    keep_days: int = Field(default=90, ge=7, le=3650)
+    id: str = Field(default="local", pattern=r"^[a-z0-9-]{1,40}$")
+    kind: TargetKind = "local"
     smb_host: str = Field(default="", max_length=253, pattern=_NAME)
     smb_share: str = Field(default="", max_length=80, pattern=_NAME)
     smb_path: str = Field(default="skjald", max_length=200, pattern=_PATH)
@@ -82,18 +84,64 @@ class Target(BaseModel):
             return "S3-compatible storage needs its address, bucket and access key."
         return None
 
+    def words(self) -> str:
+        """The target, as a sentence names it."""
+        if self.kind == "smb":
+            return f"the SMB share \\\\{self.smb_host}\\{self.smb_share}"
+        if self.kind == "s3":
+            return f"the S3 bucket {self.s3_bucket}"
+        return "this server"
+
+
+class Plan(BaseModel):
+    """When backups run, how long they're kept, and where they go: each target gets
+    every backup, on its own, so one that can't be reached holds up no other.
+    No targets: backups are off."""
+
+    hour: int = Field(default=2, ge=0, le=23)
+    keep_days: int = Field(default=90, ge=7, le=3650)
+    targets: list[Target] = Field(default_factory=lambda: [Target()], max_length=5)
+
+    def target(self, target_id: str | None) -> Target | None:
+        """A target by its ID; the first for a job from before there were several."""
+        if target_id is None:
+            return self.targets[0] if self.targets else None
+        return next((t for t in self.targets if t.id == target_id), None)
+
 
 class BackupError(Exception):
     """Something went wrong in a way worth saying plainly."""
 
 
-def load_target(db: Session) -> Target:
-    stored = db.scalar(select(Setting.value).where(Setting.key == TARGET_SETTING))
-    return Target.model_validate_json(stored) if stored else Target()
+def load_plan(db: Session) -> Plan:
+    stored = db.scalar(select(Setting.value).where(Setting.key == PLAN_SETTING))
+    if stored:
+        return Plan.model_validate_json(stored)
+    # Saved before there could be several targets: one, or "off".
+    old = db.scalar(select(Setting.value).where(Setting.key == OLD_TARGET_SETTING))
+    if not old:
+        return Plan()
+    values = json.loads(old)
+    kind = values.pop("kind", "local")
+    plan = Plan(hour=values.pop("hour", 2), keep_days=values.pop("keep_days", 90), targets=[])
+    if kind != "off":
+        plan.targets.append(Target.model_validate(values | {"id": kind, "kind": kind}))
+    return plan
 
 
-def save_target(db: Session, target: Target) -> None:
-    db.merge(Setting(key=TARGET_SETTING, value=target.model_dump_json()))
+def save_plan(db: Session, plan: Plan) -> None:
+    db.merge(Setting(key=PLAN_SETTING, value=plan.model_dump_json()))
+
+
+def load_target_secrets(db: Session, plan: Plan) -> dict[str, dict[str, str]]:
+    """Each target's secrets by its ID. Secrets saved before there could be several
+    targets belong to the first."""
+    stored = load_secrets(db, SECRETS)
+    flat = {k: v for k, v in stored.items() if isinstance(v, str)}
+    secrets = {k: dict(v) for k, v in stored.items() if isinstance(v, dict)}
+    if flat and plan.targets:
+        secrets.setdefault(plan.targets[0].id, {}).update(flat)
+    return secrets
 
 
 def repository(target: Target) -> str:
@@ -217,10 +265,6 @@ def _stage(folder: Path, manifest: dict[str, Any]) -> None:
     (folder / "manifest.json").write_text(json.dumps(manifest, indent=2))
 
 
-TARGET_WORDS = {"off": "nowhere", "local": "this server", "smb": "the SMB share",
-                "s3": "S3-compatible storage"}
-
-
 def _tell(db: Session, subject: str, body: str) -> None:
     """An email to the Administrators, if email is set up."""
     from app.notices import notify_administrators
@@ -235,20 +279,36 @@ def _log(db: Session, action: str, job: jobs.Job, details: dict[str, Any]) -> No
     db.commit()
 
 
-def _prepare(db: Session) -> tuple[Target, dict[str, str]]:
-    """The target and restic's environment, read before the long work begins."""
-    target = load_target(db)
-    if target.kind == "off":
-        raise BackupError("Backups are switched off.")
+def _prepare(db: Session, job: jobs.Job) -> tuple[Target, dict[str, str]]:
+    """The job's target and restic's environment, read before the long work begins."""
+    plan = load_plan(db)
+    target = plan.target(job.data().get("target"))
+    if target is None:
+        raise BackupError("That backup target isn't there any more." if plan.targets
+                          else "Backups are switched off.")
     if target.missing():
         raise BackupError(target.missing() or "")
     key_text = password(load_or_create_backup_key(settings.data_dir, settings.master_key_path))
-    return target, environment(target, load_secrets(db, SECRETS), key_text)
+    secrets = load_target_secrets(db, plan).get(target.id, {})
+    return target, environment(target, secrets, key_text)
+
+
+def latest(db: Session, kind: str, target: Target, first: bool, *states: str) -> jobs.Job | None:
+    """The newest job of a kind for one target (a job from before there were several
+    targets counts as the first's)."""
+    for job in db.scalars(select(jobs.Job).where(jobs.Job.kind == kind,
+                                                 jobs.Job.state.in_(states))
+                          .order_by(jobs.Job.finished_at.desc(), jobs.Job.id.desc()).limit(200)):
+        named = job.data().get("target")
+        if named == target.id or (named is None and first):
+            return job
+    return None
 
 
 @jobs.handles("backup")
 def run_backup(db: Session, job: jobs.Job) -> dict[str, Any]:
-    target, env = _prepare(db)
+    target, env = _prepare(db, job)
+    keep_days = load_plan(db).keep_days
     head = db.scalar(select(audit.AuditEntry.seq).order_by(audit.AuditEntry.seq.desc()).limit(1))
     manifest = {
         "made_at": clock.utcnow().isoformat(),
@@ -258,19 +318,19 @@ def run_backup(db: Session, job: jobs.Job) -> dict[str, Any]:
         "master_key_id": key_id(load_master_key(settings.master_key_path)),
     }
     db.commit()  # long work follows: hold no lock meanwhile
-    folder = Path(settings.data_dir) / ".backup"
+    folder = Path(settings.data_dir) / f".backup-{job.id}"
     try:
         _stage(folder, manifest)
         created = ensure_repository(env)
         summary = _summary(restic(env, "backup", "--json", "--host", HOST, "--tag", HOST,
                                   str(folder)))
         restic(env, "forget", "--host", HOST, "--keep-within-daily",
-               f"{target.keep_days}d", "--prune")
+               f"{keep_days}d", "--prune")
     except (BackupError, OSError, subprocess.SubprocessError, sqlcipher3.Error) as exc:
-        _log(db, "backup.failed", job, {"target": target.kind, "error": str(exc)[:300]})
+        _log(db, "backup.failed", job, {"target": target.id, "error": str(exc)[:300]})
         if job.attempts >= jobs.MAX_ATTEMPTS:
             _tell(db, "Skjald couldn't back up", (
-                f"The backup to {TARGET_WORDS[target.kind]} failed {job.attempts} times in a "
+                f"The backup to {target.words()} failed {job.attempts} times in a "
                 f"row; the last time: {exc}\n\nAdmin, Backups has the details."))
         raise
     finally:
@@ -280,7 +340,7 @@ def run_backup(db: Session, job: jobs.Job) -> dict[str, Any]:
         "files": summary.get("total_files_processed", 0),
         "bytes": summary.get("total_bytes_processed", 0),
         "added": summary.get("data_added", 0),
-        "target": target.kind,
+        "target": target.id,
         "repository_made": created,
     }
     _log(db, "backup.completed", job, result)
@@ -321,9 +381,9 @@ def check_restored(folder: Path) -> dict[str, Any]:
 
 @jobs.handles("restore_test")
 def run_restore_test(db: Session, job: jobs.Job) -> dict[str, Any]:
-    target, env = _prepare(db)
+    target, env = _prepare(db, job)
     db.commit()
-    scratch = Path(settings.data_dir) / ".restore-test"
+    scratch = Path(settings.data_dir) / f".restore-test-{job.id}"
     shutil.rmtree(scratch, ignore_errors=True)
     try:
         newest = json.loads(restic(env, "snapshots", "latest", "--host", HOST, "--json"))
@@ -335,13 +395,13 @@ def run_restore_test(db: Session, job: jobs.Job) -> dict[str, Any]:
         if found is None:
             raise BackupError("The newest backup has no manifest; it isn't Skjald's.")
         result = check_restored(found.parent) | {
-            "snapshot": str(newest[-1].get("short_id", ""))[:8], "target": target.kind}
+            "snapshot": str(newest[-1].get("short_id", ""))[:8], "target": target.id}
     except (BackupError, OSError, subprocess.SubprocessError, ValueError) as exc:
-        _log(db, "backup.restore_test_failed", job, {"target": target.kind,
+        _log(db, "backup.restore_test_failed", job, {"target": target.id,
                                                       "error": str(exc)[:300]})
         if job.attempts >= jobs.MAX_ATTEMPTS:
             _tell(db, "Skjald's restore test failed", (
-                f"Restoring the newest backup from {TARGET_WORDS[target.kind]} failed "
+                f"Restoring the newest backup from {target.words()} failed "
                 f"{job.attempts} times in a row; the last time: {exc}\n\n"
                 "Until it passes, don't count on that backup. Admin, Backups has the details."))
         raise
@@ -350,7 +410,7 @@ def run_restore_test(db: Session, job: jobs.Job) -> dict[str, Any]:
     _log(db, "backup.restore_tested", job, result)
     _tell(db, "Skjald's restore test passed", (
         f"The newest backup ({result['snapshot']}, made {str(result.get('made_at'))[:16]}Z) was "
-        f"restored from {TARGET_WORDS[target.kind]} into a scratch folder and checked: the "
+        f"restored from {target.words()} into a scratch folder and checked: the "
         f"database, and {result['audit_entries']:,} audit log entries in an unbroken chain."))
     return result
 
@@ -358,19 +418,19 @@ def run_restore_test(db: Session, job: jobs.Job) -> dict[str, Any]:
 @jobs.handles("backup_check")
 def check_target(db: Session, job: jobs.Job) -> dict[str, Any]:
     """Reach the target, making the repository if it's new, and count its snapshots."""
-    target, env = _prepare(db)
+    target, env = _prepare(db, job)
     db.commit()
     created = ensure_repository(env)
     snapshots = json.loads(restic(env, "snapshots", "--json", timeout=300)) or []
-    return {"target": target.kind, "repository_made": created, "snapshots": len(snapshots)}
+    return {"target": target.id, "repository_made": created, "snapshots": len(snapshots)}
 
 
-def next_backup(target: Target, done_today: bool, now: datetime) -> datetime | None:
+def next_backup(plan: Plan, done_today: bool, now: datetime) -> datetime | None:
     """When the next nightly backup is due: tonight's hour, tomorrow's once today's is
     done, or now when today's hour has passed without one (the worker catches up)."""
-    if target.kind == "off":
+    if not plan.targets:
         return None
-    today = now.replace(hour=target.hour, minute=0, second=0, microsecond=0)
+    today = now.replace(hour=plan.hour, minute=0, second=0, microsecond=0)
     if done_today:
         return today + timedelta(days=1)
     return max(today, now)
@@ -378,16 +438,18 @@ def next_backup(target: Target, done_today: bool, now: datetime) -> datetime | N
 
 @jobs.scheduled
 def _nightly(db: Session, now: datetime) -> list[tuple[str, str, dict[str, Any]]]:
-    target = load_target(db)
-    if target.kind == "off" or target.missing() or now.hour < target.hour:
+    plan = load_plan(db)
+    if now.hour < plan.hour:
         return []
-    return [("backup", f"backup/{now.date().isoformat()}", {})]
+    return [("backup", f"backup/{now.date().isoformat()}/{target.id}", {"target": target.id})
+            for target in plan.targets if not target.missing()]
 
 
 @jobs.scheduled
 def _weekly_restore_test(db: Session, now: datetime) -> list[tuple[str, str, dict[str, Any]]]:
-    target = load_target(db)
-    if target.kind == "off" or jobs.latest(db, "backup", "done") is None:
-        return []
+    plan = load_plan(db)
     year, week, _ = now.isocalendar()
-    return [("restore_test", f"restore_test/{year}-W{week:02d}", {})]
+    return [("restore_test", f"restore_test/{year}-W{week:02d}/{target.id}",
+             {"target": target.id})
+            for index, target in enumerate(plan.targets)
+            if latest(db, "backup", target, index == 0, "done") is not None]

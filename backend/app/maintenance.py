@@ -22,13 +22,13 @@ from pydantic import BaseModel
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
-from app import audit, audit_stamps, clock, jobs, worker
+from app import audit, audit_stamps, clock, worker
 from app.admin import Admin
 from app.audit import AuditEntry
 from app.auth import pwned
 from app.auth.dependencies import DB
 from app.auth.sessions import UserSession
-from app.backups import Target, load_target
+from app.backups import Plan, latest, load_plan
 from app.crypto.keys import load_master_key
 from app.crypto.rotation import key_id
 from app.db import check_integrity, engine_of, reading
@@ -204,9 +204,6 @@ def _run_worker(db: Session) -> Check:
     return _worker_check(worker.last_beat(db), failed, now, worker.stopped_at(db))
 
 
-TARGET_NAMES = {"local": "this server", "smb": "the SMB share", "s3": "S3-compatible storage"}
-
-
 def _ago(moment: datetime, now: datetime) -> str:
     hours = int((now - moment).total_seconds() // 3600)
     if hours < 1:
@@ -216,30 +213,38 @@ def _ago(moment: datetime, now: datetime) -> str:
     return f"{hours // 24} days ago"
 
 
-def _backups_check(target: Target, done: Job | None, failed: Job | None,
-                   now: datetime) -> Check:
-    label = "Backups"
-    if target.kind == "off":
-        return Check(key="backups", label=label, status="warning",
-                     detail="Switched off in Backups: nothing is being backed up.")
+def _target_backup(where: str, done: Job | None, failed: Job | None,
+                   now: datetime) -> tuple[Status, str]:
+    """How backups to one target fare, in a sentence."""
     if failed is not None and (done is None or (failed.finished_at or now) > (
             done.finished_at or now)):
-        return Check(key="backups", label=label, status="problem",
-                     detail=f"The last backup failed: {failed.error or 'no reason given'}")
+        return "problem", f"The last backup to {where} failed: {failed.error or 'no reason given'}"
     if done is None or done.finished_at is None:
-        return Check(key="backups", label=label, status="warning", detail="No backup yet.")
+        return "warning", f"No backup to {where} yet."
     age = now - done.finished_at
-    where = TARGET_NAMES[target.kind]
-    detail = f"Backed up {_ago(done.finished_at, now)} to {where}."
+    said = f"Backed up {_ago(done.finished_at, now)} to {where}."
     if age > timedelta(days=2):
-        return Check(key="backups", label=label, status="problem", detail=detail)
+        return "problem", said
     if age > timedelta(hours=26):
-        return Check(key="backups", label=label, status="warning", detail=detail)
-    if target.kind == "local":
+        return "warning", said
+    return "ok", said
+
+
+WORST: dict[Status, int] = {"ok": 0, "off": 0, "warning": 1, "problem": 2}
+
+
+def _backups_check(plan: Plan, results: list[tuple[Status, str]]) -> Check:
+    label = "Backups"
+    if not plan.targets:
+        return Check(key="backups", label=label, status="warning",
+                     detail="Switched off in Backups: nothing is being backed up.")
+    status_: Status = max((s for s, _ in results), key=lambda s: WORST[s])
+    detail = " ".join(said for _, said in results)
+    if status_ == "ok" and all(t.kind == "local" for t in plan.targets):
         return Check(key="backups", label=label, status="warning", detail=detail + (
             " A backup on the same server doesn't survive losing it: keep one on an SMB "
             "share or S3-compatible storage."))
-    return Check(key="backups", label=label, status="ok", detail=detail)
+    return Check(key="backups", label=label, status=status_, detail=detail)
 
 
 def _restore_test_check(last: Job | None, now: datetime) -> Check:
@@ -286,12 +291,25 @@ def _run_stamps(db: Session) -> Check:
 
 
 def _run_backups(db: Session) -> Check:
-    return _backups_check(load_target(db), jobs.latest(db, "backup", "done"),
-                          jobs.latest(db, "backup", "failed"), clock.utcnow())
+    plan, now = load_plan(db), clock.utcnow()
+    return _backups_check(plan, [
+        _target_backup(target.words(), latest(db, "backup", target, index == 0, "done"),
+                       latest(db, "backup", target, index == 0, "failed"), now)
+        for index, target in enumerate(plan.targets)])
 
 
 def _run_restore_test(db: Session) -> Check:
-    return _restore_test_check(jobs.latest(db, "restore_test", "done", "failed"), clock.utcnow())
+    """The oldest of the targets' newest restore tests: each must keep passing."""
+    plan, now = load_plan(db), clock.utcnow()
+    tests = [latest(db, "restore_test", target, index == 0, "done", "failed")
+             for index, target in enumerate(plan.targets)]
+    if not tests:
+        return _restore_test_check(None, now)
+    done = [t for t in tests if t is not None]
+    failed = [t for t in done if t.state == "failed"]
+    if failed or len(done) < len(tests):
+        return _restore_test_check(failed[0] if failed else None, now)
+    return _restore_test_check(min(done, key=lambda t: t.finished_at or now), now)
 
 
 def _run_database(db: Session) -> Check:

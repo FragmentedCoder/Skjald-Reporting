@@ -16,9 +16,9 @@ test("backups: back up, test a restore, and switch them off only after confirmin
   await expect(page.getByRole("radio", { name: /This server/ })).toBeChecked();
 
   await page.getByRole("button", { name: "Back up now" }).click();
-  await expect(toastWith(page, /Backup: .* backed up/)).toBeVisible({ timeout: 90_000 });
+  await expect(toastWith(page, /Backup to this server: .* backed up/)).toBeVisible({ timeout: 90_000 });
   await page.getByRole("button", { name: "Test a restore now" }).click();
-  await expect(toastWith(page, /Restore test: Restored snapshot .* check out/)).toBeVisible({
+  await expect(toastWith(page, /Restore test to this server: Restored snapshot .* check out/)).toBeVisible({
     timeout: 90_000,
   });
   const runs = page.getByRole("region", { name: "Recent runs" });
@@ -32,7 +32,12 @@ test("backups: back up, test a restore, and switch them off only after confirmin
 
   // Switching them off is a change to where backups go: it asks to confirm it's you.
   await menu.getByRole("link", { name: "Backups", exact: true }).click();
-  await page.getByRole("radio", { name: /^Off/ }).check();
+  // A second place shows its own fields; switching backups off removes every place.
+  await page.getByRole("button", { name: "Add another place" }).click();
+  await expect(page.getByLabel("Server", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Remove place 2" }).click();
+  await page.getByRole("button", { name: "Remove it" }).click();
+  await expect(page.getByText("Backups are off: nothing is being backed up.")).toBeVisible();
   await page.getByRole("button", { name: "Save", exact: true }).click();
   const stepUp = page.getByRole("dialog", { name: "Confirm it's you" });
   await stepUp.getByLabel("Code from your authenticator app").fill(totp(secret, 1));

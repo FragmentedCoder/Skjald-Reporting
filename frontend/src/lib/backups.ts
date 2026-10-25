@@ -1,12 +1,12 @@
 // Mirrors backend/app/backup_routes.py.
 import { bytes } from "./format.js";
 
-export type BackupKind = "off" | "local" | "smb" | "s3";
+export type TargetKind = "local" | "smb" | "s3";
 
 export interface BackupTarget {
-  kind: BackupKind;
-  hour: number;
-  keep_days: number;
+  // null for one not saved yet: the server gives it one.
+  id: string | null;
+  kind: TargetKind;
   smb_host: string;
   smb_share: string;
   smb_path: string;
@@ -24,6 +24,7 @@ export type RunKind = "backup" | "restore_test" | "backup_check";
 export interface BackupRun {
   id: number;
   kind: RunKind;
+  target: string | null;
   state: "queued" | "running" | "done" | "failed";
   created_at: string;
   started_at: string | null;
@@ -33,26 +34,72 @@ export interface BackupRun {
   requested_by: string | null;
 }
 
-export interface BackupStatus {
+export interface TargetStatus {
   target: BackupTarget;
-  smb_password_set: boolean;
-  s3_secret_set: boolean;
+  words: string;
+  secret_set: boolean;
   repository: string;
-  next_backup_at: string | null;
   last_backup: BackupRun | null;
   last_restore_test: BackupRun | null;
+}
+
+export interface BackupStatus {
+  hour: number;
+  keep_days: number;
+  targets: TargetStatus[];
+  next_backup_at: string | null;
   runs: BackupRun[];
 }
 
-export const KINDS: { kind: BackupKind; name: string; about: string }[] = [
+/** A target as the form edits it, with its secret as typed (empty keeps the saved one). */
+export interface TargetForm extends BackupTarget {
+  secret: string;
+  secretSet: boolean;
+}
+
+export interface PlanForm {
+  hour: number;
+  keep_days: number;
+  targets: TargetForm[];
+}
+
+export const KINDS: { kind: TargetKind; name: string; about: string }[] = [
   { kind: "smb", name: "SMB share",
     about: "A folder on a file server or NAS on your network, such as a Windows share." },
   { kind: "s3", name: "S3-compatible storage",
     about: "A bucket at Amazon S3, Backblaze B2, MinIO, Wasabi or similar." },
   { kind: "local", name: "This server",
     about: "The backup folder on this server. It doesn't survive losing the server's disk." },
-  { kind: "off", name: "Off", about: "Nothing is backed up." },
 ];
+
+export function newTarget(kind: TargetKind): TargetForm {
+  return {
+    id: null, kind, secret: "", secretSet: false,
+    smb_host: "", smb_share: "", smb_path: "skjald", smb_username: "", smb_domain: "",
+    s3_endpoint: "", s3_bucket: "", s3_path: "skjald", s3_region: "", s3_access_key_id: "",
+  };
+}
+
+export function planForm(status: BackupStatus): PlanForm {
+  return {
+    hour: status.hour,
+    keep_days: status.keep_days,
+    targets: status.targets.map((t) => ({ ...t.target, secret: "", secretSet: t.secret_set })),
+  };
+}
+
+/** The plan as the API takes it: each target's secret only when one was typed. */
+export function planBody(form: PlanForm) {
+  return {
+    hour: form.hour,
+    keep_days: form.keep_days,
+    targets: form.targets.map(({ secret, secretSet: _saved, ...target }) => ({
+      ...target,
+      smb_password: target.kind === "smb" && secret ? secret : null,
+      s3_secret_access_key: target.kind === "s3" && secret ? secret : null,
+    })),
+  };
+}
 
 export const RUN_NAMES: Record<RunKind, string> = {
   backup: "Backup",

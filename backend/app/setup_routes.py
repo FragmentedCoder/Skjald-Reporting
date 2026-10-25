@@ -27,7 +27,7 @@ from app.auth.pwned import BreachCheckUnavailable
 from app.auth.routes import SessionInfo, session_info, set_session_cookie
 from app.auth.sessions import UserSession, start_session
 from app.auth.sign_in import too_many_failures_from
-from app.backup_routes import BackupStatus, TargetIn, apply_target
+from app.backup_routes import BackupStatus, PlanIn, apply_plan
 from app.crypto.key_files import load_or_create_backup_key
 from app.crypto.keys import load_master_key, to_kit_text
 from app.policy import load_policy, save_policy
@@ -266,10 +266,10 @@ def _after_kit(db: Session, record: UserSession) -> None:
 
 @router.post("/backups")
 def set_backups(
-    body: TargetIn, request: Request, _: SetupToken, record: FullSession, db: DB
+    body: PlanIn, request: Request, _: SetupToken, record: FullSession, db: DB
 ) -> BackupStatus:
     _after_kit(db, record)
-    saved = apply_target(db, request, record, body, confirm=False)
+    saved = apply_plan(db, request, record, body, confirm=False)
     mark_step_done(db, "backups")
     db.commit()
     return saved

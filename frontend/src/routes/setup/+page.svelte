@@ -3,9 +3,9 @@
   import { resolve } from "$app/paths";
   import { onMount } from "svelte";
   import { api, ApiError } from "#lib/api.js";
-  import type { BackupRun, BackupStatus, BackupTarget } from "#lib/backups.js";
+  import { planBody, planForm, type BackupRun, type BackupStatus, type PlanForm } from "#lib/backups.js";
   import AuthLayout from "#lib/components/AuthLayout.svelte";
-  import BackupTargetFields from "#lib/components/BackupTargetFields.svelte";
+  import BackupPlanFields from "#lib/components/BackupPlanFields.svelte";
   import MailFields from "#lib/components/MailFields.svelte";
   import TlsFields from "#lib/components/TlsFields.svelte";
   import { mailBody, type MailServer, type MailStatus } from "#lib/mail.js";
@@ -77,9 +77,7 @@
   let codes = $state<string[]>([]);
   let kit = $state<RecoveryKit | null>(null);
   let backups = $state<BackupStatus | null>(null);
-  let target = $state<BackupTarget | null>(null);
-  let smbPassword = $state("");
-  let s3Secret = $state("");
+  let backupPlan = $state<PlanForm | null>(null);
   let checking = $state(false);
   let checkFailed = $state(false);
   let mail = $state<MailStatus | null>(null);
@@ -246,7 +244,7 @@
     step = "backups";
     checkFailed = false;
     backups = await run(() => api<BackupStatus>("GET", "/admin/backups"));
-    if (backups) target = { ...backups.target };
+    if (backups) backupPlan = planForm(backups);
   }
 
   async function showEmail() {
@@ -272,40 +270,48 @@
     nextStep();
   }
 
-  /** Ask the worker to reach the new target; the error in words, or null when it could. */
-  async function checkConnection(): Promise<string | null> {
-    let check = await api<BackupRun>("POST", "/admin/backups/run/backup_check");
-    for (let tries = 0; tries < 45; tries++) {
-      if (check.state === "done") return null;
-      if (check.state === "failed" || (check.state === "queued" && check.error)) {
-        return check.error ?? "The check failed.";
+  /** Ask the worker to reach each place backups go; what went wrong in words, or null
+   * when it reached them all. */
+  async function checkConnections(): Promise<string | null> {
+    const words = new Map(backups?.targets.map((t) => [t.target.id, t.words]) ?? []);
+    let checks = await api<BackupRun[]>("POST", "/admin/backups/run/backup_check");
+    const failures: string[] = [];
+    for (let tries = 0; tries < 45 && checks.length; tries++) {
+      const still: BackupRun[] = [];
+      for (const check of checks) {
+        if (check.state === "failed" || (check.state === "queued" && check.error)) {
+          failures.push(`${words.get(check.target) ?? check.target}: ${check.error ?? "the check failed"}`);
+        } else if (check.state !== "done") {
+          still.push(check);
+        }
       }
+      if (!still.length) break;
       await new Promise((wait) => setTimeout(wait, 2000));
-      check = await api<BackupRun>("GET", `/admin/backups/runs/${check.id}`);
+      checks = await Promise.all(still.map((check) =>
+        api<BackupRun>("GET", `/admin/backups/runs/${check.id}`)));
     }
-    return "The worker didn't get to it within 90 seconds. Is it running?";
+    if (checks.some((check) => check.state === "queued" && !check.error || check.state === "running")) {
+      failures.push("the worker didn't get to it within 90 seconds. Is it running?");
+    }
+    return failures.length ? failures.join("; ") : null;
   }
 
   async function saveBackups(event: SubmitEvent) {
     event.preventDefault();
-    if (!target) return;
+    if (!backupPlan) return;
     const saved = await run(() =>
-      api<BackupStatus>("POST", "/setup/backups", {
-        ...target,
-        smb_password: smbPassword === "" ? null : smbPassword,
-        s3_secret_access_key: s3Secret === "" ? null : s3Secret,
-      }, tokenHeader),
+      api<BackupStatus>("POST", "/setup/backups", planBody(backupPlan!), tokenHeader),
     );
     if (!saved) return;
     backups = saved;
-    smbPassword = s3Secret = "";
-    if (saved.target.kind === "smb" || saved.target.kind === "s3") {
+    backupPlan = planForm(saved);
+    if (saved.targets.some((t) => t.target.kind !== "local")) {
       checking = true;
-      const failure = await run(checkConnection);
+      const failure = await run(checkConnections);
       checking = false;
       if (failure) {
         checkFailed = true;
-        error = `Saved, but Skjald couldn't reach it: ${failure}`;
+        error = `Saved, but Skjald couldn't reach ${failure}`;
         return;
       }
     }
@@ -605,14 +611,13 @@
       wide
     >
       {#if error}<p class="alert alert-critical" role="alert">{error}</p>{/if}
-      {#if backups && target}
+      {#if backups && backupPlan}
         <form class="stack" onsubmit={saveBackups}>
-          <BackupTargetFields bind:target bind:smbPassword bind:s3Secret
-            smbPasswordSet={backups.smb_password_set} s3SecretSet={backups.s3_secret_set} />
+          <BackupPlanFields bind:plan={backupPlan} />
           {#if checking}<p class="small" role="status">Checking that Skjald can reach it…</p>{/if}
           <div class="button-row">
             <button class="button button-primary" type="submit" disabled={busy}>
-              {target.kind === "smb" || target.kind === "s3" ? "Save and check" : "Save and continue"}
+              {backupPlan.targets.some((t) => t.kind !== "local") ? "Save and check" : "Save and continue"}
             </button>
             {#if checkFailed}
               <button class="button button-secondary" type="button" disabled={busy}
