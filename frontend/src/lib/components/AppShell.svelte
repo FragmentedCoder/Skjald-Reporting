@@ -173,8 +173,25 @@
       folded.delete(`project:${id}`);
     }
     if (section === "customers" && page.url.pathname.endsWith("/projects")) folded.delete("projects");
+    following = true;
     await tick();
+    showCurrent();
+  });
+
+  // The menu fills in after a page change (the customer's projects arrive), which
+  // can push the page you're on out of view again: keep it in view until you
+  // scroll the menu yourself.
+  let following = false;
+
+  function showCurrent() {
     nav?.querySelector('[aria-current="page"]')?.scrollIntoView({ block: "nearest" });
+  }
+
+  $effect(() => {
+    void workspace.customers;
+    void workspace.projects;
+    void workspace.project;
+    if (following) void tick().then(showCurrent);
   });
 
   async function toggleTheme() {
@@ -257,7 +274,8 @@
         </button>
       </div>
 
-      <nav bind:this={nav} class="nav" aria-label="Main">
+      <nav bind:this={nav} class="nav" aria-label="Main" onwheel={() => (following = false)}
+        ontouchmove={() => (following = false)}>
         <ul class="items">
           <li>{@render link({ href: resolve("/(app)"), label: "Home", icon: House, current: path === "/" })}</li>
           {#if sees}
