@@ -115,6 +115,45 @@ test("the side menu, with customers and projects", async ({ browser }) => {
   await expect(menu(mette).getByRole("link", { name: "Audit log" })).toBeInViewport();
   await expect(mette.getByRole("button", { name: "Sign out" })).toBeInViewport();
 
+  // Opening a customer's page fetches the customer once: what loading it changes
+  // (the menu's list, the customer itself) doesn't start it again.
+  const loads: string[] = [];
+  mette.on("request", (request) => {
+    if (new URL(request.url()).pathname === `/api/customers/${fjordlys.id}`) loads.push(request.url());
+  });
+  await mette.goto(`/customers/${fjordlys.id}/people`);
+  await expect(mette.getByRole("heading", { name: "Who works with this customer" })).toBeVisible();
+  await mette.waitForTimeout(1500);
+  expect(loads).toHaveLength(1);
+
+  // Opening Admin pushes nothing up: the menu runs from the top. Clicked again on
+  // its own pages, a group folds away and opens again; so does a customer's
+  // project list.
+  await mette.goto(`/customers/${fjordlys.id}`);
+  await expect(menu(mette).getByRole("link", { name: /^Insider investigation/ })).toBeVisible();
+  const adminItem = menu(mette).getByRole("link", { name: "Admin", exact: true });
+  const usersItem = menu(mette).getByRole("link", { name: "Users", exact: true });
+  const before = await adminItem.boundingBox();
+  await adminItem.click();
+  await expect(mette.getByRole("heading", { name: "Users" })).toBeVisible();
+  await expect(adminItem).toHaveAttribute("aria-expanded", "true");
+  expect((await adminItem.boundingBox())?.y).toBe(before?.y);
+  await adminItem.click();
+  await expect(adminItem).toHaveAttribute("aria-expanded", "false");
+  await expect(usersItem).toBeHidden();
+  await adminItem.click();
+  await expect(usersItem).toBeVisible();
+  await expect(mette).toHaveURL(/\/admin\/users$/);
+
+  const projectsItem = menu(mette).getByRole("link", { name: /^Projects/ });
+  const listed = menu(mette).getByRole("link", { name: /^Insider investigation/ });
+  await projectsItem.click();
+  await expect(projectsItem).toHaveAttribute("aria-current", "page");
+  await projectsItem.click();
+  await expect(listed).toBeHidden();
+  await projectsItem.click();
+  await expect(listed).toBeVisible();
+
   // At phone width the menu slides in over the page.
   // Without the slide, so the screenshot shows the menu fully open.
   await mette.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
