@@ -29,10 +29,16 @@ body {
   min-height: 100vh;
 }
 
-/* Switching between light and dark fades the page across (see applyTheme). */
+/* Switching between light and dark fades the page across (see applyTheme), more
+   slowly on the sign-in pages, where the fjord scene changes with it. */
 ::view-transition-old(root),
 ::view-transition-new(root) {
   animation-duration: 700ms;
+}
+:root:has(.auth-scene)::view-transition-old(root),
+:root:has(.auth-scene)::view-transition-new(root) {
+  animation-duration: 1400ms;
+  animation-timing-function: ease-in-out;
 }
 
 h1,

@@ -22,7 +22,7 @@ for (const colorScheme of ["light", "dark"] as const) {
       await page.goto("/sign-in");
       await page.getByRole("heading", { name: "Sign in" }).waitFor();
       // The fjord scene behind the card follows light or dark.
-      await expect(page.locator(".scene .dark")).toHaveCSS("opacity", colorScheme === "dark" ? "1" : "0");
+      await expect(page.locator(".auth-scene .dark")).toHaveCSS("opacity", colorScheme === "dark" ? "1" : "0");
       await shot("1-sign-in");
 
       await signIn(page, "e2e-wrong", "not the right password at all");
