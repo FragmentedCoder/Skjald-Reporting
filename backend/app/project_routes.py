@@ -28,8 +28,8 @@ from app.customers import (
     CustomerContact,
     CustomerSite,
     Keyring,
+    assigned_as,
     assigned_customer_ids,
-    is_assigned,
     may_manage_projects,
     sights,
 )
@@ -39,7 +39,6 @@ from app.projects import (
     Project,
     ProjectMember,
     ProjectSite,
-    member_ids,
     next_number,
     on_team_only,
     site_ids_of,
@@ -80,7 +79,11 @@ class ProjectUpdate(ProjectFields):
 
 
 class TeamUpdate(BaseModel):
-    user_ids: list[int] = Field(max_length=200)
+    """The team besides the responsible technician and reviewer: who's on it as a
+    technician and who as a reviewer. Nobody is on it as both."""
+
+    technicians: list[int] = Field(default=[], max_length=200)
+    reviewers: list[int] = Field(default=[], max_length=200)
 
 
 class Named(BaseModel):
@@ -92,6 +95,8 @@ class Member(Named):
     roles: list[Role]
     responsible: bool
     reviewer: bool
+    # What they're on the project as: technician (the responsible one too) or reviewer.
+    as_role: Role
 
 
 class ProjectSummary(BaseModel):
@@ -183,10 +188,16 @@ def _summary(db: Session, keyring: Keyring, project: Project, customer: Customer
 
 def _team(db: Session, project: Project) -> list[Member]:
     ids = team_ids(db, project)
+    added = {m.user_id: Role(m.as_role) for m in db.scalars(
+        select(ProjectMember).where(ProjectMember.project_id == project.id))}
     users = db.scalars(select(User).where(User.id.in_(ids)).order_by(User.display_name))
     return [Member(id=u.id, name=u.display_name, roles=sorted(roles_of(db, u.id)),
                    responsible=u.id == project.responsible_id,
-                   reviewer=u.id == project.reviewer_id) for u in users]
+                   reviewer=u.id == project.reviewer_id,
+                   as_role=(Role.TECHNICIAN if u.id == project.responsible_id
+                            else Role.REVIEWER if u.id == project.reviewer_id
+                            else added.get(u.id, Role.TECHNICIAN)))
+            for u in users]
 
 
 def _detail(db: Session, record: UserSession, keyring: Keyring, project: Project
@@ -210,9 +221,10 @@ def _detail(db: Session, record: UserSession, keyring: Keyring, project: Project
 
 
 def _assigned_with(db: Session, user_id: int, role: Role, customer: Customer) -> bool:
+    """An active person with the role, assigned to the customer as that."""
     user = db.get(User, user_id)
     return (user is not None and user.is_active and role in roles_of(db, user_id)
-            and is_assigned(db, user_id, customer.id))
+            and assigned_as(db, user_id, customer.id, role))
 
 
 def _check_links(db: Session, customer: Customer, body: ProjectFields,
@@ -233,13 +245,13 @@ def _check_links(db: Session, customer: Customer, body: ProjectFields,
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
             "The responsible technician must be an active technician assigned to this "
-            "customer.",
+            "customer as a technician.",
         )
     if body.reviewer_id is not None and not _assigned_with(
             db, body.reviewer_id, Role.REVIEWER, customer):
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
-            "The reviewer must be an active reviewer assigned to this customer.",
+            "The reviewer must be an active reviewer assigned to this customer as a reviewer.",
         )
     if responsible_id is not None and responsible_id == reviewer_id:
         raise HTTPException(
@@ -365,28 +377,39 @@ def update_project(project_id: int, body: ProjectUpdate, request: Request, recor
 @router.put("/projects/{project_id}/team")
 def set_team(project_id: int, body: TeamUpdate, request: Request, record: FullSession, db: DB
              ) -> ProjectDetail:
-    """Who's on the project besides its responsible technician and reviewer. They
-    must be assigned to the customer; a TLP:RED project is for them, Administrators
-    and Managers only."""
+    """Who's on the project besides its responsible technician and reviewer, each as
+    a technician or a reviewer, as they're assigned to the customer. A TLP:RED
+    project is for its team, Administrators and Managers only."""
     project, customer = _editable(db, request, record, project_id)
-    wanted = set(body.user_ids) - {project.responsible_id, project.reviewer_id}
-    for user_id in wanted:
-        user = db.get(User, user_id)
-        if user is None or not user.is_active or not is_assigned(db, user_id, customer.id):
+    if set(body.technicians) & set(body.reviewers):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            "Someone is on a project as a technician or as a reviewer, not both.")
+    fixed = {project.responsible_id, project.reviewer_id}
+    wanted = {user_id: role for role, ids in ((Role.TECHNICIAN, body.technicians),
+                                              (Role.REVIEWER, body.reviewers))
+              for user_id in ids if user_id not in fixed}
+    for user_id, role in wanted.items():
+        if not _assigned_with(db, user_id, role, customer):
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,
-                "Only active people assigned to this customer can be on its projects.",
+                f"Only people assigned to this customer as {role.value}s can be on its "
+                f"projects as {role.value}s.",
             )
-    current = member_ids(db, project.id)
-    for user_id in sorted(wanted - current):
+    current = {m.user_id: m for m in db.scalars(
+        select(ProjectMember).where(ProjectMember.project_id == project.id))}
+    added = sorted(set(wanted) - set(current))
+    removed = sorted(set(current) - set(wanted))
+    changed = sorted(u for u in set(wanted) & set(current) if current[u].as_role != wanted[u])
+    for user_id in added:
         db.add(ProjectMember(project_id=project.id, user_id=user_id, added_at=clock.utcnow(),
-                             added_by=record.user_id))
-    for user_id in sorted(current - wanted):
-        db.execute(delete(ProjectMember).where(ProjectMember.project_id == project.id,
-                                               ProjectMember.user_id == user_id))
-    if wanted != current:
-        _log(db, request, record, "project.team_changed", project, {
-            "added": sorted(wanted - current), "removed": sorted(current - wanted)})
+                             added_by=record.user_id, as_role=wanted[user_id].value))
+    for user_id in removed:
+        db.delete(current[user_id])
+    for user_id in changed:
+        current[user_id].as_role = wanted[user_id].value
+    if added or removed or changed:
+        _log(db, request, record, "project.team_changed", project,
+             {"added": added, "removed": removed, "changed": changed})
     db.commit()
     return _detail(db, record, Keyring(), project)
 

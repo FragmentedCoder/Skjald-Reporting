@@ -120,6 +120,11 @@ class Person(BaseModel):
     roles: list[Role]
 
 
+class Assigned(Person):
+    # What they're assigned to this customer as: technician, reviewer or both.
+    assigned_as: list[Role]
+
+
 class CustomerSummary(BaseModel):
     id: int
     name: str
@@ -128,6 +133,8 @@ class CustomerSummary(BaseModel):
     cvr: str | None = None
     active_projects: int | None = None
     archived_projects: int | None = None
+    # Only with full sight.
+    people: int | None = None
     logo_url: str | None = None
 
 
@@ -139,7 +146,7 @@ class CustomerDetail(CustomerSummary):
     created_at: datetime | None = None
     sites: list[SiteOut] | None = None
     contacts: list[ContactOut] | None = None
-    assigned: list[Person] | None = None
+    assigned: list[Assigned] | None = None
     may_manage: bool = False
     may_delete: bool = False
     may_manage_projects: bool = False
@@ -148,7 +155,10 @@ class CustomerDetail(CustomerSummary):
 
 
 class Assignments(BaseModel):
-    user_ids: list[int] = Field(max_length=500)
+    """Who works with the customer, as what. Someone in both lists is both."""
+
+    technicians: list[int] = Field(default=[], max_length=500)
+    reviewers: list[int] = Field(default=[], max_length=500)
 
 
 class DeleteRequest(BaseModel):
@@ -196,8 +206,8 @@ def visible_customer(
 
 def _project_counts(db: Session, user_id: int) -> dict[int, tuple[int, int]]:
     """Active and archived projects per customer, counting only what this person may
-    open: a TLP:RED project counts for its team and Administrators. An auditor's
-    overview counts them all."""
+    open: a TLP:RED project counts for its team, Administrators and Managers. An
+    auditor's overview counts them all."""
     sight = sights(roles_of(db, user_id))
     joined = projects_joined(db, user_id)
     every = bool(sight & {"all", "metadata"})
@@ -212,15 +222,23 @@ def _project_counts(db: Session, user_id: int) -> dict[int, tuple[int, int]]:
 
 
 def _summary(db: Session, keyring: Keyring, customer: Customer, level: Visibility,
-             counts: dict[int, tuple[int, int]]) -> dict[str, Any]:
+             counts: dict[int, tuple[int, int]], people: dict[int, int]) -> dict[str, Any]:
     details = keyring.details(customer)
     fields: dict[str, Any] = {"id": customer.id, "name": details["name"], "visibility": level}
     if level != "names":
         active, archived = counts.get(customer.id, (0, 0))
         fields |= {"active_projects": active, "archived_projects": archived}
     if level == "full":
-        fields |= {"cvr": details["cvr"], "logo_url": _logo_url(db, customer.id)}
+        fields |= {"cvr": details["cvr"], "logo_url": _logo_url(db, customer.id),
+                   "people": people.get(customer.id, 0)}
     return fields
+
+
+def _people_counts(db: Session) -> dict[int, int]:
+    """How many people are assigned to each customer."""
+    rows = db.execute(select(CustomerAssignment.customer_id, func.count())
+                      .group_by(CustomerAssignment.customer_id))
+    return {customer_id: count for customer_id, count in rows}
 
 
 def _people(db: Session, user_ids: list[int]) -> list[Person]:
@@ -231,11 +249,13 @@ def _people(db: Session, user_ids: list[int]) -> list[Person]:
                    roles=sorted(roles_of(db, u.id))) for u in users]
 
 
-def _assignable_ids(db: Session) -> list[int]:
-    """Active technicians and reviewers: the people assignments are for."""
+def _assignable_ids(db: Session, *roles: Role) -> list[int]:
+    """Active people with any of these roles (by default technicians and reviewers:
+    the people assignments are for)."""
+    wanted = roles or (Role.TECHNICIAN, Role.REVIEWER)
     return list(db.scalars(
         select(UserRole.user_id).join(User, User.id == UserRole.user_id)
-        .where(UserRole.role.in_([Role.TECHNICIAN.value, Role.REVIEWER.value]), User.is_active)
+        .where(UserRole.role.in_([r.value for r in wanted]), User.is_active)
         .distinct()
     ))
 
@@ -256,14 +276,16 @@ def contacts_of(db: Session, sealer: Sealer, customer_id: int) -> list[ContactOu
 
 def _detail(db: Session, record: UserSession, keyring: Keyring, customer: Customer,
             level: Visibility) -> CustomerDetail:
-    summary = _summary(db, keyring, customer, level, _project_counts(db, record.user_id))
+    summary = _summary(db, keyring, customer, level, _project_counts(db, record.user_id),
+                       _people_counts(db))
     if level != "full":
         return CustomerDetail(**summary)
     roles = roles_of(db, record.user_id)
     sealer = keyring.sealer(customer)
-    assigned = list(db.scalars(
-        select(CustomerAssignment.user_id).where(CustomerAssignment.customer_id == customer.id)
-    ))
+    held = {a.user_id: a for a in db.scalars(
+        select(CustomerAssignment).where(CustomerAssignment.customer_id == customer.id))}
+    assigned = [Assigned(**person.model_dump(), assigned_as=held[person.id].capacities())
+                for person in _people(db, list(held))]
     manage = may_manage(roles)
     return CustomerDetail(
         **summary,
@@ -273,7 +295,7 @@ def _detail(db: Session, record: UserSession, keyring: Keyring, customer: Custom
         created_at=customer.created_at,
         sites=sites_of(db, sealer, customer.id),
         contacts=contacts_of(db, sealer, customer.id),
-        assigned=_people(db, assigned),
+        assigned=assigned,
         may_manage=manage,
         may_delete=may_delete(roles),
         may_manage_projects=may_manage_projects(roles),
@@ -291,6 +313,7 @@ def list_customers(record: FullSession, db: DB, q: str = "") -> list[CustomerSum
     sight = sights(roles_of(db, record.user_id))
     assigned = assigned_customer_ids(db, record.user_id)
     counts = _project_counts(db, record.user_id)
+    people = _people_counts(db)
     keyring = Keyring()
     needle = q.strip().casefold().replace(" ", "")
     found = []
@@ -298,7 +321,7 @@ def list_customers(record: FullSession, db: DB, q: str = "") -> list[CustomerSum
         level = level_for(sight, customer.id in assigned)
         if level is None:
             continue
-        summary = CustomerSummary(**_summary(db, keyring, customer, level, counts))
+        summary = CustomerSummary(**_summary(db, keyring, customer, level, counts, people))
         details = keyring.details(customer)
         haystack = (details["name"] + " " + (details["cvr"] or "")).casefold().replace(" ", "")
         if needle in haystack:
@@ -475,20 +498,28 @@ def remove_contact(customer_id: int, contact_id: int, request: Request, admin: M
 # Who's assigned
 
 
-def _leave_projects(db: Session, customer_id: int, user_id: int) -> int:
-    """Take someone off every project of a customer they're no longer assigned to:
-    its teams, and as responsible technician or reviewer. Returns how many."""
+BOTH = frozenset({Role.TECHNICIAN, Role.REVIEWER})
+
+
+def _leave_projects(db: Session, customer_id: int, user_id: int,
+                    dropped: frozenset[Role] = BOTH) -> int:
+    """Take someone off a customer's projects in what they're no longer assigned
+    as: as technician, the responsible technician and technician team member; as
+    reviewer, the reviewer and reviewer team member. Returns how many projects."""
     projects = list(db.scalars(select(Project).where(Project.customer_id == customer_id)))
     left = 0
     for project in projects:
+        on = False
         member = db.get(ProjectMember, (project.id, user_id))
-        on = member is not None or user_id in (project.responsible_id, project.reviewer_id)
-        if member is not None:
+        if member is not None and Role(member.as_role) in dropped:
             db.delete(member)
-        if project.responsible_id == user_id:
+            on = True
+        if Role.TECHNICIAN in dropped and project.responsible_id == user_id:
             project.responsible_id = None
-        if project.reviewer_id == user_id:
+            on = True
+        if Role.REVIEWER in dropped and project.reviewer_id == user_id:
             project.reviewer_id = None
+            on = True
         left += on
     return left
 
@@ -497,32 +528,41 @@ def _leave_projects(db: Session, customer_id: int, user_id: int) -> int:
 def set_assignments(customer_id: int, body: Assignments, request: Request, admin: Manager,
                     db: DB) -> CustomerDetail:
     customer, _ = visible_customer(db, request, admin, customer_id)
-    wanted = set(body.user_ids)
-    if not wanted <= set(_assignable_ids(db)):
+    technicians, reviewers = set(body.technicians), set(body.reviewers)
+    if (not technicians <= set(_assignable_ids(db, Role.TECHNICIAN))
+            or not reviewers <= set(_assignable_ids(db, Role.REVIEWER))):
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
-            "Only active technicians and reviewers can be assigned to a customer.",
+            "Only active technicians can be assigned as technicians, and active reviewers as "
+            "reviewers.",
         )
-    current = set(db.scalars(
-        select(CustomerAssignment.user_id).where(CustomerAssignment.customer_id == customer.id)
-    ))
-    for user_id in sorted(wanted - current):
-        db.add(CustomerAssignment(customer_id=customer.id, user_id=user_id,
-                                  assigned_at=clock.utcnow(), assigned_by=admin.user_id))
-    left: dict[int, int] = {}
-    for user_id in sorted(current - wanted):
-        held = db.get(CustomerAssignment, (customer.id, user_id))
-        if held is not None:
+    current = {a.user_id: a for a in db.scalars(
+        select(CustomerAssignment).where(CustomerAssignment.customer_id == customer.id))}
+    everyone = technicians | reviewers | set(current)
+    usernames = {u.id: u.username for u in db.scalars(select(User).where(User.id.in_(everyone)))}
+    for user_id in sorted(everyone):
+        as_technician, as_reviewer = user_id in technicians, user_id in reviewers
+        held = current.get(user_id)
+        details: dict[str, object] = {"user": usernames.get(user_id)}
+        if held is None:
+            held = CustomerAssignment(customer_id=customer.id, user_id=user_id,
+                                      assigned_at=clock.utcnow(), assigned_by=admin.user_id,
+                                      as_technician=as_technician, as_reviewer=as_reviewer)
+            db.add(held)
+            _log(db, request, admin, "customer.assigned", customer.id,
+                 details | {"as": held.capacities()})
+        elif not (as_technician or as_reviewer):
             db.delete(held)
-        left[user_id] = _leave_projects(db, customer.id, user_id)
-    usernames = {u.id: u.username for u in db.scalars(select(User).where(
-        User.id.in_(wanted ^ current)))}
-    for user_id in sorted(wanted - current):
-        _log(db, request, admin, "customer.assigned", customer.id,
-             {"user": usernames.get(user_id)})
-    for user_id in sorted(current - wanted):
-        _log(db, request, admin, "customer.unassigned", customer.id,
-             {"user": usernames.get(user_id), "projects_left": left[user_id]})
+            _log(db, request, admin, "customer.unassigned", customer.id,
+                 details | {"projects_left": _leave_projects(db, customer.id, user_id)})
+        elif (held.as_technician, held.as_reviewer) != (as_technician, as_reviewer):
+            dropped = frozenset(role for role, before, after in (
+                (Role.TECHNICIAN, held.as_technician, as_technician),
+                (Role.REVIEWER, held.as_reviewer, as_reviewer)) if before and not after)
+            held.as_technician, held.as_reviewer = as_technician, as_reviewer
+            left = _leave_projects(db, customer.id, user_id, dropped) if dropped else 0
+            _log(db, request, admin, "customer.assignment_changed", customer.id,
+                 details | {"as": held.capacities(), "projects_left": left})
     db.commit()
     return _detail(db, admin, Keyring(), customer, "full")
 

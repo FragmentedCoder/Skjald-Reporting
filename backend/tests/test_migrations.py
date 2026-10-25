@@ -122,3 +122,44 @@ def test_existing_customers_and_projects_are_sealed_on_upgrade(data_dir, master_
             "name": "Incident", "start_date": "2026-10-20", "end_date": None}
         db.commit()
     engine.dispose()
+
+
+def test_assignments_and_team_members_keep_what_people_can_be_on_upgrade(
+    data_dir, master_key_path
+) -> None:
+    """0011 records what each assignment and team member is there as, from roles."""
+    engine = make_engine(data_dir, master_key_path)
+    upgrade(engine, "0010")
+    at = "2026-10-24 12:00:00"
+    with engine.begin() as conn:
+        for user_id, name in ((1, "tor"), (2, "rikke"), (3, "bjorn")):
+            conn.execute(text(
+                "INSERT INTO users (id, username, display_name, is_active, failed_sign_ins,"
+                " created_at) VALUES (:i, :n, :n, 1, 0, :at)"), {"i": user_id, "n": name, "at": at})
+        for user_id, role in ((1, "technician"), (2, "reviewer"), (3, "technician"),
+                              (3, "reviewer")):
+            conn.execute(text("INSERT INTO user_roles (user_id, role, granted_at)"
+                              " VALUES (:u, :r, :at)"), {"u": user_id, "r": role, "at": at})
+        conn.execute(text(
+            "INSERT INTO customers (id, wrapped_key, sealed, language, retention_months,"
+            " created_at) VALUES (1, x'00', x'00', 'da', 12, :at)"), {"at": at})
+        conn.execute(text(
+            "INSERT INTO projects (id, customer_id, number, sealed, classification, created_at)"
+            " VALUES (1, 1, 'P-2026-0001', x'00', 'TLP:RED', :at)"), {"at": at})
+        for user_id in (1, 2, 3):
+            conn.execute(text("INSERT INTO customer_assignments (customer_id, user_id,"
+                              " assigned_at) VALUES (1, :u, :at)"), {"u": user_id, "at": at})
+            conn.execute(text("INSERT INTO project_members (project_id, user_id, added_at)"
+                              " VALUES (1, :u, :at)"), {"u": user_id, "at": at})
+
+    upgrade(engine)
+
+    with engine.connect() as conn:
+        assigned = conn.execute(text("SELECT user_id, as_technician, as_reviewer"
+                                     " FROM customer_assignments ORDER BY user_id"))
+        assert [tuple(row) for row in assigned] == [(1, 1, 0), (2, 0, 1), (3, 1, 1)]
+        members = conn.execute(text("SELECT user_id, as_role FROM project_members"
+                                    " ORDER BY user_id"))
+        assert [tuple(row) for row in members] == [
+            (1, "technician"), (2, "reviewer"), (3, "technician")]
+    engine.dispose()

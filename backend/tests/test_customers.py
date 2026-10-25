@@ -1,4 +1,5 @@
 import io
+import json
 
 import pytest
 from cryptography.exceptions import InvalidTag
@@ -59,9 +60,15 @@ def nordlys(client, admin):
 
 
 def assign(client, admin, customer_id, *users):
+    """Assign these people as whatever their roles let them be (technician, reviewer
+    or both), and nobody else."""
     _, headers = admin
-    response = client.put(f"{CUSTOMERS}/{customer_id}/assignments", headers=headers,
-                          json={"user_ids": [u.id for u in users]})
+    roles = {p["id"]: p["roles"] for p in client.get(
+        f"{CUSTOMERS}/{customer_id}", headers=headers).json()["assignable"]}
+    response = client.put(f"{CUSTOMERS}/{customer_id}/assignments", headers=headers, json={
+        "technicians": [u.id for u in users if T in roles.get(u.id, [])],
+        "reviewers": [u.id for u in users if R in roles.get(u.id, [])],
+    })
     assert response.status_code == 200, response.text
     return response.json()
 
@@ -87,6 +94,10 @@ def test_technicians_see_only_the_customers_they_are_assigned_to(
 
     listed = client.get(CUSTOMERS, headers=as_astrid).json()
     assert [(c["name"], c["visibility"]) for c in listed] == [("Nordlys IT ApS", "full")]
+    # The list says how many people work with each customer.
+    everyone = client.get(CUSTOMERS, headers=headers).json()
+    assert [(c["name"], c["people"]) for c in everyone] == [
+        ("Fjeldstue A/S", 0), ("Nordlys IT ApS", 1)]
     detail = client.get(f"{CUSTOMERS}/{nordlys['id']}", headers=as_astrid).json()
     assert detail["contacts"][0]["email"] == "sigrid@nordlys.example"
     assert not detail["may_manage"] and not detail["may_manage_projects"]
@@ -106,7 +117,7 @@ def test_designers_see_names_and_auditors_see_metadata(
     names = client.get(CUSTOMERS, headers=as_designer).json()
     assert names == [{"id": nordlys["id"], "name": "Nordlys IT ApS", "visibility": "names",
                       "cvr": None, "active_projects": None, "archived_projects": None,
-                      "logo_url": None}]
+                      "people": None, "logo_url": None}]
     metadata = client.get(f"{CUSTOMERS}/{nordlys['id']}", headers=as_auditor).json()
     assert metadata["visibility"] == "metadata" and metadata["active_projects"] == 0
     assert metadata["contacts"] is None and metadata["address"] is None
@@ -224,13 +235,17 @@ def test_only_technicians_and_reviewers_are_assigned(
 ) -> None:
     _, headers = admin
     dagny, _ = person("dagny", D)
-    refused = client.put(f"{CUSTOMERS}/{nordlys['id']}/assignments", headers=headers,
-                         json={"user_ids": [dagny.id]})
+    url = f"{CUSTOMERS}/{nordlys['id']}/assignments"
+    refused = client.put(url, headers=headers, json={"technicians": [dagny.id]})
     assert refused.status_code == 400
     astrid, _ = person("astrid", T)
     rolf, _ = person("rolf", R)
+    # Each only as what their role lets them be.
+    assert client.put(url, headers=headers, json={"reviewers": [astrid.id]}).status_code == 400
+    assert client.put(url, headers=headers, json={"technicians": [rolf.id]}).status_code == 400
     detail = assign(client, admin, nordlys["id"], astrid, rolf)
-    assert [p["username"] for p in detail["assigned"]] == ["astrid", "rolf"]
+    assert [(p["username"], p["assigned_as"]) for p in detail["assigned"]] == [
+        ("astrid", [T]), ("rolf", [R])]
     assert {p["username"] for p in detail["assignable"]} == {"astrid", "rolf"}
     assert len(audit_entries(session, "customer.assigned")) == 2
     assign(client, admin, nordlys["id"], rolf)
@@ -342,7 +357,7 @@ def test_technicians_work_in_projects_but_do_not_start_or_change_them(
     assert seen["name"] == "Incident" and not seen["may_edit"]
     for method, path, body in (
         ("PATCH", f"/api/projects/{pid}", {"classification": "TLP:CLEAR"}),
-        ("PUT", f"/api/projects/{pid}/team", {"user_ids": []}),
+        ("PUT", f"/api/projects/{pid}/team", {"technicians": []}),
         ("POST", f"/api/projects/{pid}/archive", None),
     ):
         refused = client.request(method, path, headers=as_astrid, json=body)
@@ -501,7 +516,7 @@ def test_adding_someone_to_the_team_opens_a_red_project_to_them(
     bo, as_bo = red_setup["bo"]
     pentest = red_setup["pentest"]["id"]
     team = client.put(f"/api/projects/{pentest}/team", headers=as_admin,
-                      json={"user_ids": [bo.id]}).json()["team"]
+                      json={"technicians": [bo.id]}).json()["team"]
     assert [m["name"] for m in team] == ["Bo"]
     assert client.get(f"/api/projects/{pentest}", headers=as_bo).status_code == 200
 
@@ -512,7 +527,7 @@ def test_only_people_assigned_to_the_customer_join_a_team(
     _, as_admin = admin
     outsider, _ = person("olga", T)
     refused = client.put(f"/api/projects/{red_setup['pentest']['id']}/team", headers=as_admin,
-                         json={"user_ids": [outsider.id]})
+                         json={"technicians": [outsider.id]})
     assert refused.status_code == 400
 
 
@@ -552,6 +567,77 @@ def test_a_reviewer_is_on_the_team_and_never_reviews_their_own_report(
     assert client.patch(url, headers=as_admin, json={"reviewer_id": both.id}).status_code == 400
 
 
+def test_someone_with_both_roles_is_assigned_as_either_or_both(
+    client, admin, nordlys, red_setup, person, session
+) -> None:
+    _, headers = admin
+    bob, _ = red_setup["bob"]
+    bjorn, _ = person("bjorn", T, R)
+    url = f"{CUSTOMERS}/{nordlys['id']}/assignments"
+    # Bjørn reviews for this customer, but doesn't write its reports.
+    detail = client.put(url, headers=headers, json={
+        "technicians": [bob.id], "reviewers": [bjorn.id]}).json()
+    assert {p["username"]: p["assigned_as"] for p in detail["assigned"]} == {
+        "bob": [T], "bjorn": [R]}
+    ransomware = f"/api/projects/{red_setup['ransomware']['id']}"
+    assert client.patch(ransomware, headers=headers,
+                        json={"responsible_id": bjorn.id}).status_code == 400
+    assert client.patch(ransomware, headers=headers,
+                        json={"reviewer_id": bjorn.id}).status_code == 200
+
+    # Assigned as both, Bjørn can be responsible for another project.
+    client.put(url, headers=headers, json={"technicians": [bob.id, bjorn.id],
+                                           "reviewers": [bjorn.id]})
+    pentest = f"/api/projects/{red_setup['pentest']['id']}"
+    assert client.patch(pentest, headers=headers,
+                        json={"responsible_id": bjorn.id}).status_code == 200
+    # No longer a technician here: off Pentest as responsible, still Ransomware's reviewer.
+    client.put(url, headers=headers, json={"technicians": [bob.id], "reviewers": [bjorn.id]})
+    assert client.get(pentest, headers=headers).json()["responsible"] is None
+    assert client.get(ransomware, headers=headers).json()["reviewer"]["name"] == "Bjorn"
+
+    # Both again, and a technician on Open day's team. No longer a reviewer: off
+    # Ransomware as its reviewer, still on Open day's team.
+    client.put(url, headers=headers, json={"technicians": [bob.id, bjorn.id],
+                                           "reviewers": [bjorn.id]})
+    clear = f"/api/projects/{red_setup['clear']['id']}"
+    client.put(f"{clear}/team", headers=headers, json={"technicians": [bjorn.id]})
+    client.put(url, headers=headers, json={"technicians": [bob.id, bjorn.id]})
+    assert client.get(ransomware, headers=headers).json()["reviewer"] is None
+    assert [m["name"] for m in client.get(clear, headers=headers).json()["team"]] == ["Bjorn"]
+    changed = [json.loads(e.details) for e in audit_entries(session, "customer.assignment_changed")]
+    assert [(c["user"], c["as"], c["projects_left"]) for c in changed] == [
+        ("bjorn", [T, R], 0), ("bjorn", [R], 1), ("bjorn", [T, R], 0), ("bjorn", [T], 1)]
+
+
+def test_a_team_has_technicians_and_reviewers_never_both_at_once(
+    client, admin, nordlys, red_setup, person, session
+) -> None:
+    _, headers = admin
+    bob, _ = red_setup["bob"]
+    bo, _ = red_setup["bo"]
+    rikke, _ = person("rikke", R)
+    bjorn, _ = person("bjorn", T, R)
+    assign(client, admin, nordlys["id"], bob, bo, rikke, bjorn)
+    url = f"/api/projects/{red_setup['ransomware']['id']}/team"  # Bob is responsible.
+    team = client.put(url, headers=headers, json={
+        "technicians": [bo.id], "reviewers": [rikke.id, bjorn.id]}).json()["team"]
+    assert [(m["name"], m["as_role"]) for m in team] == [
+        ("Bjorn", R), ("Bo", T), ("Bob", T), ("Rikke", R)]
+
+    both = client.put(url, headers=headers, json={"technicians": [bjorn.id],
+                                                  "reviewers": [bjorn.id]})
+    assert both.status_code == 400 and "not both" in both.json()["detail"]
+    # Only as what they're assigned to the customer as.
+    assert client.put(url, headers=headers, json={"reviewers": [bo.id]}).status_code == 400
+
+    after = client.put(url, headers=headers, json={"technicians": [bo.id, bjorn.id],
+                                                   "reviewers": [rikke.id]}).json()["team"]
+    assert ("Bjorn", T) in [(m["name"], m["as_role"]) for m in after]
+    last = json.loads(audit_entries(session, "project.team_changed")[-1].details)
+    assert (last["added"], last["removed"], last["changed"]) == ([], [], [bjorn.id])
+
+
 def test_unassigning_someone_takes_them_off_the_customers_projects(
     client, admin, nordlys, red_setup, person, session
 ) -> None:
@@ -561,7 +647,7 @@ def test_unassigning_someone_takes_them_off_the_customers_projects(
     rikke, _ = person("rikke", R)
     assign(client, admin, nordlys["id"], bob, bo, rikke)
     pentest = red_setup["pentest"]["id"]
-    client.put(f"/api/projects/{pentest}/team", headers=as_admin, json={"user_ids": [bob.id]})
+    client.put(f"/api/projects/{pentest}/team", headers=as_admin, json={"technicians": [bob.id]})
     client.patch(f"/api/projects/{pentest}", headers=as_admin, json={"reviewer_id": rikke.id})
 
     assign(client, admin, nordlys["id"], bo)

@@ -20,7 +20,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from sqlalchemy import ForeignKey, LargeBinary, String, select
+from sqlalchemy import Boolean, ForeignKey, LargeBinary, String, false, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.crypto.keys import generate_key, load_master_key, unwrap_key, wrap_key
@@ -97,6 +97,14 @@ class CustomerAssignment(Base):
     )
     assigned_at: Mapped[datetime] = mapped_column(UTCDateTime)
     assigned_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    # What they're assigned as. Someone with both roles can be a technician for one
+    # customer and its reviewer for another, or both; at least one is set.
+    as_technician: Mapped[bool] = mapped_column(Boolean, server_default=false())
+    as_reviewer: Mapped[bool] = mapped_column(Boolean, server_default=false())
+
+    def capacities(self) -> list[Role]:
+        return [role for role, held in ((Role.TECHNICIAN, self.as_technician),
+                                        (Role.REVIEWER, self.as_reviewer)) if held]
 
 
 # Keys and sealing
@@ -165,6 +173,12 @@ class Keyring:
 
 def is_assigned(db: Session, user_id: int, customer_id: int) -> bool:
     return db.get(CustomerAssignment, (customer_id, user_id)) is not None
+
+
+def assigned_as(db: Session, user_id: int, customer_id: int, role: Role) -> bool:
+    """Whether someone is assigned to a customer as its technician or reviewer."""
+    held = db.get(CustomerAssignment, (customer_id, user_id))
+    return held is not None and role in held.capacities()
 
 
 def assigned_customer_ids(db: Session, user_id: int) -> set[int]:

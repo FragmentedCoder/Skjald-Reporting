@@ -66,7 +66,8 @@ class ProjectSite(Base):
 
 
 class ProjectMember(Base):
-    """Someone added to a project's team, besides its responsible technician and reviewer."""
+    """Someone added to a project's team, besides its responsible technician and
+    reviewer: as a technician or as a reviewer, as they're assigned to the customer."""
 
     __tablename__ = "project_members"
 
@@ -78,6 +79,7 @@ class ProjectMember(Base):
     )
     added_at: Mapped[datetime] = mapped_column(UTCDateTime)
     added_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    as_role: Mapped[str] = mapped_column(String(20), server_default="technician")
 
 
 def member_ids(db: Session, project_id: int) -> set[int]:
