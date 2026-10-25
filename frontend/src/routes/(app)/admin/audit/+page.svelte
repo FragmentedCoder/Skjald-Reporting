@@ -12,12 +12,27 @@
   } from "#lib/audit.js";
   import Pill from "#lib/components/Pill.svelte";
   import { isoTime, time } from "#lib/format.js";
+  import { can, session } from "#lib/session.svelte.js";
+  import { toast } from "#lib/toast.svelte.js";
 
   interface ChainStatus {
     ok: boolean;
     entries_checked: number;
     first_bad_seq: number | null;
     problem: string | null;
+    stamps: number;
+    stamps_ok: boolean;
+    stamp_problem: string | null;
+    last_stamped_seq: number | null;
+    last_stamped_at: string | null;
+    tsa_url: string;
+  }
+
+  interface StampRun {
+    id: number;
+    state: "queued" | "running" | "done" | "failed";
+    result: { seq?: number } | null;
+    error: string | null;
   }
 
   let filters = $state<AuditFilters>({ action: "", actor: "", since: "", until: "" });
@@ -30,6 +45,18 @@
   let checkedAt = $state<string | null>(null);
   let error = $state<string | null>(null);
   let busy = $state(false);
+  let tsaUrl = $state("");
+  let stamping = $state(false);
+  const mayAdminister = $derived(can(session.current, "administer"));
+  const tsaHost = $derived(chain ? hostOf(chain.tsa_url) : "");
+
+  function hostOf(url: string): string {
+    try {
+      return new URL(url).host;
+    } catch {
+      return url;
+    }
+  }
 
   async function load(more = false) {
     busy = true;
@@ -54,6 +81,7 @@
     checking = true;
     try {
       chain = await api<ChainStatus>("GET", "/audit/verify");
+      tsaUrl = chain.tsa_url;
       checkedAt = new Date().toISOString();
     } catch (e) {
       error = e instanceof ApiError ? e.message : "The chain could not be checked.";
@@ -67,6 +95,35 @@
     actions = await api<string[]>("GET", "/audit/actions").catch(() => []);
     await checkChain();
   });
+
+  // Ask the worker for a timestamp now, and follow it until it's done.
+  async function stampNow() {
+    stamping = true;
+    try {
+      let run = await api<StampRun>("POST", "/audit/stamps/run");
+      while ((run.state === "queued" && !run.error) || run.state === "running") {
+        await new Promise((done) => setTimeout(done, 2000));
+        run = await api<StampRun>("GET", `/audit/stamps/runs/${run.id}`);
+      }
+      if (run.state === "done") toast(`Timestamped entry ${run.result?.seq}.`, "ok");
+      else toast(run.error ?? "The timestamp couldn't be had.", "critical");
+      await checkChain();
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : "Something went wrong.", "critical");
+    } finally {
+      stamping = false;
+    }
+  }
+
+  async function saveAuthority(event: SubmitEvent) {
+    event.preventDefault();
+    try {
+      chain = await api<ChainStatus>("PUT", "/audit/stamps/authority", { tsa_url: tsaUrl });
+      toast("Timestamp authority saved.", "ok", { key: "saved" });
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : "Something went wrong.", "critical");
+    }
+  }
 
   function apply(event: SubmitEvent) {
     event.preventDefault();
@@ -115,6 +172,45 @@
     {checking ? "Checking…" : "Check again"}
   </button>
 </div>
+
+{#if chain}
+  <div class="chain">
+    {#if !chain.stamps_ok}
+      <Pill tone="critical" text="Timestamps don't match" />
+      <span class="small">{chain.stamp_problem}</span>
+    {:else if chain.stamps === 0 || !chain.last_stamped_at}
+      <Pill tone="neutral" text="Not timestamped yet" />
+      <span class="small muted">The worker asks {tsaHost} to timestamp the newest entry once a day.</span>
+    {:else}
+      <Pill tone="ok" text="Timestamped" />
+      <span class="small muted">
+        Entry {chain.last_stamped_seq} timestamped {isoTime(chain.last_stamped_at)} by {tsaHost}; all
+        {chain.stamps.toLocaleString("en-GB")} timestamps still match the log.
+      </span>
+    {/if}
+    {#if mayAdminister}
+      <button class="link-button" type="button" disabled={stamping} onclick={stampNow}>
+        {stamping ? "Timestamping…" : "Timestamp now"}
+      </button>
+    {/if}
+  </div>
+  {#if mayAdminister}
+    <details class="authority">
+      <summary class="small">Timestamp authority</summary>
+      <form class="authority-form" onsubmit={saveAuthority}>
+        <div class="field">
+          <label for="tsa">Address of an RFC 3161 timestamp authority</label>
+          <input id="tsa" class="input" type="url" required maxlength="300" bind:value={tsaUrl} />
+          <span class="hint">
+            Only a fingerprint of the newest entry is sent. Free ones include DigiCert's
+            (http://timestamp.digicert.com) and FreeTSA (https://freetsa.org/tsr).
+          </span>
+        </div>
+        <div><button class="button button-secondary" type="submit">Save</button></div>
+      </form>
+    </details>
+  {/if}
+{/if}
 
 <form class="section filters" onsubmit={apply}>
   <div class="field">
@@ -183,6 +279,19 @@
 {/if}
 
 <style>
+  .authority {
+    margin-top: calc(-1 * var(--space-2));
+  }
+  .authority summary {
+    cursor: pointer;
+  }
+  .authority-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    max-width: 560px;
+    margin-top: var(--space-3);
+  }
   .chain {
     display: flex;
     flex-wrap: wrap;

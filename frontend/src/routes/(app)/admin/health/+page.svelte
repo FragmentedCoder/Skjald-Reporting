@@ -48,6 +48,7 @@
   const ROWS = [
     { key: "database", label: "Database" },
     { key: "audit_chain", label: "Audit log" },
+    { key: "audit_stamps", label: "Audit log timestamp" },
     { key: "keys", label: "Keys" },
     { key: "disk", label: "Disk space" },
     { key: "breach_check", label: "Breached-password check" },

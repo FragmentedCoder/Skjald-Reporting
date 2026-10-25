@@ -15,13 +15,14 @@ from collections.abc import Callable
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
-from app import audit, clock, jobs, worker
+from app import audit, audit_stamps, clock, jobs, worker
 from app.admin import Admin
 from app.audit import AuditEntry
 from app.auth import pwned
@@ -249,6 +250,32 @@ def _restore_test_check(last: Job | None, now: datetime) -> Check:
     return Check(key="restore_test", label=label, status="ok", detail=detail)
 
 
+def _stamps_check(result: audit_stamps.StampCheck, now: datetime) -> Check:
+    label = "Audit log timestamp"
+    if not result.ok:
+        return Check(key="audit_stamps", label=label, status="problem",
+                     detail=result.problem or "The timestamps don't match the log.")
+    if result.latest is None:
+        return Check(key="audit_stamps", label=label, status="warning",
+                     detail="Not timestamped yet. The worker asks once a day.")
+    latest = result.latest
+    host = urlsplit(latest.tsa_url).hostname or latest.tsa_url
+    detail = (f"Entry {latest.seq} timestamped {_ago(latest.stamped_at, now)} by {host}; "
+              f"all {result.stamps:,} timestamps still match the log.")
+    age = now - latest.stamped_at
+    if age > timedelta(days=2):
+        return Check(key="audit_stamps", label=label, status="problem", detail=detail)
+    if age > timedelta(hours=26):
+        return Check(key="audit_stamps", label=label, status="warning", detail=detail)
+    return Check(key="audit_stamps", label=label, status="ok", detail=detail)
+
+
+def _run_stamps(db: Session) -> Check:
+    db.commit()
+    with reading(engine_of(db)) as reader:
+        return _stamps_check(audit_stamps.check(reader), clock.utcnow())
+
+
 def _run_backups(db: Session) -> Check:
     return _backups_check(load_target(db), jobs.latest(db, "backup", "done"),
                           jobs.latest(db, "backup", "failed"), clock.utcnow())
@@ -289,6 +316,7 @@ def _run_breach_check(db: Session) -> Check:
 CHECKS: dict[str, Callable[[Session], Check]] = {
     "database": _run_database,
     "audit_chain": _run_audit_chain,
+    "audit_stamps": _run_stamps,
     "keys": _run_keys,
     "disk": _run_disk,
     "breach_check": _run_breach_check,

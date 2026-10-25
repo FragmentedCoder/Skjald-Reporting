@@ -170,6 +170,8 @@ test("the admin panel, from adding a user to their first sign-in", async ({ brow
   // Audit log: the chain checks out, filters work, and the export downloads.
   await adminMenu(admin, "Audit log").click();
   await expect(admin.getByText("Chain intact")).toBeVisible();
+  // The daily timestamp needs the internet; either way the page says how it stands.
+  await expect(admin.getByText(/^(Timestamped|Not timestamped yet)$/)).toBeVisible();
   await admin.getByLabel("What").selectOption("admin.*");
   await admin.getByRole("button", { name: "Show" }).click();
   // Times are ISO 8601, in UTC.

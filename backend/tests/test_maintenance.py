@@ -133,13 +133,13 @@ def test_the_health_page_checks_everything_that_matters(client, admin, reachable
     _, headers = admin
     health = client.get("/api/admin/health", headers=headers).json()
     checks = health_checks(client, headers)
-    assert set(checks) == {"database", "audit_chain", "keys", "disk", "breach_check", "worker",
-                           "backups", "restore_test"}
+    assert set(checks) == {"database", "audit_chain", "audit_stamps", "keys", "disk",
+                           "breach_check", "worker", "backups", "restore_test"}
     assert checks["database"]["status"] == "ok"
     assert checks["audit_chain"]["status"] == "ok"
     assert checks["audit_chain"]["detail"].startswith("Chain intact")
     assert checks["breach_check"]["status"] == "ok" and reachable == [1]
-    assert health["versions"]["schema_version"] == "0012"
+    assert health["versions"]["schema_version"] == "0013"
     assert health["versions"]["sqlcipher"]
     assert any(p["name"] == "fastapi" for p in health["packages"])
     assert health["usage"]["users"] == 1 and health["usage"]["sessions"] == 1
