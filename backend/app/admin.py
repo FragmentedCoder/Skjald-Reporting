@@ -398,8 +398,10 @@ def end_one_session(user_id: int, session_id: int, request: Request, admin: Admi
 # Security
 
 
-def _widened(enabled: bool, old: tuple[str, ...], new: tuple[str, ...]) -> bool:
-    return enabled and bool(set(new) - set(old))
+def _widened(was_on: bool, is_on: bool, old: tuple[str, ...], new: tuple[str, ...]) -> bool:
+    """Addresses added to an allowlist that was on already. Switching one on, from
+    everyone to these addresses, narrows who gets in."""
+    return was_on and is_on and bool(set(new) - set(old))
 
 
 def _weakens(old: SecurityPolicy, new: SecurityPolicy) -> bool:
@@ -415,8 +417,10 @@ def _weakens(old: SecurityPolicy, new: SecurityPolicy) -> bool:
         old.require_mfa_administrators and not new.require_mfa_administrators,
         old.admin_allowlist_enabled and not new.admin_allowlist_enabled,
         old.login_allowlist_enabled and not new.login_allowlist_enabled,
-        _widened(new.admin_allowlist_enabled, old.admin_allowlist, new.admin_allowlist),
-        _widened(new.login_allowlist_enabled, old.login_allowlist, new.login_allowlist),
+        _widened(old.admin_allowlist_enabled, new.admin_allowlist_enabled,
+                 old.admin_allowlist, new.admin_allowlist),
+        _widened(old.login_allowlist_enabled, new.login_allowlist_enabled,
+                 old.login_allowlist, new.login_allowlist),
     ))
 
 

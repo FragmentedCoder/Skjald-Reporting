@@ -531,6 +531,21 @@ def test_every_kind_of_lowering_asks_for_confirmation(client, admin, change) -> 
     assert response.headers["X-Skjald-Reason"] == "step_up_required"
 
 
+def test_adding_to_an_allowlist_that_is_on_asks_for_confirmation(admin) -> None:
+    from starlette.testclient import TestClient
+
+    from app.main import app
+
+    _, headers = admin
+    inside = TestClient(app, base_url="https://testserver", client=("10.0.0.5", 50000))
+    on = inside.put("/api/admin/security", headers=headers, json=security(
+        admin_allowlist_enabled=True, admin_allowlist=["10.0.0.0/24"]))
+    assert on.status_code == 200, on.text  # from everyone to these: narrower
+    wider = inside.put("/api/admin/security", headers=headers, json=security(
+        admin_allowlist_enabled=True, admin_allowlist=["10.0.0.0/24", "192.168.0.0/16"]))
+    assert wider.headers["X-Skjald-Reason"] == "step_up_required"
+
+
 @pytest.mark.parametrize("change", [
     {"idle_timeout_minutes": 10},
     {"lockout_threshold": 5},
