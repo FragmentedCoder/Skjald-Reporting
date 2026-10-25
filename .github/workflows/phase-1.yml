@@ -80,9 +80,11 @@ jobs:
       - uses: actions/checkout@v7
       # ShellCheck comes with the runner image.
       - name: Lint the shell scripts
-        run: shellcheck -x deploy/*.sh frontend/e2e/run.sh
+        run: shellcheck -x deploy/*.sh deploy/skjald frontend/e2e/run.sh
       - name: Test the installer's functions
         run: deploy/install.test.sh
+      - name: Test the skjald command's own logic
+        run: deploy/skjald.test.sh
 
   browser:
     name: Browser tests against the full stack

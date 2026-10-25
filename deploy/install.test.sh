@@ -66,6 +66,12 @@ check "an .env with an address is kept" \
 	grep -q "Using the address" <(configure_address https://other.example.internal)
 check "  unchanged" grep -qx "SKJALD_ADDRESS=https://skjald.example.internal:8443" "${ENV_FILE}"
 
+mkdir -p "${WORK}/bin"
+BIN_DIR="${WORK}/bin" link_command >/dev/null
+check "the skjald command is linked onto the PATH" \
+	test "$(readlink "${WORK}/bin/skjald")" = "${DEPLOY_DIR}/skjald"
+check "  and runs" grep -q "keys rotate" <("${WORK}/bin/skjald" help)
+
 if [[ ${failures} -gt 0 ]]; then
 	echo "${failures} failed."
 	exit 1

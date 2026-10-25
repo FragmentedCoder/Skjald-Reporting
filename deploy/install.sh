@@ -14,6 +14,7 @@ DEPLOY_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 SKJALD_HOME="${SKJALD_HOME:-/opt/skjald}"
 SKJALD_ETC="${SKJALD_ETC:-/etc/skjald}"
 ENV_FILE="${ENV_FILE:-${DEPLOY_DIR}/.env}"
+BIN_DIR="${BIN_DIR:-/usr/local/bin}"
 MIN_CPU=4
 MIN_RAM_MB=7800
 MIN_DISK_GB=90
@@ -174,6 +175,12 @@ configure_address() {
 	log "Wrote ${ENV_FILE} with the address ${address}."
 }
 
+# The skjald command, for what the web UI can't do (`skjald help`).
+link_command() {
+	ln -sfn "${DEPLOY_DIR}/skjald" "${BIN_DIR}/skjald"
+	log "Linked ${BIN_DIR}/skjald; run skjald help to see what it does."
+}
+
 compose() {
 	docker compose --project-directory "${DEPLOY_DIR}" -f "${DEPLOY_DIR}/docker-compose.yml" "$@"
 }
@@ -242,12 +249,11 @@ main() {
 		generate_master_key
 	fi
 	configure_address "${address}"
+	link_command
 
 	if [[ "${restore}" == true ]]; then
-		log "Next, restore a backup with the recovery kit's backup key, then start Skjald:"
-		log "  cd ${DEPLOY_DIR}"
-		log "  docker compose run --rm --no-deps worker python -m app.restore"
-		log "  docker compose up -d"
+		log "Next, restore a backup with the recovery kit's backup key:"
+		log "  skjald restore"
 		return
 	fi
 	start_stack
