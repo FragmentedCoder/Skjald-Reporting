@@ -148,7 +148,7 @@
 {#snippet projectEntry(project: ProjectSummary)}
   {@const open = project.id === workspace.project?.id}
   {@const href = resolve("/(app)/projects/[id]", { id: String(project.id) })}
-  <a class="item depth-1 project" {href} aria-current={open && path === href ? "page" : undefined} class:open>
+  <a class="item depth-1 project" {href} class:open>
     <span class="dot {classificationTone(project.classification)}" aria-hidden="true"></span>
     <span class="text">{project.name}</span>
     <span class="visually-hidden">, {project.classification}</span>
@@ -272,7 +272,7 @@
   }
   .topbar,
   .scrim,
-  .close {
+  .icon-button.close {
     display: none;
   }
   .side {
@@ -479,7 +479,7 @@
       border: 0;
       background: rgb(11 20 32 / 0.45);
     }
-    .close {
+    .icon-button.close {
       display: grid;
     }
   }
