@@ -3,7 +3,12 @@
   import { resolve } from "$app/paths";
   import { onMount } from "svelte";
   import { api, ApiError } from "#lib/api.js";
+  import type { BackupRun, BackupStatus, BackupTarget } from "#lib/backups.js";
   import AuthLayout from "#lib/components/AuthLayout.svelte";
+  import BackupTargetFields from "#lib/components/BackupTargetFields.svelte";
+  import MailFields from "#lib/components/MailFields.svelte";
+  import TlsFields from "#lib/components/TlsFields.svelte";
+  import { mailBody, type MailServer, type MailStatus } from "#lib/mail.js";
   import PolicyFields from "#lib/components/PolicyFields.svelte";
   import SaveSecrets from "#lib/components/SaveSecrets.svelte";
   import SecondFactorSetup from "#lib/components/SecondFactorSetup.svelte";
@@ -12,6 +17,7 @@
   import { branding } from "#lib/branding.svelte.js";
   import Command from "#lib/components/Command.svelte";
   import { recoveryCodesText, recoveryKitText, type RecoveryKit } from "#lib/secrets.js";
+  import { choiceFrom, tlsBody, type TlsChoice, type TlsStatus } from "#lib/tls.js";
   import {
     session,
     settle,
@@ -29,8 +35,12 @@
     | "second-factor"
     | "verify"
     | "codes"
-    | "kit";
-  const STEP_COUNT = 6;
+    | "kit"
+    | "backups"
+    | "email"
+    | "tls";
+  type LaterStep = "backups" | "email" | "tls";
+  const STEP_COUNT = 9;
   const STEP_NUMBER: Record<Step, number> = {
     token: 1,
     company: 2,
@@ -41,6 +51,9 @@
     verify: 5,
     codes: 5,
     kit: 6,
+    backups: 7,
+    email: 8,
+    tls: 9,
   };
 
   interface Progress {
@@ -49,6 +62,8 @@
     security_reviewed: boolean;
     security: SecuritySettings;
     administrator: string | null;
+    kit_saved: boolean;
+    steps_done: LaterStep[];
   }
 
   let ready = $state(false);
@@ -61,6 +76,19 @@
   let password = $state("");
   let codes = $state<string[]>([]);
   let kit = $state<RecoveryKit | null>(null);
+  let backups = $state<BackupStatus | null>(null);
+  let target = $state<BackupTarget | null>(null);
+  let smbPassword = $state("");
+  let s3Secret = $state("");
+  let checking = $state(false);
+  let checkFailed = $state(false);
+  let mail = $state<MailStatus | null>(null);
+  let mailServer = $state<MailServer | null>(null);
+  let mailPassword = $state("");
+  let testTo = $state("");
+  let tls = $state<TlsStatus | null>(null);
+  let tlsChoice = $state<TlsChoice | null>(null);
+  let notice = $state<string | null>(null);
   let error = $state<string | null>(null);
   let breachCheckDown = $state(false);
   let busy = $state(false);
@@ -102,7 +130,16 @@
     else if (current?.user.username !== progress.administrator) step = "sign-in";
     else if (current.second_factor === "enrol") step = "second-factor";
     else if (current.second_factor === "verify") step = "verify";
-    else void showKit();
+    else if (!progress.kit_saved) void showKit();
+    else if (!progress.steps_done.includes("backups")) void showBackups();
+    else if (!progress.steps_done.includes("email")) void showEmail();
+    else if (!progress.steps_done.includes("tls")) void showTls();
+    else void finish();
+  }
+
+  function stepDone(done: LaterStep) {
+    if (progress && !progress.steps_done.includes(done)) progress.steps_done.push(done);
+    nextStep();
   }
 
   async function submitToken(event: SubmitEvent) {
@@ -195,10 +232,115 @@
     kit = await run(() => api<RecoveryKit>("POST", "/setup/recovery-kit", undefined, tokenHeader));
   }
 
-  async function finish() {
-    const done = await run(() =>
-      api("POST", "/setup/complete", { kit_saved: true }, tokenHeader),
+  async function kitSaved() {
+    const found = await run(() => api<Progress>("POST", "/setup/kit-saved", undefined, tokenHeader));
+    if (!found) return;
+    progress = found;
+    kit = null;
+    nextStep();
+  }
+
+  // The later steps start from what's saved (the admin panel's API: the
+  // administrator is signed in by now), and save through the wizard's.
+  async function showBackups() {
+    step = "backups";
+    checkFailed = false;
+    backups = await run(() => api<BackupStatus>("GET", "/admin/backups"));
+    if (backups) target = { ...backups.target };
+  }
+
+  async function showEmail() {
+    step = "email";
+    notice = null;
+    mail = await run(() => api<MailStatus>("GET", "/admin/email"));
+    if (mail) mailServer = { ...mail.server };
+    testTo ||= admin.email;
+  }
+
+  async function showTls() {
+    step = "tls";
+    tls = await run(() => api<TlsStatus>("GET", "/admin/tls"));
+    if (tls) tlsChoice = choiceFrom(tls);
+  }
+
+  async function later(skipped: LaterStep) {
+    const found = await run(() =>
+      api<Progress>("POST", `/setup/later/${skipped}`, undefined, tokenHeader),
     );
+    if (!found) return;
+    progress = found;
+    nextStep();
+  }
+
+  /** Ask the worker to reach the new target; the error in words, or null when it could. */
+  async function checkConnection(): Promise<string | null> {
+    let check = await api<BackupRun>("POST", "/admin/backups/run/backup_check");
+    for (let tries = 0; tries < 45; tries++) {
+      if (check.state === "done") return null;
+      if (check.state === "failed" || (check.state === "queued" && check.error)) {
+        return check.error ?? "The check failed.";
+      }
+      await new Promise((wait) => setTimeout(wait, 2000));
+      check = await api<BackupRun>("GET", `/admin/backups/runs/${check.id}`);
+    }
+    return "The worker didn't get to it within 90 seconds. Is it running?";
+  }
+
+  async function saveBackups(event: SubmitEvent) {
+    event.preventDefault();
+    if (!target) return;
+    const saved = await run(() =>
+      api<BackupStatus>("POST", "/setup/backups", {
+        ...target,
+        smb_password: smbPassword === "" ? null : smbPassword,
+        s3_secret_access_key: s3Secret === "" ? null : s3Secret,
+      }, tokenHeader),
+    );
+    if (!saved) return;
+    backups = saved;
+    smbPassword = s3Secret = "";
+    if (saved.target.kind === "smb" || saved.target.kind === "s3") {
+      checking = true;
+      const failure = await run(checkConnection);
+      checking = false;
+      if (failure) {
+        checkFailed = true;
+        error = `Saved, but Skjald couldn't reach it: ${failure}`;
+        return;
+      }
+    }
+    stepDone("backups");
+  }
+
+  async function saveEmail(sendTest: boolean) {
+    if (!mailServer) return;
+    const saved = await run(() =>
+      api<MailStatus>("POST", "/setup/email", mailBody(mailServer!, mailPassword), tokenHeader),
+    );
+    if (!saved) return;
+    mail = saved;
+    mailPassword = "";
+    if (!sendTest) {
+      stepDone("email");
+      return;
+    }
+    notice = null;
+    const sent = await run(() => api("POST", "/admin/email/test", { to: testTo }));
+    if (sent !== null) notice = `Test message sent to ${testTo}. Check that it arrived.`;
+  }
+
+  async function saveTls(event: SubmitEvent) {
+    event.preventDefault();
+    if (!tlsChoice) return;
+    // Finish straight after: Caddy takes the new certificate within a few seconds.
+    const saved = await run(() => api<TlsStatus>("POST", "/setup/tls", tlsBody(tlsChoice!), tokenHeader));
+    if (!saved) return;
+    tls = saved;
+    stepDone("tls");
+  }
+
+  async function finish() {
+    const done = await run(() => api("POST", "/setup/complete", undefined, tokenHeader));
     if (!done) return;
     session.setupNeeded = false;
     await goto(resolve("/(app)"));
@@ -445,9 +587,8 @@
           text={recoveryKitText(kit)}
           filename="skjald-recovery-kit.txt"
           confirmation="I have saved the recovery kit somewhere safe, away from this server"
-          continueLabel="Finish setup"
           {busy}
-          onContinue={finish}
+          onContinue={kitSaved}
         >
           <dl class="kit">
             <dt>Master key</dt>
@@ -456,6 +597,96 @@
             <dd class="mono">{kit.backup_key}</dd>
           </dl>
         </SaveSecrets>
+      {/if}
+    </AuthLayout>
+  {:else if step === "backups"}
+    <AuthLayout
+      heading="Where backups go"
+      intro="Every night, encrypted with the backup key from the recovery kit. You can change this any time under Admin, Backups."
+      {eyebrow}
+      wide
+    >
+      {#if error}<p class="alert alert-critical" role="alert">{error}</p>{/if}
+      {#if backups && target}
+        <form class="stack" onsubmit={saveBackups}>
+          <BackupTargetFields bind:target bind:smbPassword bind:s3Secret
+            smbPasswordSet={backups.smb_password_set} s3SecretSet={backups.s3_secret_set} />
+          {#if checking}<p class="small" role="status">Checking that Skjald can reach it…</p>{/if}
+          <div class="button-row">
+            <button class="button button-primary" type="submit" disabled={busy}>
+              {target.kind === "smb" || target.kind === "s3" ? "Save and check" : "Save and continue"}
+            </button>
+            {#if checkFailed}
+              <button class="button button-secondary" type="button" disabled={busy}
+                onclick={() => stepDone("backups")}>Continue anyway</button>
+            {:else}
+              <button class="button button-secondary" type="button" disabled={busy}
+                onclick={() => later("backups")}>Set up later</button>
+            {/if}
+          </div>
+        </form>
+      {/if}
+    </AuthLayout>
+  {:else if step === "email"}
+    <AuthLayout
+      heading="Email"
+      intro="The mail server Skjald sends reports and notices through. You can change this any time under Admin, Email."
+      {eyebrow}
+      wide
+    >
+      {#if error}<p class="alert alert-critical" role="alert">{error}</p>{/if}
+      {#if notice}<p class="alert alert-ok" role="status">{notice}</p>{/if}
+      {#if mail && mailServer}
+        <form
+          class="stack"
+          onsubmit={(event) => {
+            event.preventDefault();
+            saveEmail(false);
+          }}
+        >
+          <MailFields bind:server={mailServer} bind:password={mailPassword}
+            passwordSet={mail.password_set} />
+          <div class="test">
+            <div class="field">
+              <label for="test-to">Send a test message to (optional)</label>
+              <input id="test-to" class="input" type="email" autocomplete="email" bind:value={testTo} />
+            </div>
+            <button class="button button-secondary" type="button" disabled={busy || !testTo}
+              onclick={() => saveEmail(true)}>Save and send a test</button>
+          </div>
+          <div class="button-row">
+            <button class="button button-primary" type="submit" disabled={busy}>Save and continue</button>
+            <button class="button button-secondary" type="button" disabled={busy}
+              onclick={() => later("email")}>Set up later</button>
+          </div>
+        </form>
+      {/if}
+    </AuthLayout>
+  {:else if step === "tls"}
+    <AuthLayout
+      heading="Certificate"
+      intro="What browsers see at {tls?.host ?? 'this address'}. You can change it any time under Admin, Certificate."
+      {eyebrow}
+      wide
+    >
+      {#if error}<p class="alert alert-critical" role="alert">{error}</p>{/if}
+      {#if tls && tlsChoice}
+        <form class="stack" onsubmit={saveTls}>
+          <TlsFields bind:choice={tlsChoice} host={tls.host} uploaded={tls.settings.certificate} />
+          {#if tlsChoice.mode === "internal" && tls.root_url}
+            <p class="small">
+              <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- a file Caddy serves, not a page -->
+              <a href={tls.root_url} download="skjald-root.crt">Download the root certificate</a>
+              and install it as a trusted root on each computer that will use Skjald: this one
+              too, if the browser warned about the certificate.
+            </p>
+          {/if}
+          <div class="button-row">
+            <button class="button button-primary" type="submit" disabled={busy}>Save and finish setup</button>
+            <button class="button button-secondary" type="button" disabled={busy}
+              onclick={() => later("tls")}>Set up later and finish</button>
+          </div>
+        </form>
       {/if}
     </AuthLayout>
   {/if}
@@ -483,5 +714,14 @@
   .kit dd {
     margin: 0 0 var(--space-2);
     overflow-wrap: normal;
+  }
+  .test {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--space-3);
+  }
+  .test .field {
+    flex: 1 1 240px;
   }
 </style>

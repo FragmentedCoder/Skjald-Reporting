@@ -12,12 +12,15 @@
     heading,
     intro,
     eyebrow,
+    wide = false,
     children,
     footer,
   }: {
     heading: string;
     intro?: string;
     eyebrow?: string;
+    // Room for two columns of fields, as the wizard's later steps have.
+    wide?: boolean;
     children: Snippet;
     footer?: Snippet;
   } = $props();
@@ -28,7 +31,7 @@
     <img class="light" src={lightScene} alt="" decoding="async" />
     <img class="dark" src={darkScene} alt="" decoding="async" />
   </div>
-  <div class="card">
+  <div class="card" class:wide>
     <header class="brand">
       <Brand size={40} tagline />
     </header>
@@ -94,6 +97,9 @@
     border-radius: var(--radius-lg);
     background: var(--surface);
     box-shadow: 0 12px 40px rgb(11 20 32 / 0.25);
+  }
+  .card.wide {
+    max-width: 640px;
   }
   .brand {
     display: flex;

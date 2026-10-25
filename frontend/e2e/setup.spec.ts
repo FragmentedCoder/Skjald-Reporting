@@ -19,7 +19,7 @@ test("the setup wizard, start to finish", async ({ page }) => {
   await addVirtualPasskey(page);
   await page.goto("/setup");
 
-  await expect(page.getByText("Step 1 of 6")).toBeVisible();
+  await expect(page.getByText("Step 1 of 9")).toBeVisible();
   await shot(page, "1-token");
   await page.getByLabel("Setup token").fill("AAAA-AAAA-AAAA-AAAA-AAAA-AAAA");
   await page.getByRole("button", { name: "Continue" }).click();
@@ -69,14 +69,34 @@ test("the setup wizard, start to finish", async ({ page }) => {
     await expect(value).toHaveText(/^([A-Z2-7]{4} ){12}[A-Z2-7]{4}$/);
   }
   await shot(page, "6-recovery-kit");
-  const finish = page.getByRole("button", { name: "Finish setup" });
-  await expect(finish).toBeDisabled();
+  const saved = page.getByRole("button", { name: "Continue" });
+  await expect(saved).toBeDisabled();
   await page.getByLabel(/I have saved the recovery kit/).check();
-  await finish.click();
+  await saved.click();
+
+  // Then where backups go, email and the certificate; each can wait.
+  await expect(page.getByRole("heading", { name: "Where backups go" })).toBeVisible();
+  await expect(page.getByText("Step 7 of 9")).toBeVisible();
+  await expect(page.getByRole("radio", { name: /This server/ })).toBeChecked();
+  await page.getByLabel("Every night at").selectOption("3");
+  await shot(page, "7-backups");
+  await page.getByRole("button", { name: "Save and continue" }).click();
+
+  await expect(page.getByRole("heading", { name: "Email", exact: true })).toBeVisible();
+  await expect(page.getByText("Step 8 of 9")).toBeVisible();
+  await shot(page, "8-email");
+  await page.getByRole("button", { name: "Set up later" }).click();
+
+  await expect(page.getByRole("heading", { name: "Certificate" })).toBeVisible();
+  await expect(page.getByText("Step 9 of 9")).toBeVisible();
+  await expect(page.getByRole("radio", { name: /own certificate authority/ })).toBeChecked();
+  await expect(page.getByRole("link", { name: "Download the root certificate" })).toBeVisible();
+  await shot(page, "9-certificate");
+  await page.getByRole("button", { name: "Save and finish setup" }).click();
 
   await expect(page.getByRole("heading", { name: "Welcome, Ingrid Admin" })).toBeVisible();
   await expect(page.getByText("Administrator", { exact: true })).toBeVisible();
-  await shot(page, "7-done");
+  await shot(page, "10-done");
   expect(violations).toEqual([]);
 });
 
