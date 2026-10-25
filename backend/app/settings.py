@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     # The address people open Skjald at. Passkeys are bound to its host name,
     # which must be a name, not an IP address.
     address: str = "https://localhost"
+    # The volume the app shares with Caddy for its TLS settings, and Caddy's name.
+    tls_dir: str = "/tls"
+    caddy_host: str = "caddy"
 
 
 settings = Settings()
