@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { goto } from "$app/navigation";
   import { resolve } from "$app/paths";
   import { api, ApiError } from "#lib/api.js";
   import {
@@ -9,18 +10,24 @@
     type ProfileForm,
   } from "#lib/admin.js";
   import { pageTitle } from "#lib/branding.svelte.js";
+  import Dialog from "#lib/components/Dialog.svelte";
   import PasswordChoiceFields from "#lib/components/PasswordChoiceFields.svelte";
   import TemporaryPasswordNotice from "#lib/components/TemporaryPasswordNotice.svelte";
   import { ROLES, type Role } from "#lib/roles.js";
 
-  let profile = $state<ProfileForm>({
+  const blank = (): ProfileForm => ({
     display_name: "", first_name: "", middle_name: "", last_name: "", job_title: "",
     department: "", email: "", phone: "",
   });
+  let profile = $state<ProfileForm>(blank());
   let username = $state("");
   let roles = $state<Role[]>([]);
   let choice = $state(newPasswordChoice());
+  // The result shows in a dialog over the form. Choosing "Add another" clears the
+  // form; closing it any other way goes back to the users, so the form isn't left
+  // filled in with someone who now exists.
   let created = $state<PasswordResult | null>(null);
+  let resultOpen = $state(false);
   let error = $state<string | null>(null);
   let busy = $state(false);
 
@@ -40,12 +47,26 @@
         roles,
         ...password,
       });
+      resultOpen = true;
     } catch (e) {
       error = e instanceof ApiError ? e.message : "The user could not be added.";
     } finally {
       busy = false;
     }
   }
+
+  function addAnother() {
+    profile = blank();
+    username = "";
+    roles = [];
+    choice = newPasswordChoice();
+    created = null;
+    resultOpen = false;
+  }
+
+  $effect(() => {
+    if (created && !resultOpen) void goto(resolve("/(app)/admin/users"));
+  });
 </script>
 
 <svelte:head><title>{pageTitle("Add user · Admin")}</title></svelte:head>
@@ -57,9 +78,52 @@
   </div>
 </div>
 
-{#if created}
-  <section class="section">
-    <h2 class="section-title">{created.user.display_name} is added</h2>
+<form class="section stack form-wide" onsubmit={submit}>
+  {#if error}<p class="alert alert-critical" role="alert">{error}</p>{/if}
+  <div class="field">
+    <label for="display-name">Display name</label>
+    <input id="display-name" class="input" required maxlength="200"
+      bind:value={profile.display_name} />
+  </div>
+  <div class="field">
+    <label for="username">Username</label>
+    <input id="username" class="input" autocapitalize="none" spellcheck="false" required
+      aria-describedby="username-hint" bind:value={username} />
+    <span class="hint" id="username-hint">What they sign in with. No spaces.</span>
+  </div>
+  <details>
+    <summary>Name, title and contact details (optional)</summary>
+    <div class="grid">
+      {#each PROFILE_FIELDS as field (field.key)}
+        <div class="field">
+          <label for={field.key}>{field.label}</label>
+          <input id={field.key} class="input" type={field.type ?? "text"} autocomplete="off"
+            bind:value={profile[field.key]} />
+        </div>
+      {/each}
+    </div>
+  </details>
+  <fieldset class="checks roles">
+    <legend class="check-title">Roles</legend>
+    {#each ROLES as option (option.role)}
+      <label class="check">
+        <input type="checkbox" value={option.role} bind:group={roles} />
+        <span>
+          <span class="check-title">{option.name}</span>
+          <span class="small muted">{option.description}</span>
+        </span>
+      </label>
+    {/each}
+  </fieldset>
+  <PasswordChoiceFields bind:choice />
+  <div class="button-row">
+    <button class="button button-primary" type="submit" disabled={busy}>Add user</button>
+    <a class="button button-secondary" href={resolve("/(app)/admin/users")}>Cancel</a>
+  </div>
+</form>
+
+<Dialog bind:open={resultOpen} title="{created?.user.display_name ?? 'The user'} is added">
+  {#if created}
     {#if created.temporary_password && created.expires_at}
       <TemporaryPasswordNotice name={created.user.display_name}
         password={created.temporary_password} expiresAt={created.expires_at} />
@@ -70,57 +134,18 @@
           : ""}.
       </p>
     {/if}
-    <div class="button-row">
+  {/if}
+  {#snippet actions()}
+    <button class="button button-secondary" type="button" onclick={addAnother}>Add another</button>
+    <button class="button button-secondary" type="button" onclick={() => (resultOpen = false)}>
+      Back to users
+    </button>
+    {#if created}
       <a class="button button-primary"
         href={resolve("/(app)/admin/users/[id]", { id: String(created.user.id) })}>Open user</a>
-      <a class="button button-secondary" href={resolve("/(app)/admin/users")}>Back to users</a>
-    </div>
-  </section>
-{:else}
-  <form class="section stack form-wide" onsubmit={submit}>
-    {#if error}<p class="alert alert-critical" role="alert">{error}</p>{/if}
-    <div class="field">
-      <label for="display-name">Display name</label>
-      <input id="display-name" class="input" required maxlength="200"
-        bind:value={profile.display_name} />
-    </div>
-    <div class="field">
-      <label for="username">Username</label>
-      <input id="username" class="input" autocapitalize="none" spellcheck="false" required
-        aria-describedby="username-hint" bind:value={username} />
-      <span class="hint" id="username-hint">What they sign in with. No spaces.</span>
-    </div>
-    <details>
-      <summary>Name, title and contact details (optional)</summary>
-      <div class="grid">
-        {#each PROFILE_FIELDS as field (field.key)}
-          <div class="field">
-            <label for={field.key}>{field.label}</label>
-            <input id={field.key} class="input" type={field.type ?? "text"} autocomplete="off"
-              bind:value={profile[field.key]} />
-          </div>
-        {/each}
-      </div>
-    </details>
-    <fieldset class="checks roles">
-      <legend class="check-title">Roles</legend>
-      {#each ROLES as option (option.role)}
-        <label class="check">
-          <input type="checkbox" value={option.role} bind:group={roles} />
-          <span>
-            <span class="check-title">{option.name}</span>
-            <span class="small muted">{option.description}</span>
-          </span>
-        </label>
-      {/each}
-    </fieldset>
-    <PasswordChoiceFields bind:choice />
-    <div class="button-row">
-      <button class="button button-primary" type="submit" disabled={busy}>Add user</button>
-      <a class="button button-secondary" href={resolve("/(app)/admin/users")}>Cancel</a>
-    </div>
-  </form>
-{/if}
+    {/if}
+  {/snippet}
+</Dialog>
 
 <style>
   .form-wide {
