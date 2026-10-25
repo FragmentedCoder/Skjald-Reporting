@@ -50,6 +50,8 @@ jobs:
         run: mypy app
       - name: Test
         run: pytest
+      - name: Audit the dependencies for known vulnerabilities
+        run: pip install pip-audit && pip-audit --progress-spinner off
 
   frontend:
     name: Frontend lint, type check and tests
@@ -72,6 +74,8 @@ jobs:
         run: npm run test
       - name: Build
         run: npm run build
+      - name: Audit the dependencies for known vulnerabilities
+        run: npm audit --audit-level=high
 
   deploy:
     name: Installer and scripts
@@ -100,6 +104,15 @@ jobs:
           sudo chmod 0600 /etc/skjald/master.key
       - name: Run Playwright against Caddy, the app and its database
         run: frontend/e2e/run.sh
+      # The images the browser tests ran: high and critical vulnerabilities with a fix
+      # released fail the check.
+      - name: Scan the images for known vulnerabilities
+        run: |
+          for image in skjald-e2e-app skjald-e2e-caddy; do
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+              aquasec/trivy:0.75.0 image --quiet --scanners vuln --severity HIGH,CRITICAL \
+              --ignore-unfixed --exit-code 1 "$image"
+          done
       - name: Keep screenshots and traces
         if: always()
         uses: actions/upload-artifact@v6
