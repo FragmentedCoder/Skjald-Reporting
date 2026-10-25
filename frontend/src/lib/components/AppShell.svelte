@@ -184,9 +184,9 @@
     showCurrent();
   });
 
-  // The menu fills in after a page change (the customer's projects arrive), which
-  // can push the page you're on out of view again: keep it in view until you
-  // scroll the menu yourself.
+  // The menu fills in after a page change (the customer's projects and counts
+  // arrive, Admin opens), which can push the page you're on out of view again:
+  // keep it in view, whatever changed in the menu, until you scroll it yourself.
   let following = false;
 
   function showCurrent() {
@@ -194,10 +194,12 @@
   }
 
   $effect(() => {
-    void workspace.customers;
-    void workspace.projects;
-    void workspace.project;
-    if (following) void tick().then(showCurrent);
+    if (!nav) return;
+    const changes = new MutationObserver(() => {
+      if (following) requestAnimationFrame(showCurrent);
+    });
+    changes.observe(nav, { childList: true, subtree: true, characterData: true });
+    return () => changes.disconnect();
   });
 
   async function toggleTheme() {
