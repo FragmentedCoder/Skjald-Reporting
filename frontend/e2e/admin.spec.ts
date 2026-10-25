@@ -164,6 +164,7 @@ test("the admin panel, from adding a user to their first sign-in", async ({ brow
   await adminMenu(admin, "Server health").click();
   await expect(admin.getByText(/Chain intact: \d+ entries checked/)).toBeVisible();
   await expect(admin.getByText("Encrypted, and every page passed")).toBeVisible();
+  await expect(admin.getByText("Running.", { exact: true })).toBeVisible();
   await shot(admin, "10-health");
 
   // Audit log: the chain checks out, filters work, and the export downloads.

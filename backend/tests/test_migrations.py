@@ -45,7 +45,7 @@ def test_tables_whose_ids_reach_the_audit_log_never_reuse_an_id(engine) -> None:
     }
     assert autoincrement == {
         "users", "user_sessions", "mfa_factors", "customers", "customer_sites",
-        "customer_contacts", "projects",
+        "customer_contacts", "projects", "jobs",
     }
     with engine.connect() as conn:
         for name in autoincrement:

@@ -12,7 +12,7 @@ import importlib.metadata
 import platform
 import shutil
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Literal
 
@@ -21,7 +21,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
-from app import audit, clock
+from app import audit, clock, worker
 from app.admin import Admin
 from app.audit import AuditEntry
 from app.auth import pwned
@@ -29,6 +29,7 @@ from app.auth.dependencies import DB
 from app.auth.sessions import UserSession
 from app.db import check_integrity, engine_of, reading
 from app.images import StoredImage
+from app.jobs import Job
 from app.policy import load_policy
 from app.settings import settings
 from app.setup import setup_completed_at
@@ -169,6 +170,30 @@ def _breach_check(enabled: bool) -> Check:
                  "until it can.")
 
 
+def _worker_check(beat: datetime | None, failed: int, now: datetime) -> Check:
+    label = "Background worker"
+    if beat is None:
+        return Check(key="worker", label=label, status="problem",
+                     detail="The worker hasn't started. Check the worker container.")
+    quiet = now - beat
+    if quiet > timedelta(minutes=5):
+        return Check(key="worker", label=label, status="problem",
+                     detail=f"Not heard from for {int(quiet.total_seconds() // 60)} minutes. "
+                     "Check the worker container.")
+    if failed:
+        return Check(key="worker", label=label, status="warning",
+                     detail=f"Running, but {failed} job{'s' if failed != 1 else ''} failed in the "
+                     "last day.")
+    return Check(key="worker", label=label, status="ok", detail="Running.")
+
+
+def _run_worker(db: Session) -> Check:
+    now = clock.utcnow()
+    failed = db.scalar(select(func.count()).select_from(Job).where(
+        Job.state == "failed", Job.finished_at > now - timedelta(days=1))) or 0
+    return _worker_check(worker.last_beat(db), failed, now)
+
+
 def _run_database(db: Session) -> Check:
     db.commit()  # the check reads every page: hold no write lock meanwhile
     return _database_check(check_integrity(engine_of(db)))
@@ -203,6 +228,7 @@ CHECKS: dict[str, Callable[[Session], Check]] = {
     "keys": _run_keys,
     "disk": _run_disk,
     "breach_check": _run_breach_check,
+    "worker": _run_worker,
 }
 
 

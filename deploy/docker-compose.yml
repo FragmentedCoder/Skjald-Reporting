@@ -35,6 +35,30 @@ services:
       - skjald_data:/data
       - /etc/skjald:/etc/skjald:ro
 
+  # The background worker: backups, the audit log's daily timestamp, email. The
+  # same image and limits as the app, without a port.
+  worker:
+    build:
+      context: ../backend
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    command: ["python", "-m", "app.worker"]
+    environment:
+      SKJALD_ADDRESS: ${SKJALD_ADDRESS:-https://localhost}
+      SKJALD_DATA_DIR: /data
+      SKJALD_MASTER_KEY_PATH: /etc/skjald/master.key
+    volumes:
+      - skjald_data:/data
+      - /etc/skjald:/etc/skjald:ro
+    depends_on:
+      - app
+
 volumes:
   caddy_data:
   caddy_config:

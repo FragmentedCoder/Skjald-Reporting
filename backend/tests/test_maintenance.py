@@ -133,12 +133,12 @@ def test_the_health_page_checks_everything_that_matters(client, admin, reachable
     _, headers = admin
     health = client.get("/api/admin/health", headers=headers).json()
     checks = health_checks(client, headers)
-    assert set(checks) == {"database", "audit_chain", "keys", "disk", "breach_check"}
+    assert set(checks) == {"database", "audit_chain", "keys", "disk", "breach_check", "worker"}
     assert checks["database"]["status"] == "ok"
     assert checks["audit_chain"]["status"] == "ok"
     assert checks["audit_chain"]["detail"].startswith("Chain intact")
     assert checks["breach_check"]["status"] == "ok" and reachable == [1]
-    assert health["versions"]["schema_version"] == "0011"
+    assert health["versions"]["schema_version"] == "0012"
     assert health["versions"]["sqlcipher"]
     assert any(p["name"] == "fastapi" for p in health["packages"])
     assert health["usage"]["users"] == 1 and health["usage"]["sessions"] == 1
@@ -190,3 +190,20 @@ def test_only_administrators_see_server_health(client, make_user, session, full_
 def test_an_unknown_check_is_not_found(client, admin) -> None:
     _, headers = admin
     assert client.get("/api/admin/health/checks/everything", headers=headers).status_code == 404
+
+
+def test_the_worker_check_says_whether_it_runs(frozen_clock, session) -> None:
+    from app import jobs, worker
+    from app.maintenance import _run_worker
+
+    assert _run_worker(session).status == "problem"  # never started
+    worker.beat(session, frozen_clock.now)
+    assert _run_worker(session).status == "ok"
+    job = jobs.enqueue(session, "mystery")  # nothing handles it, so it fails
+    session.commit()
+    jobs.run_one(session)
+    assert job.state == "failed"
+    check = _run_worker(session)
+    assert check.status == "warning" and "1 job failed" in check.detail
+    frozen_clock.advance(minutes=10)
+    assert _run_worker(session).status == "problem"

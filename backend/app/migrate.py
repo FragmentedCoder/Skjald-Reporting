@@ -6,17 +6,31 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
+from alembic.runtime.migration import MigrationContext
+from alembic.script import ScriptDirectory
 from sqlalchemy.engine import Engine
 
 from app.db import get_engine
 
 
-def upgrade(engine: Engine | None = None, revision: str = "head") -> None:
+def _config() -> Config:
     config = Config()
     config.set_main_option("script_location", str(Path(__file__).parent / "migrations"))
+    return config
+
+
+def upgrade(engine: Engine | None = None, revision: str = "head") -> None:
+    config = _config()
     with (engine or get_engine()).connect() as conn:
         config.attributes["connection"] = conn
         command.upgrade(config, revision)
+
+
+def is_current(engine: Engine) -> bool:
+    """Whether the database is at the newest migration (the worker waits for it)."""
+    head = ScriptDirectory.from_config(_config()).get_current_head()
+    with engine.connect() as conn:
+        return MigrationContext.configure(conn).get_current_revision() == head
 
 
 if __name__ == "__main__":
