@@ -64,9 +64,16 @@ export interface ProjectSummary {
   archived_at: string | null;
 }
 
+/** Someone on a project's team: its responsible technician or someone added. */
+export interface Member extends Named {
+  roles: Role[];
+  responsible: boolean;
+}
+
 export interface ProjectDetail extends ProjectSummary {
   contact: Named | null;
   sites: Named[];
+  team: Member[];
   created_at: string;
   may_edit: boolean;
   may_reopen: boolean;
@@ -83,16 +90,19 @@ export const CLASSIFICATIONS = [
   { value: "TLP:GREEN", hint: "The customer's community, not public." },
   { value: "TLP:AMBER", hint: "The customer's organisation and those who need it to protect it." },
   { value: "TLP:AMBER+STRICT", hint: "The customer's organisation only." },
-  { value: "TLP:RED", hint: "Only the people it was given to." },
+  { value: "TLP:RED", hint: "Only administrators and the project's team." },
 ] as const;
 
 export type Classification = (typeof CLASSIFICATIONS)[number]["value"];
 
 export const DEFAULT_CLASSIFICATION: Classification = "TLP:AMBER";
 
+/** The classification whose projects only administrators and the team see. */
+export const TEAM_ONLY = "TLP:RED";
+
 /** The tone of a classification's label: red for the most restricted. */
 export function classificationTone(value: string): "critical" | "warning" | "ok" | "neutral" {
-  if (value === "TLP:RED") return "critical";
+  if (value === TEAM_ONLY) return "critical";
   if (value.startsWith("TLP:AMBER")) return "warning";
   if (value === "TLP:GREEN") return "ok";
   return "neutral";
