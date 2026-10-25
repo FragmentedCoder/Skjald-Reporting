@@ -484,7 +484,8 @@
     }
   }
   @media (prefers-reduced-motion: reduce) {
-    .side {
+    .side,
+    .menu-open .side {
       transition: none;
     }
   }

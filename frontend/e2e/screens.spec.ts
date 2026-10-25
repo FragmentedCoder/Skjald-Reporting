@@ -9,7 +9,8 @@ for (const colorScheme of ["light", "dark"] as const) {
     ["phone", { width: 390, height: 844 }],
   ] as const) {
     test(`screens: ${colorScheme}, ${label}`, async ({ browser }) => {
-      const context = await browser.newContext({ colorScheme, viewport });
+      // Reduced motion, so the phone menu is fully open when it's taken.
+      const context = await browser.newContext({ colorScheme, viewport, reducedMotion: "reduce" });
       const page = await context.newPage();
       const username = `e2e-screens-${colorScheme}-${label}`;
       const shot = (name: string) =>
