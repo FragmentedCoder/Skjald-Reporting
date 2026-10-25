@@ -46,10 +46,10 @@ jobs:
         run: python ci_check.py out/report.json
       - name: Check a signed report
         run: |
-          args="--trust out/pki/root.cert.pem --crl out/pki/ca.crl --issued out/3-signed-3-company.pdf=INC-2026-0142"
-          python check_report.py out/3-signed-3-company.pdf $args --json out/check-signed.json
-          python check_report.py out/4-tampered.pdf $args --json out/check-tampered.json
-          python check_report.py out/2-final-unsigned.pdf $args --json out/check-unsigned.json
+          args=(--trust out/pki/root.cert.pem --crl out/pki/ca.crl --issued out/3-signed-3-company.pdf=INC-2026-0142)
+          python check_report.py out/3-signed-3-company.pdf "${args[@]}" --json out/check-signed.json
+          python check_report.py out/4-tampered.pdf "${args[@]}" --json out/check-tampered.json
+          python check_report.py out/2-final-unsigned.pdf "${args[@]}" --json out/check-unsigned.json
           python - <<'PY'
           import json
           signed, tampered, unsigned = (json.load(open(f"out/check-{n}.json")) for n in ("signed", "tampered", "unsigned"))

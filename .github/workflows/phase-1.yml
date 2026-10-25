@@ -6,7 +6,8 @@ on:
       - "backend/**"
       - "frontend/**"
       - "deploy/**"
-      - ".github/workflows/phase-1.yml"
+      - "install.sh"
+      - ".github/workflows/**"
   workflow_dispatch:
 
 permissions:
@@ -84,11 +85,15 @@ jobs:
       - uses: actions/checkout@v7
       # ShellCheck comes with the runner image.
       - name: Lint the shell scripts
-        run: shellcheck -x deploy/*.sh deploy/skjald frontend/e2e/run.sh
+        run: shellcheck -x install.sh deploy/*.sh deploy/skjald frontend/e2e/run.sh
+      - name: Lint the workflows
+        run: docker run --rm -v "$PWD":/repo -w /repo rhysd/actionlint:1.7.12 -color=false
       - name: Test the installer's functions
         run: deploy/install.test.sh
       - name: Test the skjald command's own logic
         run: deploy/skjald.test.sh
+      - name: Test the release's compose file
+        run: python3 deploy/release-compose.test.py
 
   browser:
     name: Browser tests against the full stack
