@@ -21,7 +21,6 @@ from __future__ import annotations
 import sys
 import time
 from dataclasses import replace
-from datetime import timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -30,8 +29,6 @@ from app import audit, clock, jobs, tls
 from app.policy import load_policy, save_policy
 
 STATUS_WORDS = {"ok": "OK", "warning": "Warning", "problem": "Problem", "off": "Off"}
-# The worker beats every minute; longer than this and it isn't running.
-WORKER_GONE = timedelta(minutes=3)
 
 
 def reset_allowlist(db: Session) -> list[str]:
@@ -70,15 +67,14 @@ def status(db: Session) -> int:
     for run in CHECKS.values():
         check = run(db)
         problems += check.status == "problem"
-        print(f"  {STATUS_WORDS[check.status]:<8} {check.label:<22} {check.detail}")
+        print(f"  {STATUS_WORDS[check.status]:<8} {check.label:<24} {check.detail}")
     return 1 if problems else 0
 
 
 def _worker_running(db: Session) -> bool:
-    from app.worker import last_beat
+    from app.worker import running
 
-    beat = last_beat(db)
-    return beat is not None and clock.utcnow() - beat < WORKER_GONE
+    return running(db, clock.utcnow())
 
 
 def _said(job: jobs.Job) -> str:

@@ -132,7 +132,8 @@ def _database_check(problems: list[str]) -> Check:
 def _audit_check(result: audit.ChainCheck) -> Check:
     if result.ok:
         return Check(key="audit_chain", label="Audit log", status="ok",
-                     detail=f"Chain intact: {result.entries_checked:,} entries checked.")
+                     detail=f"Chain intact: {result.entries_checked:,} "
+                     f"{'entry' if result.entries_checked == 1 else 'entries'} checked.")
     return Check(key="audit_chain", label="Audit log", status="problem",
                  detail=f"The chain breaks at entry {result.first_bad_seq}: {result.problem}.")
 
@@ -175,8 +176,12 @@ def _breach_check(enabled: bool) -> Check:
                  "until it can.")
 
 
-def _worker_check(beat: datetime | None, failed: int, now: datetime) -> Check:
+def _worker_check(beat: datetime | None, failed: int, now: datetime,
+                  stopped: datetime | None = None) -> Check:
     label = "Background worker"
+    if beat is not None and stopped is not None and stopped >= beat:
+        return Check(key="worker", label=label, status="problem",
+                     detail=f"Stopped {_ago(stopped, now)}. Start it with skjald start.")
     if beat is None:
         return Check(key="worker", label=label, status="problem",
                      detail="The worker hasn't started. Check the worker container.")
@@ -196,7 +201,7 @@ def _run_worker(db: Session) -> Check:
     now = clock.utcnow()
     failed = db.scalar(select(func.count()).select_from(Job).where(
         Job.state == "failed", Job.finished_at > now - timedelta(days=1))) or 0
-    return _worker_check(worker.last_beat(db), failed, now)
+    return _worker_check(worker.last_beat(db), failed, now, worker.stopped_at(db))
 
 
 TARGET_NAMES = {"local": "this server", "smb": "the SMB share", "s3": "S3-compatible storage"}

@@ -7,6 +7,7 @@ from app.audit import AuditEntry
 from app.crypto import rotation
 from app.crypto.key_files import load_or_create_backup_key
 from app.crypto.keys import from_kit_text
+from app.policy import Setting
 
 
 @pytest.fixture
@@ -101,6 +102,22 @@ def test_rotating_waits_for_skjald_to_stop(server, session, capsys, frozen_clock
     assert console.main(["rotate-master-key"]) == 1
     assert "stop Skjald first" in capsys.readouterr().err
     assert master_key_path.read_bytes() == old
+
+
+def test_a_worker_that_stopped_cleanly_isnt_running(server, session, capsys, frozen_clock,
+                                                   data_dir, master_key_path) -> None:
+    """skjald keys rotate stops the worker a moment before: its last beat is recent,
+    but it said it stopped after it."""
+    worker.beat(session, frozen_clock.now)
+    frozen_clock.advance(seconds=20)
+    session.merge(Setting(key=worker.STOPPED, value=frozen_clock.now.isoformat()))
+    session.commit()
+    assert not worker.running(session, frozen_clock.now)
+    frozen_clock.advance(seconds=20)
+    worker.beat(session, frozen_clock.now)  # started again
+    assert worker.running(session, frozen_clock.now)
+    frozen_clock.advance(minutes=3)
+    assert not worker.running(session, frozen_clock.now)  # gone quiet
 
 
 def test_rotating_finishes_one_left_halfway_first(server, session, capsys, data_dir,

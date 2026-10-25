@@ -30,7 +30,11 @@ from app.settings import settings
 log = logging.getLogger("skjald.worker")
 
 HEARTBEAT = "worker/heartbeat"
+# When it last stopped cleanly (docker compose stop): a beat before that is history.
+STOPPED = "worker/stopped"
 IDLE_SECONDS = 5
+# It beats every minute; quiet for longer than this, it isn't running.
+GONE_AFTER = timedelta(minutes=3)
 
 
 def beat(db: Session, now: datetime) -> None:
@@ -41,6 +45,19 @@ def beat(db: Session, now: datetime) -> None:
 def last_beat(db: Session) -> datetime | None:
     value = db.scalar(select(Setting.value).where(Setting.key == HEARTBEAT))
     return datetime.fromisoformat(value) if value else None
+
+
+def stopped_at(db: Session) -> datetime | None:
+    value = db.scalar(select(Setting.value).where(Setting.key == STOPPED))
+    return datetime.fromisoformat(value) if value else None
+
+
+def running(db: Session, now: datetime) -> bool:
+    """Whether a worker runs now: it beat lately, and hasn't stopped since."""
+    beaten, stopped = last_beat(db), stopped_at(db)
+    if beaten is None or now - beaten >= GONE_AFTER:
+        return False
+    return stopped is None or stopped < beaten
 
 
 @jobs.scheduled
@@ -98,6 +115,9 @@ def main() -> None:
                 if stopping:
                     break
                 time.sleep(1)
+    with sessions() as db:
+        db.merge(Setting(key=STOPPED, value=clock.utcnow().isoformat()))
+        db.commit()
     log.info("Worker stopped.")
 
 

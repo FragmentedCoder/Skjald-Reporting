@@ -6,7 +6,7 @@ from sqlalchemy import select, text
 
 from app import maintenance
 from app.audit import AuditEntry
-from app.policy import SecurityPolicy, save_policy
+from app.policy import SecurityPolicy, Setting, save_policy
 from app.roles import Role, grant_role
 
 
@@ -208,3 +208,8 @@ def test_the_worker_check_says_whether_it_runs(frozen_clock, session) -> None:
     assert check.status == "warning" and "1 job failed" in check.detail
     frozen_clock.advance(minutes=10)
     assert _run_worker(session).status == "problem"
+    worker.beat(session, frozen_clock.now)
+    session.merge(Setting(key=worker.STOPPED, value=frozen_clock.now.isoformat()))
+    session.commit()
+    stopped = _run_worker(session)
+    assert stopped.status == "problem" and "Start it with skjald start" in stopped.detail
