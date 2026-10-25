@@ -109,8 +109,8 @@ test("the side menu, with customers and projects", async ({ browser }) => {
   await mette.keyboard.press("Escape");
   await expect(menu(mette).getByRole("link", { name: "Overview" })).toBeHidden();
 
-  // Bob, a technician on both customers: he sees his TLP:RED project and the
-  // others, but not the TLP:RED one he isn't on, nor the customer he isn't on.
+  // Bob, a technician on two customers, sees the TLP:RED project they're on and
+  // the others, but not the TLP:RED one they aren't on, nor the third customer.
   const bobContext = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const bobPage = await bobContext.newPage();
   await signIn(bobPage, "e2e-bob");
