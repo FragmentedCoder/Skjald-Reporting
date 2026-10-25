@@ -18,9 +18,11 @@ the certificate is uploaded again.
 
 from __future__ import annotations
 
+import ipaddress
 import os
 import socket
 import ssl
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
@@ -64,6 +66,21 @@ class TlsError(Exception):
 
 def host() -> str:
     return urlsplit(settings.address).hostname or "localhost"
+
+
+# Names Let's Encrypt never issues for: they aren't on the public internet.
+PRIVATE_SUFFIXES = (".local", ".internal", ".lan", ".home.arpa", ".test", ".localhost",
+                    ".example", ".invalid", ".corp", ".intranet")
+
+
+def public_name(name: str) -> bool:
+    name = name.lower().rstrip(".")
+    try:
+        ipaddress.ip_address(name)
+        return False
+    except ValueError:
+        pass
+    return "." in name and not any(f".{name}".endswith(suffix) for suffix in PRIVATE_SUFFIXES)
 
 
 def load_tls(db: Session) -> TlsSettings:
@@ -168,16 +185,28 @@ def served_certificate(timeout: float = 5) -> Certificate | None:
     return _describe(x509.load_der_x509_certificate(der)) if der else None
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     """Write Caddy's settings from what's saved (the app does this as it starts).
     An own certificate whose files are gone (a restore elsewhere) falls back to
-    Caddy's own authority until it's uploaded again."""
+    Caddy's own authority until it's uploaded again.
+
+    With --reset, go back to Caddy's own authority for good: the way back in when
+    the certificate chosen leaves Skjald unreachable."""
     from sqlalchemy.orm import Session as _Session
 
+    from app import audit
     from app.db import get_engine
 
+    reset = "--reset" in (sys.argv[1:] if argv is None else argv)
     with _Session(get_engine()) as db:
         tls = load_tls(db)
+        if reset:
+            tls = TlsSettings()
+            save_tls(db, tls)
+            audit.append(db, "tls.reset", details={"mode": tls.mode})
+            db.commit()
+            print("Skjald serves Caddy's own certificate again; Caddy reloads within seconds.",
+                  flush=True)
     if tls.mode == "own" and not (Path(settings.tls_dir) / "cert.pem").exists():
         print("The certificate's files are missing: serving Caddy's own until it's "
               "uploaded again (Admin -> Certificate).", flush=True)

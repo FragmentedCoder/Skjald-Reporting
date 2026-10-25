@@ -114,6 +114,10 @@ def apply_tls(db: Session, request: Request, who: UserSession, body: TlsIn,
     """Check and save the TLS settings, and hand them to Caddy."""
     saved = TlsSettings(mode=body.mode, acme_email=body.acme_email)
     chain = key = None
+    if body.mode == "acme" and not tls.public_name(tls.host()):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, (
+            f"Let's Encrypt only issues certificates for addresses on the internet, and "
+            f"{tls.host()} isn't one. Use Caddy's own authority or your own certificate."))
     if body.mode == "own":
         if not body.certificate_pem or not body.key_pem:
             current = tls.load_tls(db)
