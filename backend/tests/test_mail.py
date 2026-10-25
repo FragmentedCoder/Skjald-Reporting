@@ -1,4 +1,5 @@
 import smtplib
+import socket
 import ssl
 
 import pytest
@@ -83,6 +84,8 @@ def test_tls_from_the_start_and_a_relay_without_login(smtp) -> None:
     (ssl.SSLCertVerificationError("bad"), "certificate isn't trusted"),
     (smtplib.SMTPRecipientsRefused({}), "won't deliver to a@b.example"),
     (TimeoutError(), "didn't answer"),
+    (socket.gaierror(-2, "Name or service not known"),
+     "can't find a mail server called smtp.nordlys.example"),
     (ConnectionRefusedError(), "can't be reached"),
 ])
 def test_failures_are_said_plainly(smtp, error, said) -> None:

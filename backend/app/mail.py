@@ -12,6 +12,7 @@ message that shows the settings work.
 from __future__ import annotations
 
 import smtplib
+import socket
 import ssl
 from email.message import EmailMessage
 from email.utils import formataddr, make_msgid
@@ -95,6 +96,9 @@ def send(server: MailServer, password: str, to: str, subject: str, body: str) ->
         raise MailError(f"The mail server won't send from {server.from_address}.") from exc
     except TimeoutError as exc:
         raise MailError(f"The mail server at {server.host}:{server.port} didn't answer.") from exc
+    except socket.gaierror as exc:
+        raise MailError(f"Skjald can't find a mail server called {server.host}: check the "
+                        "name.") from exc
     except (OSError, smtplib.SMTPException) as exc:
         raise MailError(f"The mail server at {server.host}:{server.port} can't be reached "
                         f"or refused the message ({type(exc).__name__}).") from exc
