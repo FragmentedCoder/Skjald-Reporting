@@ -68,11 +68,15 @@
         current: path === resolve("/(app)/customers/[id]/contacts", { id }) },
       { href: resolve("/(app)/customers/[id]/people", { id }), label: "People", icon: UsersRound,
         current: path === resolve("/(app)/customers/[id]/people", { id }) },
-      ...(can(current, "manage_customers")
-        ? [{ href: resolve("/(app)/customers/[id]/settings", { id }), label: "Settings", icon: Settings,
-             current: path === resolve("/(app)/customers/[id]/settings", { id }) }]
-        : []),
     ];
+  });
+
+  // The customer's own settings (details, logo, deleting it), for Administrators:
+  // last in the customer's part of the menu, just above Home.
+  const customerSettings = $derived.by((): Item | null => {
+    if (!customer || !full || !can(current, "manage_customers")) return null;
+    const href = resolve("/(app)/customers/[id]/settings", { id: String(customer.id) });
+    return { href, label: "Customer settings", icon: Settings, current: path === href };
   });
 
   // The open project's own sections, shown under it in the list.
@@ -210,6 +214,11 @@
               </li>
             {/each}
           </ul>
+          {#if customerSettings}
+            <ul class="items customer-foot">
+              <li>{@render link(customerSettings)}</li>
+            </ul>
+          {/if}
         {:else if customer}
           <p class="small muted hint">
             {customer.visibility === "names" ? "You see this customer's name only." : "You see an overview of this customer."}
@@ -319,6 +328,12 @@
     margin-top: auto;
     padding-top: var(--space-3);
     border-top: 1px solid var(--border);
+  }
+  .customer-foot {
+    margin-top: auto;
+  }
+  .customer-foot + .global {
+    margin-top: 0;
   }
   .item {
     display: flex;

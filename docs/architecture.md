@@ -31,7 +31,7 @@ flowchart TD
 - Default styles and custom fields arrive with the template builder (Phase 2), and import from CSV or XLSX later.
 - **Report:** numbered per type and year (for example `INC-2026-0142`) and pinned to one template version.
 
-The app is laid out the same way. A side menu starts with a customer picker; the open customer's sections follow (Overview, Projects with its active projects listed under it, Archived, Contacts & sites, People, and Settings for Administrators), and an open project shows its own (Reports, Details, Team) beneath it. The menu lists only what the person may open, from the same per-viewer lists as the pages. The browser remembers which customer was open by its ID only, never its name. Home, All customers and Admin come after, and the account, light or dark, and Sign out sit at the bottom. At phone width the menu slides in over the page.
+The app is laid out the same way. A side menu starts with a customer picker; the open customer's sections follow (Overview, Projects with its active projects listed under it, Archived, Contacts & sites, People), and an open project shows its own (Reports, Details, Team) beneath it. Administrators get Customer settings (details, logo, deleting the customer) last in the customer's part of the menu. The menu lists only what the person may open, from the same per-viewer lists as the pages. The browser remembers which customer was open by its ID only, never its name. Home, All customers and Admin come after, and the account, light or dark, and Sign out sit at the bottom. At phone width the menu slides in over the page.
 
 ## Roles
 

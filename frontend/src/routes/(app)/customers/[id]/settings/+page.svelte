@@ -75,7 +75,7 @@
   }
 </script>
 
-<svelte:head><title>{pageTitle(`Settings · ${customer?.name ?? "Customer"}`)}</title></svelte:head>
+<svelte:head><title>{pageTitle(`Customer settings · ${customer?.name ?? "Customer"}`)}</title></svelte:head>
 
 {#if customer && !customer.may_manage}
   <p class="alert alert-warning">Only administrators change a customer's settings.</p>

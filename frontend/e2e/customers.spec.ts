@@ -67,7 +67,7 @@ test("customers and projects, from adding one to deleting it", async ({ browser 
   await tech.getByRole("dialog", { name: "Choose a customer" }).getByLabel("Search customers").fill("fjord");
   await tech.keyboard.press("Enter");
   await expect(tech.getByRole("heading", { name: CUSTOMER })).toBeVisible();
-  await expect(menu(tech, "Settings")).toHaveCount(0);
+  await expect(menu(tech, "Customer settings")).toHaveCount(0);
   await tech.getByRole("main").getByRole("link", { name: "New project" }).click();
   await tech.getByLabel("Name").fill("Ransomware incident");
   await tech.getByLabel("Start date").fill("2026-10-20");
@@ -106,7 +106,7 @@ test("customers and projects, from adding one to deleting it", async ({ browser 
   await boss.reload();
   await menu(boss, /^Archived/).click();
   await expect(boss.getByRole("main").getByRole("link", { name: "Ransomware incident" })).toBeVisible();
-  await menu(boss, "Settings").click();
+  await menu(boss, "Customer settings").click();
   await boss.getByRole("button", { name: "Delete customer" }).click();
   const confirm = boss.getByRole("dialog", { name: `Delete ${CUSTOMER}` });
   const forGood = confirm.getByRole("button", { name: "Delete for good" });
