@@ -80,7 +80,7 @@ create_directories() {
 	# reads the master key directly, and it never runs as root (see
 	# docs/architecture.md's hardening section).
 	install -d -o "${APP_UID}" -g "${APP_UID}" -m 0700 "${SKJALD_ETC}"
-	log "Created ${SKJALD_HOME} and ${SKJALD_ETC}."
+	log "${SKJALD_HOME} and ${SKJALD_ETC} are in place."
 }
 
 # Write a key file only the app's user can read, whole or not at all.
@@ -199,10 +199,17 @@ start_stack() {
 		# Through Caddy on this server, whatever the name resolves to here.
 		if curl -fsk --resolve "${host}:${port}:127.0.0.1" -o /dev/null "${address}/api/health"; then
 			log "Skjald is up."
-			compose exec -T app python -m app.setup
-			log "Open ${address}/setup and enter the setup token above."
-			log "Until you choose another certificate in the wizard, Skjald's own authority signs"
-			log "it: install ${address}/skjald-root.crt as a trusted root on each computer."
+			local said
+			said=$(compose exec -T app python -m app.setup)
+			if grep -q "Setup token" <<<"${said}"; then
+				printf '%s\n' "${said}"
+				log "Open ${address}/setup and enter the setup token above."
+				log "Until you choose another certificate in the wizard, Skjald's own authority signs"
+				log "it: install ${address}/skjald-root.crt as a trusted root on each computer."
+			else
+				log "Skjald is set up already, at ${address}."
+			fi
+			log "skjald status shows how it is, and skjald help what else it does."
 			return
 		fi
 		sleep 2

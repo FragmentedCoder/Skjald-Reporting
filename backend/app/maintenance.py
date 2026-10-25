@@ -269,7 +269,8 @@ def _stamps_check(result: audit_stamps.StampCheck, now: datetime) -> Check:
     latest = result.latest
     host = urlsplit(latest.tsa_url).hostname or latest.tsa_url
     detail = (f"Entry {latest.seq} timestamped {_ago(latest.stamped_at, now)} by {host}; "
-              f"all {result.stamps:,} timestamps still match the log.")
+              + ("the timestamp still matches the log." if result.stamps == 1 else
+                 f"all {result.stamps:,} timestamps still match the log."))
     age = now - latest.stamped_at
     if age > timedelta(days=2):
         return Check(key="audit_stamps", label=label, status="problem", detail=detail)
