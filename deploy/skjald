@@ -33,8 +33,10 @@ Usage: skjald <command>
                           restore a backup (asks for the recovery kit's backup key;
                           Skjald is stopped meanwhile)
   update [--ref REF] [--no-backup]
-                          update to the newest commit of this branch (or to REF):
-                          a backup first, then roll back if the new version fails
+                          update to the newest release (or REF), its files and images
+                          checked against their signatures; from a checkout, to the
+                          newest commit of its branch. A backup first, and a roll back
+                          if the new version doesn't come up
   keys rotate             replace the master key (Skjald stops for a moment)
   admin reset-allowlist   switch off both IP allowlists, when they lock everyone out
   admin reset-certificate go back to Skjald's own certificate authority
@@ -104,12 +106,16 @@ git_owner() {
 short() { git_read rev-parse --short "$1"; }
 
 version() {
-	printf '%s (%s)' "$(git_read describe --always --dirty --tags 2>/dev/null || echo unknown)" \
+	if [[ -f "${DEPLOY_DIR}/VERSION" ]]; then
+		printf 'Skjald %s' "$(cat "${DEPLOY_DIR}/VERSION")"
+		return
+	fi
+	printf 'Skjald %s (%s)' "$(git_read describe --always --dirty --tags 2>/dev/null || echo unknown)" \
 		"$(git_read log -1 --format=%cd --date=short 2>/dev/null || echo '?')"
 }
 
 cmd_status() {
-	log "Skjald $(version), in ${DEPLOY_DIR}"
+	log "$(version), in ${DEPLOY_DIR}"
 	compose ps --format 'table {{.Service}}\t{{.State}}\t{{.Status}}'
 	echo
 	require_running
@@ -162,6 +168,16 @@ cmd_keys() {
 	return "${code}"
 }
 
+# Installed from a release (in /opt/skjald, with its VERSION), or run from a checkout.
+from_release() { [[ -f "${DEPLOY_DIR}/VERSION" ]]; }
+
+newest_release() {
+	curl -fsSL "https://api.github.com/repos/${SKJALD_REPOSITORY:-FragmentedCoder/Skjald-Reporting}/releases/latest" |
+		sed -n 's/^ *"tag_name": *"\([^"]*\)".*/\1/p' | head -1
+}
+
+RELEASE_FILES="docker-compose.yml install.sh skjald .env.example VERSION"
+
 cmd_update() {
 	# Bash reads a script as it runs it, and the update changes this one: run a copy.
 	if [[ -z "${SKJALD_RUNNING_COPY:-}" ]]; then
@@ -175,7 +191,7 @@ cmd_update() {
 	while [[ $# -gt 0 ]]; do
 		case "$1" in
 		--ref)
-			[[ $# -ge 2 ]] || die "--ref needs a commit, tag or branch."
+			[[ $# -ge 2 ]] || die "--ref needs a release, or from a checkout a commit, tag or branch."
 			ref=$2
 			shift 2
 			;;
@@ -187,23 +203,39 @@ cmd_update() {
 		esac
 	done
 	install -d -m 0700 "${ROLLBACK_DIR}" 2>/dev/null || die "Run it with sudo: it keeps a copy of the data in ${ROLLBACK_DIR}."
-	[[ -z "$(git_read status --porcelain)" ]] || die "${REPO_DIR} has changes of its own; commit or remove them first."
 
-	local old branch target
-	old=$(git_read rev-parse HEAD)
-	branch=$(git_read symbolic-ref -q --short HEAD || true)
-	git_owner fetch --quiet --tags origin
-	if [[ -n "${ref}" ]]; then
-		target=$(git_read rev-parse --verify --quiet "${ref}^{commit}") || die "There's no commit ${ref}."
+	# Where it stands, and where it goes: a release, or a commit of the checkout.
+	local old target staging="" branch=""
+	if from_release; then
+		old=$(cat "${DEPLOY_DIR}/VERSION")
+		target=${ref:-$(newest_release)}
+		[[ -n "${target}" ]] || die "There's no Skjald release to update to."
+		if [[ "${target}" == "${old}" ]]; then
+			log "Already up to date: Skjald ${old}."
+			return 0
+		fi
+		log "Updating from Skjald ${old} to ${target}."
+		# Fetched and checked by the installed installer: a release never vouches for itself.
+		staging=$(mktemp -d)
+		bash "${DEPLOY_DIR}/install.sh" --fetch "${target}" "${staging}" ||
+			die "Not updated: Skjald ${target} couldn't be fetched and checked."
 	else
-		[[ -n "${branch}" ]] || die "The checkout isn't on a branch: say where to go with --ref."
-		target=$(git_read rev-parse --verify --quiet '@{upstream}') || die "${branch} follows no branch: say where to go with --ref."
+		[[ -z "$(git_read status --porcelain)" ]] || die "${REPO_DIR} has changes of its own; commit or remove them first."
+		old=$(git_read rev-parse HEAD)
+		branch=$(git_read symbolic-ref -q --short HEAD || true)
+		git_owner fetch --quiet --tags origin
+		if [[ -n "${ref}" ]]; then
+			target=$(git_read rev-parse --verify --quiet "${ref}^{commit}") || die "There's no commit ${ref}."
+		else
+			[[ -n "${branch}" ]] || die "The checkout isn't on a branch: say where to go with --ref."
+			target=$(git_read rev-parse --verify --quiet '@{upstream}') || die "${branch} follows no branch: say where to go with --ref."
+		fi
+		if [[ "${target}" == "${old}" ]]; then
+			log "Already up to date: $(version)."
+			return 0
+		fi
+		log "Updating from $(short "${old}") to $(short "${target}")."
 	fi
-	if [[ "${target}" == "${old}" ]]; then
-		log "Already up to date: $(version)."
-		return 0
-	fi
-	log "Updating from $(short "${old}") to $(short "${target}")."
 
 	if [[ "${backup}" == true ]]; then
 		require_running
@@ -211,36 +243,64 @@ cmd_update() {
 	fi
 	log "Stopping Skjald, and copying its data aside."
 	compose stop app worker
-	local copy
-	copy="${ROLLBACK_DIR}/data-$(short "${old}")-$(date -u +%Y%m%dT%H%M%SZ).tar.gz"
-	copy_data_to "${copy}"
+	local copy name before=""
+	if from_release; then
+		copy="${ROLLBACK_DIR}/data-${old}-$(date -u +%Y%m%dT%H%M%SZ).tar.gz"
+	else
+		copy="${ROLLBACK_DIR}/data-$(short "${old}")-$(date -u +%Y%m%dT%H%M%SZ).tar.gz"
+	fi
+	if ! copy_data_to "${copy}"; then
+		rm -f "${copy}.part"
+		compose up -d
+		die "Not updated: the data couldn't be copied aside (is there room in ${ROLLBACK_DIR}?). Skjald is started again as it was."
+	fi
 
-	if [[ -n "${ref}" ]]; then
+	# The new version in place.
+	if from_release; then
+		before="${ROLLBACK_DIR}/release-${old}"
+		rm -rf "${before}"
+		install -d -m 0700 "${before}"
+		for name in ${RELEASE_FILES}; do cp -p "${DEPLOY_DIR}/${name}" "${before}/${name}"; done
+		for name in ${RELEASE_FILES}; do install -m 0640 "${staging}/${name}" "${DEPLOY_DIR}/${name}"; done
+		chmod 0755 "${DEPLOY_DIR}/install.sh" "${DEPLOY_DIR}/skjald"
+		rm -rf "${staging}"
+	elif [[ -n "${ref}" ]]; then
 		git_owner checkout --quiet --detach "${target}"
 	else
 		git_owner merge --quiet --ff-only "${target}" || die "${branch} can't move to $(short "${target}") without a merge; nothing changed."
 	fi
-	if compose up -d --build && wait_until_up; then
+	if start_new && wait_until_up; then
 		find "${ROLLBACK_DIR}" -maxdepth 1 -name 'data-*.tar.gz' -printf '%T@ %p\n' | sort -rn |
 			tail -n +$((KEEP_ROLLBACKS + 1)) | cut -d' ' -f2- | xargs -r rm --
 		log "Updated to $(version). The data from before is in ${copy}."
 		return 0
 	fi
 
-	warn "The new version didn't come up: rolling back to $(short "${old}")."
+	warn "The new version didn't come up: rolling back."
 	compose logs --tail=30 app >&2 || true
 	compose stop
-	# The old code first: its compose file is the one that knows the old services.
-	if [[ -n "${branch}" ]]; then
+	# The old version first: its compose file is the one that knows the old services.
+	if from_release; then
+		for name in ${RELEASE_FILES}; do cp -p "${before}/${name}" "${DEPLOY_DIR}/${name}"; done
+	elif [[ -n "${branch}" ]]; then
 		git_owner checkout --quiet "${branch}"
 		git_owner reset --quiet --keep "${old}"
 	else
 		git_owner checkout --quiet --detach "${old}"
 	fi
 	put_data_back_from "${copy}"
-	compose up -d --build
+	start_new
 	wait_until_up || die "Rolled back, but Skjald still doesn't answer: see skjald logs."
 	die "Not updated: rolled back to $(version), with the data from before the update."
+}
+
+# Start what's in place: pulled for a release, built from a checkout.
+start_new() {
+	if from_release; then
+		compose pull --quiet && compose up -d
+	else
+		compose up -d --build
+	fi
 }
 
 main() {

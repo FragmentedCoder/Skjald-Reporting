@@ -72,6 +72,18 @@ check "the skjald command is linked onto the PATH" \
 	test "$(readlink "${WORK}/bin/skjald")" = "${DEPLOY_DIR}/skjald"
 check "  and runs" grep -q "keys rotate" <("${WORK}/bin/skjald" help)
 
+# A release's compose file must name its images; one naming none would pass every check.
+printf 'services:\n  app:\n    command: ["true"]\n' >"${WORK}/empty-compose.yml"
+printf 'services:\n  app:\n    build:\n      context: .\n    image: x@sha256:%s\n' "$(printf 'a%.0s' {1..64})" >"${WORK}/built-compose.yml"
+check "a release that names no images is refused" \
+	grep -q "names no images" <( (verify_images "${WORK}/empty-compose.yml" v1.0.0) 2>&1)
+check "one that builds is refused" \
+	grep -q "builds images instead" <( (verify_images "${WORK}/built-compose.yml" v1.0.0) 2>&1)
+check "the signer is the release workflow, for that very tag" \
+	grep -qx "https://github.com/FragmentedCoder/Skjald-Reporting/.github/workflows/release.yml@refs/tags/v1.2.3" <(signer v1.2.3)
+check "something that isn't a release is refused before anything is fetched" \
+	grep -q "isn't a release" <( (fetch_release "v1.2; rm -rf /" "${WORK}/fetched") 2>&1)
+
 if [[ ${failures} -gt 0 ]]; then
 	echo "${failures} failed."
 	exit 1

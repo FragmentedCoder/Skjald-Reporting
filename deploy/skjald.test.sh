@@ -41,7 +41,11 @@ set +e
 check "with no .env, the address is localhost" test "$(address)" = "https://localhost"
 printf 'SKJALD_ADDRESS=https://skjald.example.internal:8443\n' >"${WORK}/repo/deploy/.env"
 check "the address comes from .env" test "$(address)" = "https://skjald.example.internal:8443"
-check "the version names the commit" grep -qE '^[0-9a-f]{7,} \([0-9]{4}-[0-9]{2}-[0-9]{2}\)$' <(version)
+check "the version names the commit" grep -qE '^Skjald [0-9a-f]{7,} \([0-9]{4}-[0-9]{2}-[0-9]{2}\)$' <(version)
+printf 'v1.2.3\n' >"${WORK}/repo/deploy/VERSION"
+check "installed from a release, the version is the release's" test "$(version)" = "Skjald v1.2.3"
+check "  and update knows it" from_release
+rm "${WORK}/repo/deploy/VERSION"
 
 touch "${WORK}/repo/stray-file"
 check "update refuses a checkout with changes of its own" \
