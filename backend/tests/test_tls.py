@@ -22,11 +22,12 @@ def _key_pem(key) -> str:
                              serialization.NoEncryption()).decode()
 
 
-def make_certificate(*names: str, days: int = 90, starts: int = -1,
-                     key=None) -> tuple[str, str]:
+def make_certificate(*names: str, days: int = 90, starts: int = -1, key=None,
+                     common: bool = True) -> tuple[str, str]:
     """A self-signed certificate for the names, and its key, as PEM."""
     key = key or ec.generate_private_key(ec.SECP256R1())
-    subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, names[0] if names else "x")])
+    subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, names[0] if names else "x")]
+                        if common else [])
     builder = (
         x509.CertificateBuilder().subject_name(subject).issuer_name(subject)
         .public_key(key.public_key()).serial_number(x509.random_serial_number())
@@ -48,6 +49,12 @@ def tls_dir(monkeypatch, tmp_path, data_dir):
     monkeypatch.setattr(settings, "address", "https://skjald.nordlys.example.com")
     monkeypatch.setattr(tls, "served_certificate", lambda: None)
     return folder
+
+
+def test_a_certificate_without_a_common_name_is_named_by_its_first_name() -> None:
+    chain, key = make_certificate("skjald.nordlys.example.com", common=False)
+    described = tls.check_certificate(chain, key, "skjald.nordlys.example.com", NOW)
+    assert described.subject == "skjald.nordlys.example.com"
 
 
 def test_a_matching_certificate_for_the_address_is_described() -> None:
@@ -124,16 +131,18 @@ def test_lets_encrypt_is_only_for_names_on_the_internet(name, public) -> None:
     assert tls.public_name(name) is public
 
 
-def test_the_reset_goes_back_to_caddys_own_authority(tls_dir, engine, session,
-                                                     monkeypatch) -> None:
+def test_the_console_goes_back_to_caddys_own_authority(tls_dir, engine, session,
+                                                      monkeypatch, capsys) -> None:
+    from app import console
     from app import db as db_module
 
     monkeypatch.setattr(db_module, "get_engine", lambda: engine)
     tls.save_tls(session, TlsSettings(mode="acme", acme_email="it@nordlys.example"))
     session.commit()
-    tls.main([])
+    tls.main()
     assert (tls_dir / "tls.caddy").read_text() == "tls it@nordlys.example\n"
-    tls.main(["--reset"])
+    assert console.main(["reset-certificate"]) == 0
+    assert "it was acme" in capsys.readouterr().out
     assert (tls_dir / "tls.caddy").read_text() == "tls internal\n"
     assert tls.load_tls(session).mode == "internal"
     logged = session.scalar(select(AuditEntry.action).order_by(AuditEntry.seq.desc()))
@@ -147,7 +156,7 @@ def test_an_own_certificate_whose_files_are_gone_falls_back(tls_dir, engine, ses
     monkeypatch.setattr(db_module, "get_engine", lambda: engine)
     tls.save_tls(session, TlsSettings(mode="own"))
     session.commit()
-    tls.main([])
+    tls.main()
     assert (tls_dir / "tls.caddy").read_text() == "tls internal\n"
 
 

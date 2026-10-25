@@ -1,11 +1,13 @@
 """Commands for the VM console, for what the web UI can't do.
 
     docker compose exec app python -m app.console reset-allowlist
+    docker compose exec app python -m app.console reset-certificate
 
 reset-allowlist switches off the admin panel and sign-in IP allowlists, for when
 they lock every Administrator out. The addresses stay, so they can be switched
-on again after fixing them. Running it needs shell access to the VM, which is
-the point.
+on again after fixing them. reset-certificate goes back to Caddy's own
+certificate authority, for when the certificate chosen leaves Skjald
+unreachable. Running them needs shell access to the VM, which is the point.
 """
 
 from __future__ import annotations
@@ -15,7 +17,7 @@ from dataclasses import replace
 
 from sqlalchemy.orm import Session
 
-from app import audit
+from app import audit, tls
 from app.policy import load_policy, save_policy
 
 
@@ -30,13 +32,29 @@ def reset_allowlist(db: Session) -> list[str]:
     return were_on
 
 
+def reset_certificate(db: Session) -> str:
+    """Go back to Caddy's own certificate authority. Returns the way it was."""
+    before = tls.load_tls(db).mode
+    tls.save_tls(db, tls.TlsSettings())
+    audit.append(db, "tls.reset", actor_name="console", details={"was": before})
+    return before
+
+
 def main(argv: list[str]) -> int:
     from app.db import get_engine
 
-    if argv != ["reset-allowlist"]:
+    if argv not in (["reset-allowlist"], ["reset-certificate"]):
         print(__doc__, file=sys.stderr)
         return 2
     with Session(get_engine()) as db:
+        if argv == ["reset-certificate"]:
+            before = reset_certificate(db)
+            db.commit()
+            tls.write_for_caddy(tls.TlsSettings())
+            print("Skjald serves the certificate of its own authority again"
+                  f"{'' if before == 'internal' else f' (it was {before})'}; Caddy reloads "
+                  "within seconds.")
+            return 0
         were_on = reset_allowlist(db)
         db.commit()
     if were_on:
