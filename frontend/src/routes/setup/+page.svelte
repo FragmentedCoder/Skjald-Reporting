@@ -670,7 +670,8 @@
       {#if error}<p class="alert alert-critical" role="alert">{error}</p>{/if}
       {#if tls && tlsChoice}
         <form class="stack" onsubmit={saveTls}>
-          <TlsFields bind:choice={tlsChoice} host={tls.host} uploaded={tls.settings.certificate} />
+          <TlsFields bind:choice={tlsChoice} host={tls.host} uploaded={tls.settings.certificate}
+            tokenSet={tls.cloudflare_token_set} keySet={tls.rfc2136_key_set} />
           {#if tlsChoice.mode === "internal" && tls.root_url}
             <p class="small">
               <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- a file Caddy serves, not a page -->

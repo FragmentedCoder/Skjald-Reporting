@@ -8,7 +8,10 @@ Three ways, chosen in the setup wizard or Admin -> Certificate:
   at /skjald-root.crt.
 - The organisation's own certificate: a PEM chain and its key, checked here to
   match each other, be valid now and cover the address.
-- Let's Encrypt, for an address the internet can reach on port 443.
+- Let's Encrypt: checked over the internet on port 443, or, for a server the
+  internet can't reach, through DNS (Cloudflare, or the organisation's own DNS
+  server by RFC 2136), whose credentials are sealed in the database and written
+  only into Caddy's settings.
 
 The app writes Caddy a small file (tls.caddy, and the certificate and key when
 there are some) into a volume the two share; Caddy copies it into place and
@@ -21,6 +24,7 @@ from __future__ import annotations
 
 import ipaddress
 import os
+import re
 import socket
 import ssl
 from datetime import datetime
@@ -44,6 +48,16 @@ TLS_SETTING = "tls/settings"
 CADDY_DIR = "/etc/caddy/skjald"
 
 Mode = Literal["internal", "own", "acme"]
+# How Let's Encrypt checks the address: over the internet on port 443, or through
+# DNS, for a server the internet can't reach.
+Challenge = Literal["tls-alpn", "dns"]
+DnsProvider = Literal["cloudflare", "rfc2136"]
+KeyAlgorithm = Literal["hmac-sha256", "hmac-sha384", "hmac-sha512", "hmac-sha224", "hmac-sha1"]
+# The DNS credentials, sealed with the config key: cloudflare_token, rfc2136_key.
+SECRETS = "tls"
+# What may go into Caddy's settings, and nothing else: no spaces, quotes or braces.
+CLOUDFLARE_TOKEN = r"^[A-Za-z0-9_-]{20,200}$"
+TSIG_KEY = r"^[A-Za-z0-9+/]{16,600}={0,2}$"
 
 
 class Certificate(BaseModel):
@@ -55,9 +69,27 @@ class Certificate(BaseModel):
 
 class TlsSettings(BaseModel):
     mode: Mode = "internal"
-    acme_email: str = Field(default="", max_length=254, pattern=r"^([^@\s{}]+@[^@\s{}]+)?$")
+    acme_email: str = Field(default="", max_length=254, pattern=r"^([^@\s{}\"]+@[^@\s{}\"]+)?$")
+    challenge: Challenge = "tls-alpn"
+    dns_provider: DnsProvider = "cloudflare"
+    # The DNS server that takes RFC 2136 updates (host, or host:port; 53 if left out).
+    rfc2136_server: str = Field(default="", max_length=260,
+                                pattern=r"^(([A-Za-z0-9.-]+|\[[0-9A-Fa-f:]+\])(:[0-9]{1,5})?)?$")
+    rfc2136_key_name: str = Field(default="", max_length=253, pattern=r"^[A-Za-z0-9._-]*$")
+    rfc2136_key_alg: KeyAlgorithm = "hmac-sha256"
     # What was uploaded, to show it (the files themselves are Caddy's).
     certificate: Certificate | None = None
+
+    def dns_missing(self, secrets: dict[str, object]) -> str | None:
+        """What the DNS challenge still needs, in words, or None."""
+        if self.mode != "acme" or self.challenge != "dns":
+            return None
+        if self.dns_provider == "cloudflare" and not secrets.get("cloudflare_token"):
+            return "Cloudflare needs an API token that may edit the zone's DNS."
+        if self.dns_provider == "rfc2136" and not (
+                self.rfc2136_server and self.rfc2136_key_name and secrets.get("rfc2136_key")):
+            return "Your DNS server needs its address, the TSIG key's name and the key."
+        return None
 
 
 class TlsError(Exception):
@@ -150,22 +182,50 @@ def _write(path: Path, content: str, mode: int = 0o644) -> None:
     os.replace(tmp, path)
 
 
+def _dns_block(tls: TlsSettings, secrets: dict[str, object]) -> str:
+    """The tls block for the DNS challenge, its values checked once more: they go
+    into Caddy's settings as they are."""
+    if tls.dns_provider == "cloudflare":
+        token = str(secrets.get("cloudflare_token", ""))
+        if not re.fullmatch(CLOUDFLARE_TOKEN, token):
+            raise TlsError("That isn't a Cloudflare API token.")
+        return f"\tdns cloudflare {token}\n"
+    key = str(secrets.get("rfc2136_key", ""))
+    if not re.fullmatch(TSIG_KEY, key):
+        raise TlsError("That isn't a TSIG key (base64, as the DNS server gives it).")
+    server = tls.rfc2136_server
+    if not re.search(r":[0-9]+$", server):  # no port given: DNS's own
+        server += ":53"
+    return (f"\tdns rfc2136 {{\n"
+            f'\t\tkey_name "{tls.rfc2136_key_name}"\n'
+            f'\t\tkey_alg "{tls.rfc2136_key_alg}"\n'
+            f'\t\tkey "{key}"\n'
+            f'\t\tserver "{server}"\n'
+            "\t}\n")
+
+
 def write_for_caddy(tls: TlsSettings, chain_pem: str | None = None,
-                    key_pem: str | None = None) -> None:
+                    key_pem: str | None = None, secrets: dict[str, object] | None = None) -> None:
     """Give Caddy its TLS settings (and files, for an own certificate)."""
     folder = Path(settings.tls_dir)
     folder.mkdir(parents=True, exist_ok=True)
+    mode = 0o644
     if tls.mode == "own":
         if chain_pem is not None and key_pem is not None:
             _write(folder / "key.pem", key_pem, 0o600)
             _write(folder / "cert.pem", chain_pem)
         directive = f"tls {CADDY_DIR}/cert.pem {CADDY_DIR}/key.pem"
+    elif tls.mode == "acme" and tls.challenge == "dns":
+        # The DNS credentials are in it: Caddy's (root) and the app's to read only.
+        mode = 0o600
+        email = f" {tls.acme_email}" if tls.acme_email else ""
+        directive = f"tls{email} {{\n{_dns_block(tls, secrets or {})}}}"
     elif tls.mode == "acme":
         # Caddy's automatic HTTPS is Let's Encrypt; the email is for expiry notices.
         directive = f"tls {tls.acme_email}" if tls.acme_email else "# Let's Encrypt"
     else:
         directive = "tls internal"
-    _write(folder / "tls.caddy", directive + "\n")
+    _write(folder / "tls.caddy", directive + "\n", mode)
 
 
 ALLOWLIST_FILE = "admin-allowlist.caddy"
@@ -221,16 +281,18 @@ def main() -> None:
 
     from app.db import get_engine
     from app.policy import load_policy
+    from app.sealed_settings import load_secrets
 
     with _Session(get_engine()) as db:
         tls = load_tls(db)
         policy = load_policy(db)
+        secrets = load_secrets(db, SECRETS) if tls.challenge == "dns" else {}
     write_admin_allowlist(policy.admin_allowlist_enabled, policy.admin_allowlist)
     if tls.mode == "own" and not (Path(settings.tls_dir) / "cert.pem").exists():
         print("The certificate's files are missing: serving Caddy's own until it's "
               "uploaded again (Admin -> Certificate).", flush=True)
         tls = TlsSettings()
-    write_for_caddy(tls)
+    write_for_caddy(tls, secrets=secrets)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,9 @@
 // Mirrors backend/app/tls.py and backend/app/server_routes.py.
 
 export type TlsMode = "internal" | "own" | "acme";
+export type TlsChallenge = "tls-alpn" | "dns";
+export type DnsProvider = "cloudflare" | "rfc2136";
+export type KeyAlgorithm = "hmac-sha256" | "hmac-sha384" | "hmac-sha512" | "hmac-sha224" | "hmac-sha1";
 
 export interface Certificate {
   subject: string;
@@ -9,7 +12,15 @@ export interface Certificate {
   not_after: string;
 }
 
-export interface TlsSettings {
+export interface DnsSettings {
+  challenge: TlsChallenge;
+  dns_provider: DnsProvider;
+  rfc2136_server: string;
+  rfc2136_key_name: string;
+  rfc2136_key_alg: KeyAlgorithm;
+}
+
+export interface TlsSettings extends DnsSettings {
   mode: TlsMode;
   acme_email: string;
   certificate: Certificate | null;
@@ -20,13 +31,18 @@ export interface TlsStatus {
   host: string;
   served: Certificate | null;
   root_url: string | null;
+  cloudflare_token_set: boolean;
+  rfc2136_key_set: boolean;
 }
 
-export interface TlsChoice {
+export interface TlsChoice extends DnsSettings {
   mode: TlsMode;
   acme_email: string;
   certificate_pem: string;
   key_pem: string;
+  // Typed here and sent once; empty keeps the saved one.
+  cloudflare_token: string;
+  rfc2136_key: string;
 }
 
 export const MODES: { mode: TlsMode; name: string; about: string }[] = [
@@ -35,21 +51,31 @@ export const MODES: { mode: TlsMode; name: string; about: string }[] = [
   { mode: "own", name: "Your organisation's certificate",
     about: "A certificate for this address from your own or a public authority, with its key, as PEM files." },
   { mode: "acme", name: "Let's Encrypt",
-    about: "Free and automatic, for an address the internet can reach on port 443." },
+    about: "Free and automatic, for an address in public DNS: checked over the internet, or through your DNS." },
 ];
 
+export const KEY_ALGORITHMS: KeyAlgorithm[] = ["hmac-sha256", "hmac-sha384", "hmac-sha512", "hmac-sha224", "hmac-sha1"];
+
 export function choiceFrom(status: TlsStatus): TlsChoice {
-  return { mode: status.settings.mode, acme_email: status.settings.acme_email,
-    certificate_pem: "", key_pem: "" };
+  const { certificate: _uploaded, ...settings } = status.settings;
+  return { ...settings, certificate_pem: "", key_pem: "", cloudflare_token: "", rfc2136_key: "" };
 }
 
-/** The choice as the API takes it: files only when new ones were picked. */
+/** The choice as the API takes it: files and secrets only when new ones were given. */
 export function tlsBody(choice: TlsChoice) {
+  const dns = choice.mode === "acme" && choice.challenge === "dns";
   return {
     mode: choice.mode,
     acme_email: choice.acme_email,
+    challenge: choice.challenge,
+    dns_provider: choice.dns_provider,
+    rfc2136_server: choice.rfc2136_server,
+    rfc2136_key_name: choice.rfc2136_key_name,
+    rfc2136_key_alg: choice.rfc2136_key_alg,
     certificate_pem: choice.mode === "own" && choice.certificate_pem ? choice.certificate_pem : null,
     key_pem: choice.mode === "own" && choice.key_pem ? choice.key_pem : null,
+    cloudflare_token: dns && choice.cloudflare_token ? choice.cloudflare_token : null,
+    rfc2136_key: dns && choice.rfc2136_key ? choice.rfc2136_key : null,
   };
 }
 

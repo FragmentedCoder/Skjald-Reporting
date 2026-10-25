@@ -42,11 +42,12 @@ class MailTest(BaseModel):
     to: str = Field(max_length=254, pattern=EMAIL)
 
 
-class TlsIn(BaseModel):
-    mode: tls.Mode
-    acme_email: str = Field(default="", max_length=254, pattern=r"^([^@\s{}]+@[^@\s{}]+)?$")
+class TlsIn(TlsSettings):
     certificate_pem: str | None = Field(default=None, max_length=100_000)
     key_pem: str | None = Field(default=None, max_length=20_000)
+    # Left out (None) keeps the saved one.
+    cloudflare_token: str | None = Field(default=None, pattern=tls.CLOUDFLARE_TOKEN)
+    rfc2136_key: str | None = Field(default=None, pattern=tls.TSIG_KEY)
 
 
 class TlsStatus(BaseModel):
@@ -55,6 +56,8 @@ class TlsStatus(BaseModel):
     served: Certificate | None
     # Where computers get the root certificate to trust, with Caddy's own authority.
     root_url: str | None
+    cloudflare_token_set: bool
+    rfc2136_key_set: bool
 
 
 def _log(db: Session, request: Request, who: UserSession, action: str,
@@ -104,16 +107,27 @@ def send_test(db: Session, request: Request, who: UserSession, to: str) -> None:
 
 def tls_status(db: Session) -> TlsStatus:
     saved = tls.load_tls(db)
+    secrets = load_secrets(db, tls.SECRETS)
     db.commit()  # asking Caddy follows: hold no lock meanwhile
     return TlsStatus(settings=saved, host=tls.host(), served=tls.served_certificate(),
-                     root_url="/skjald-root.crt" if saved.mode == "internal" else None)
+                     root_url="/skjald-root.crt" if saved.mode == "internal" else None,
+                     cloudflare_token_set=bool(secrets.get("cloudflare_token")),
+                     rfc2136_key_set=bool(secrets.get("rfc2136_key")))
 
 
 def apply_tls(db: Session, request: Request, who: UserSession, body: TlsIn,
               confirm: bool) -> TlsStatus:
     """Check and save the TLS settings, and hand them to Caddy."""
-    saved = TlsSettings(mode=body.mode, acme_email=body.acme_email)
+    saved = TlsSettings.model_validate(body.model_dump(include=set(TlsSettings.model_fields)))
+    saved.certificate = None
     chain = key = None
+    secrets = load_secrets(db, tls.SECRETS)
+    if body.cloudflare_token is not None:
+        secrets["cloudflare_token"] = body.cloudflare_token
+    if body.rfc2136_key is not None:
+        secrets["rfc2136_key"] = body.rfc2136_key
+    if missing := saved.dns_missing(secrets):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, missing)
     if body.mode == "acme" and not tls.public_name(tls.host()):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, (
             f"Let's Encrypt only issues certificates for addresses on the internet, and "
@@ -135,13 +149,17 @@ def apply_tls(db: Session, request: Request, who: UserSession, body: TlsIn,
     if confirm:
         require_step_up(who, "Confirm it's you to change Skjald's certificate.")
     tls.save_tls(db, saved)
+    save_secrets(db, tls.SECRETS, secrets)
     _log(db, request, who, "tls.changed", {
         "mode": saved.mode,
+        **({"challenge": saved.challenge} if saved.mode == "acme" else {}),
+        **({"dns": saved.dns_provider} if saved.mode == "acme" and saved.challenge == "dns"
+           else {}),
         **({"certificate": saved.certificate.subject,
             "not_after": saved.certificate.not_after.isoformat()} if saved.certificate else {}),
     })
     db.commit()
-    tls.write_for_caddy(saved, chain, key)
+    tls.write_for_caddy(saved, chain, key, secrets)
     return tls_status(db)
 
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mailBody, type MailServer } from "./mail.js";
-import { expiry, tlsBody, type Certificate } from "./tls.js";
+import { expiry, tlsBody, type Certificate, type TlsChoice } from "./tls.js";
 
 const NOW = Date.parse("2026-10-25T12:00:00Z");
 
@@ -20,13 +20,24 @@ describe("expiry", () => {
 });
 
 describe("tlsBody", () => {
-  const files = { certificate_pem: "CERT", key_pem: "KEY", acme_email: "" };
+  const files: TlsChoice = {
+    mode: "own", certificate_pem: "CERT", key_pem: "KEY", acme_email: "",
+    challenge: "dns", dns_provider: "cloudflare", rfc2136_server: "", rfc2136_key_name: "",
+    rfc2136_key_alg: "hmac-sha256", cloudflare_token: "TOKEN", rfc2136_key: "",
+  };
 
   it("sends files only for an own certificate, and only new ones", () => {
-    expect(tlsBody({ mode: "own", ...files })).toMatchObject({ certificate_pem: "CERT", key_pem: "KEY" });
-    expect(tlsBody({ mode: "internal", ...files })).toMatchObject({ certificate_pem: null, key_pem: null });
-    expect(tlsBody({ mode: "own", ...files, certificate_pem: "", key_pem: "" }))
+    expect(tlsBody(files)).toMatchObject({ certificate_pem: "CERT", key_pem: "KEY" });
+    expect(tlsBody({ ...files, mode: "internal" })).toMatchObject({ certificate_pem: null, key_pem: null });
+    expect(tlsBody({ ...files, certificate_pem: "", key_pem: "" }))
       .toMatchObject({ certificate_pem: null, key_pem: null });
+  });
+
+  it("sends DNS secrets only for the DNS challenge, and only new ones", () => {
+    expect(tlsBody({ ...files, mode: "acme" })).toMatchObject({ cloudflare_token: "TOKEN", rfc2136_key: null });
+    expect(tlsBody({ ...files, mode: "acme", challenge: "tls-alpn" })).toMatchObject({ cloudflare_token: null });
+    expect(tlsBody({ ...files, mode: "internal" })).toMatchObject({ cloudflare_token: null });
+    expect(tlsBody({ ...files, mode: "acme", cloudflare_token: "" })).toMatchObject({ cloudflare_token: null });
   });
 });
 

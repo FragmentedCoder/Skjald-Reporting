@@ -101,7 +101,8 @@
 
   <form class="section stack" onsubmit={save} aria-labelledby="choice-title">
     <h2 class="section-title" id="choice-title">Change it</h2>
-    <TlsFields bind:choice host={status.host} uploaded={status.settings.certificate} resetHint={false} />
+    <TlsFields bind:choice host={status.host} uploaded={status.settings.certificate} resetHint={false}
+      tokenSet={status.cloudflare_token_set} keySet={status.rfc2136_key_set} />
     <div class="button-row">
       <button class="button button-primary" type="submit" disabled={busy}>Save</button>
     </div>

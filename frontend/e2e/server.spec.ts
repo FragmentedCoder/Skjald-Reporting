@@ -61,6 +61,17 @@ test("email and the certificate: saved after confirming, and refused plainly", a
   await expect(page.getByText("must be reachable from the internet")).toBeVisible();
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(toastWith(page, "and localhost isn't one")).toBeVisible();
+  await dismissToasts(page);
+
+  // Through DNS, for a server the internet can't reach: still only for a public name.
+  await page.getByRole("radio", { name: /Through your DNS/ }).check();
+  await expect(page.getByText("must be in public DNS")).toBeVisible();
+  await page.getByLabel("Your DNS is at").selectOption("rfc2136");
+  await page.getByLabel("DNS server").fill("ns1.nordlys.invalid");
+  await page.getByLabel("TSIG key name").fill("skjald-acme.");
+  await page.getByLabel("TSIG key", { exact: true }).fill("cWnu6Ju9zOki4f7Q+da2KKGo0KOXbCf6Pej6hW3geC4=");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(toastWith(page, "and localhost isn't one")).toBeVisible();
   await page.screenshot({ path: "e2e-results/screens/server-2-certificate.png", fullPage: true });
 
   expect(violations).toEqual([]);

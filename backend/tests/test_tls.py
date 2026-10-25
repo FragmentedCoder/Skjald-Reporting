@@ -289,3 +289,86 @@ def test_the_app_tells_caddy_the_allowlist_as_it_starts(engine, session, monkeyp
     session.commit()
     tls.main()
     assert "not client_ip 172.16.0.0/12" in allowlist_file()
+
+
+# Let's Encrypt through DNS
+
+TOKEN = "cf_" + "a1B2" * 10
+TSIG = "cWnu6Ju9zOki4f7Q+da2KKGo0KOXbCf6Pej6hW3geC4="
+
+
+def test_caddy_is_told_the_cloudflare_dns_challenge(tls_dir) -> None:
+    tls.write_for_caddy(
+        TlsSettings(mode="acme", acme_email="it@nordlys.example", challenge="dns"),
+        secrets={"cloudflare_token": TOKEN})
+    assert (tls_dir / "tls.caddy").read_text() == (
+        f"tls it@nordlys.example {{\n\tdns cloudflare {TOKEN}\n}}\n")
+    assert (tls_dir / "tls.caddy").stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.parametrize(("server", "written"), [
+    ("ns1.nordlys.example", "ns1.nordlys.example:53"),
+    ("10.0.0.53:5353", "10.0.0.53:5353"),
+    ("[2001:db8::53]", "[2001:db8::53]:53"),
+    ("[2001:db8::53]:53", "[2001:db8::53]:53"),
+])
+def test_caddy_is_told_the_rfc2136_dns_challenge(tls_dir, server, written) -> None:
+    tls.write_for_caddy(
+        TlsSettings(mode="acme", challenge="dns", dns_provider="rfc2136", rfc2136_server=server,
+                    rfc2136_key_name="skjald-acme.", rfc2136_key_alg="hmac-sha512"),
+        secrets={"rfc2136_key": TSIG})
+    assert (tls_dir / "tls.caddy").read_text() == (
+        "tls {\n\tdns rfc2136 {\n"
+        '\t\tkey_name "skjald-acme."\n\t\tkey_alg "hmac-sha512"\n'
+        f'\t\tkey "{TSIG}"\n\t\tserver "{written}"\n\t}}\n}}\n')
+
+
+@pytest.mark.parametrize("sneaky", [
+    {"rfc2136_server": 'ns1" } import /etc/passwd {'},
+    {"rfc2136_key_name": 'a"\n}'},
+    {"acme_email": 'a@b" {'},
+    {"cloudflare_token": "abc def } respond 200 {" + "x" * 20},
+    {"rfc2136_key": 'AAAA" }'},
+])
+def test_nothing_can_slip_into_caddys_settings(sneaky) -> None:
+    from pydantic import ValidationError
+
+    from app.server_routes import TlsIn
+
+    with pytest.raises(ValidationError):
+        TlsIn(mode="acme", challenge="dns", **sneaky)
+
+
+def test_the_dns_challenge_through_the_api(client, admin, tls_dir, session) -> None:
+    _, headers = admin
+    client.post("/api/auth/confirm-password", headers=headers, json={"password": PASSWORD})
+    dns = {"mode": "acme", "challenge": "dns", "dns_provider": "cloudflare"}
+    missing = client.put(TLS, headers=headers, json=dns)
+    assert missing.status_code == 400 and "API token" in missing.json()["detail"]
+    saved = client.put(TLS, headers=headers, json=dns | {"cloudflare_token": TOKEN})
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["cloudflare_token_set"] and TOKEN not in saved.text
+    assert TOKEN in (tls_dir / "tls.caddy").read_text()
+    logged = session.scalar(select(AuditEntry.details).where(AuditEntry.action == "tls.changed"))
+    session.commit()
+    assert json.loads(logged) == {"mode": "acme", "challenge": "dns", "dns": "cloudflare"}
+    # The token is kept when left out, and written again as the app starts.
+    client.post("/api/auth/confirm-password", headers=headers, json={"password": PASSWORD})
+    again = client.put(TLS, headers=headers, json=dns | {"acme_email": "it@nordlys.example"})
+    assert again.status_code == 200 and again.json()["cloudflare_token_set"]
+    (tls_dir / "tls.caddy").unlink()
+
+
+def test_the_app_writes_the_dns_challenge_as_it_starts(tls_dir, engine, session,
+                                                       monkeypatch) -> None:
+    from app import db as db_module
+    from app.sealed_settings import save_secrets
+
+    monkeypatch.setattr(db_module, "get_engine", lambda: engine)
+    tls.save_tls(session, TlsSettings(mode="acme", challenge="dns", dns_provider="rfc2136",
+                                      rfc2136_server="ns1.nordlys.example",
+                                      rfc2136_key_name="skjald"))
+    save_secrets(session, tls.SECRETS, {"rfc2136_key": TSIG})
+    session.commit()
+    tls.main()
+    assert f'key "{TSIG}"' in (tls_dir / "tls.caddy").read_text()
