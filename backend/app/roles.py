@@ -20,6 +20,7 @@ from app.users import User
 
 class Role(StrEnum):
     ADMINISTRATOR = "administrator"
+    MANAGER = "manager"
     REPORT_DESIGNER = "report_designer"
     TECHNICIAN = "technician"
     REVIEWER = "reviewer"
@@ -27,8 +28,10 @@ class Role(StrEnum):
 
 
 class Capability(StrEnum):
-    MANAGE_CUSTOMERS = "manage_customers"
-    CREATE_PROJECTS_AND_REPORTS = "create_projects_and_reports"
+    MANAGE_CUSTOMERS = "manage_customers"  # create and change customers, assign people
+    DELETE_CUSTOMERS = "delete_customers"
+    MANAGE_PROJECTS = "manage_projects"  # create, change, archive and reopen; teams
+    CREATE_REPORTS = "create_reports"
     FILL_IN_REPORTS = "fill_in_reports"
     REVIEW_AND_COUNTERSIGN = "review_and_countersign"
     BUILD_TEMPLATES = "build_templates"
@@ -41,8 +44,9 @@ class Capability(StrEnum):
     READ_AUDIT_LOG = "read_audit_log"
 
 
-_A, _D, _T, _R, _U = (
+_A, _M, _D, _T, _R, _U = (
     Role.ADMINISTRATOR,
+    Role.MANAGER,
     Role.REPORT_DESIGNER,
     Role.TECHNICIAN,
     Role.REVIEWER,
@@ -50,8 +54,10 @@ _A, _D, _T, _R, _U = (
 )
 
 GRANTS: dict[Capability, frozenset[Role]] = {
-    Capability.MANAGE_CUSTOMERS: frozenset({_A}),
-    Capability.CREATE_PROJECTS_AND_REPORTS: frozenset({_A, _T}),
+    Capability.MANAGE_CUSTOMERS: frozenset({_A, _M}),
+    Capability.DELETE_CUSTOMERS: frozenset({_A}),
+    Capability.MANAGE_PROJECTS: frozenset({_A, _M}),
+    Capability.CREATE_REPORTS: frozenset({_A, _T}),
     Capability.FILL_IN_REPORTS: frozenset({_A, _T}),
     Capability.REVIEW_AND_COUNTERSIGN: frozenset({_A, _R}),
     Capability.BUILD_TEMPLATES: frozenset({_A, _D}),

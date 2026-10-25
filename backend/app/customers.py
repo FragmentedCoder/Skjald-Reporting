@@ -9,9 +9,10 @@ and later its reports and files. Only IDs, project numbers and what access needs
 Deleting a customer deletes its key with it, so nothing sealed with it can be
 read again (crypto-shredding).
 
-Who sees which customers follows the spec's access table: Administrators all of
-them, technicians and reviewers the ones they're assigned to, report designers
-every name (to attach styles) and auditors every customer's metadata.
+Who sees which customers follows the spec's access table: Administrators and
+Managers all of them, technicians and reviewers the ones they're assigned to,
+report designers every name (to attach styles) and auditors every customer's
+metadata.
 """
 
 from __future__ import annotations
@@ -34,6 +35,7 @@ Visibility = Literal["full", "metadata", "names"]
 # person is assigned to, and nothing of the others.
 SEES_CUSTOMERS: dict[Role, Literal["all", "assigned", "metadata", "names"]] = {
     Role.ADMINISTRATOR: "all",
+    Role.MANAGER: "all",
     Role.TECHNICIAN: "assigned",
     Role.REVIEWER: "assigned",
     Role.AUDITOR: "metadata",
@@ -195,8 +197,12 @@ def may_manage(roles: set[Role]) -> bool:
     return can(roles, Capability.MANAGE_CUSTOMERS)
 
 
-def may_create_projects(db: Session, user_id: int, roles: set[Role], customer_id: int) -> bool:
-    """Create and change projects: Administrators anywhere, technicians for their customers."""
-    return can(roles, Capability.CREATE_PROJECTS_AND_REPORTS) and (
-        may_manage(roles) or is_assigned(db, user_id, customer_id)
-    )
+def may_delete(roles: set[Role]) -> bool:
+    return can(roles, Capability.DELETE_CUSTOMERS)
+
+
+def may_manage_projects(roles: set[Role]) -> bool:
+    """Create, change, archive and reopen projects, and choose who works on them:
+    Administrators and Managers, who see every customer. Technicians and reviewers
+    work in the projects they're on."""
+    return can(roles, Capability.MANAGE_PROJECTS)

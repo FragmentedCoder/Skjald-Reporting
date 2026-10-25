@@ -1,11 +1,12 @@
 """The projects API.
 
 Anyone who sees a customer fully sees its projects, except TLP:RED ones: those
-are for Administrators and the project's team (the responsible technician and
-the people added to it). Administrators and the technicians assigned to a
-customer create and change its projects; an archived project is read-only, and
-only an Administrator can reopen it. A project's name and dates are sealed with
-the customer's key, and the audit log names projects by number.
+are for Administrators, Managers and the project's team (its responsible
+technician, its reviewer and the people added to it). Administrators and
+Managers create, change, archive and reopen projects and choose who works on
+them; technicians and reviewers work in the projects they're on. An archived
+project is read-only. A project's name and dates are sealed with the customer's
+key, and the audit log names projects by number.
 """
 
 from __future__ import annotations
@@ -29,13 +30,11 @@ from app.customers import (
     Keyring,
     assigned_customer_ids,
     is_assigned,
-    may_create_projects,
-    may_manage,
+    may_manage_projects,
     sights,
 )
 from app.projects import (
     DEFAULT_CLASSIFICATION,
-    TEAM_ONLY,
     Classification,
     Project,
     ProjectMember,
@@ -51,7 +50,7 @@ from app.users import User
 
 router = APIRouter()
 
-Manager = Annotated[UserSession, Depends(require(Capability.MANAGE_CUSTOMERS))]
+ProjectManager = Annotated[UserSession, Depends(require(Capability.MANAGE_PROJECTS))]
 
 NOT_FOUND = "That project doesn't exist."
 
@@ -60,6 +59,7 @@ class ProjectFields(BaseModel):
     start_date: date | None = None
     end_date: date | None = None
     responsible_id: int | None = None
+    reviewer_id: int | None = None
     contact_id: int | None = None
     site_ids: list[int] = Field(default=[], max_length=200)
     classification: Classification = DEFAULT_CLASSIFICATION
@@ -91,6 +91,7 @@ class Named(BaseModel):
 class Member(Named):
     roles: list[Role]
     responsible: bool
+    reviewer: bool
 
 
 class ProjectSummary(BaseModel):
@@ -99,6 +100,7 @@ class ProjectSummary(BaseModel):
     name: str
     customer: Named
     responsible: Named | None
+    reviewer: Named | None
     start_date: date | None
     end_date: date | None
     classification: str
@@ -173,6 +175,7 @@ def _summary(db: Session, keyring: Keyring, project: Project, customer: Customer
         id=project.id, number=project.number, name=opened["name"],
         customer=Named(id=customer.id, name=keyring.name(customer)),
         responsible=_named_user(db, project.responsible_id),
+        reviewer=_named_user(db, project.reviewer_id),
         start_date=_date(opened["start_date"]), end_date=_date(opened["end_date"]),
         classification=project.classification, archived_at=project.archived_at,
     )
@@ -182,7 +185,8 @@ def _team(db: Session, project: Project) -> list[Member]:
     ids = team_ids(db, project)
     users = db.scalars(select(User).where(User.id.in_(ids)).order_by(User.display_name))
     return [Member(id=u.id, name=u.display_name, roles=sorted(roles_of(db, u.id)),
-                   responsible=u.id == project.responsible_id) for u in users]
+                   responsible=u.id == project.responsible_id,
+                   reviewer=u.id == project.reviewer_id) for u in users]
 
 
 def _detail(db: Session, record: UserSession, keyring: Keyring, project: Project
@@ -200,15 +204,22 @@ def _detail(db: Session, record: UserSession, keyring: Keyring, project: Project
         sites=[Named(id=i, name=sites[i]) for i in site_ids_of(db, project.id) if i in sites],
         team=_team(db, project),
         created_at=project.created_at,
-        may_edit=project.archived_at is None
-        and may_create_projects(db, record.user_id, roles, customer.id),
-        may_reopen=project.archived_at is not None and may_manage(roles),
+        may_edit=project.archived_at is None and may_manage_projects(roles),
+        may_reopen=project.archived_at is not None and may_manage_projects(roles),
     )
 
 
-def _check_links(db: Session, customer: Customer, body: ProjectFields) -> None:
+def _assigned_with(db: Session, user_id: int, role: Role, customer: Customer) -> bool:
+    user = db.get(User, user_id)
+    return (user is not None and user.is_active and role in roles_of(db, user_id)
+            and is_assigned(db, user_id, customer.id))
+
+
+def _check_links(db: Session, customer: Customer, body: ProjectFields,
+                 responsible_id: int | None, reviewer_id: int | None) -> None:
     """The contact and sites must be this customer's; the responsible person one of
-    its technicians."""
+    its technicians and the reviewer one of its reviewers, and never the same
+    person: nobody reviews their own report."""
     if body.contact_id is not None:
         contact = db.get(CustomerContact, body.contact_id)
         if contact is None or contact.customer_id != customer.id:
@@ -217,16 +228,25 @@ def _check_links(db: Session, customer: Customer, body: ProjectFields) -> None:
         site = db.get(CustomerSite, site_id)
         if site is None or site.customer_id != customer.id:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "That site isn't this customer's.")
-    if body.responsible_id is not None:
-        user = db.get(User, body.responsible_id)
-        roles = roles_of(db, body.responsible_id) if user else set()
-        if (user is None or not user.is_active or Role.TECHNICIAN not in roles
-                or not is_assigned(db, user.id, customer.id)):
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST,
-                "The responsible technician must be an active technician assigned to this "
-                "customer.",
-            )
+    if body.responsible_id is not None and not _assigned_with(
+            db, body.responsible_id, Role.TECHNICIAN, customer):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "The responsible technician must be an active technician assigned to this "
+            "customer.",
+        )
+    if body.reviewer_id is not None and not _assigned_with(
+            db, body.reviewer_id, Role.REVIEWER, customer):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "The reviewer must be an active reviewer assigned to this customer.",
+        )
+    if responsible_id is not None and responsible_id == reviewer_id:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "The reviewer can't be the responsible technician: nobody reviews their own "
+            "report.",
+        )
 
 
 def _set_sites(db: Session, project: Project, site_ids: list[int]) -> None:
@@ -235,18 +255,12 @@ def _set_sites(db: Session, project: Project, site_ids: list[int]) -> None:
         db.add(ProjectSite(project_id=project.id, site_id=site_id))
 
 
-def _join(db: Session, project: Project, user_id: int, by: int) -> None:
-    """Put someone assigned to the customer on the project's team, if they aren't."""
-    if (is_assigned(db, user_id, project.customer_id) and user_id not in team_ids(db, project)):
-        db.add(ProjectMember(project_id=project.id, user_id=user_id, added_at=clock.utcnow(),
-                             added_by=by))
-
-
 def _editable(db: Session, request: Request, record: UserSession, project_id: int
               ) -> tuple[Project, Customer]:
     project, customer = _visible(db, request, record, project_id)
-    if not may_create_projects(db, record.user_id, roles_of(db, record.user_id), customer.id):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "You can't change this customer's projects.")
+    if not may_manage_projects(roles_of(db, record.user_id)):
+        raise HTTPException(status.HTTP_403_FORBIDDEN,
+                            "Only Managers and Administrators change projects.")
     if project.archived_at is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, "Archived projects are read-only.")
     return project, customer
@@ -283,13 +297,14 @@ def list_projects(customer_id: int, request: Request, record: FullSession, db: D
 def create_project(customer_id: int, body: ProjectIn, request: Request, record: FullSession,
                    db: DB) -> ProjectDetail:
     customer, _ = visible_customer(db, request, record, customer_id)
-    if not may_create_projects(db, record.user_id, roles_of(db, record.user_id), customer.id):
+    if not may_manage_projects(roles_of(db, record.user_id)):
         raise HTTPException(status.HTTP_403_FORBIDDEN,
-                            "You can't create projects for this customer.")
-    _check_links(db, customer, body)
+                            "Only Managers and Administrators start projects.")
+    _check_links(db, customer, body, body.responsible_id, body.reviewer_id)
     project = Project(
         customer_id=customer.id, number=next_number(db), sealed=b"",
-        responsible_id=body.responsible_id, contact_id=body.contact_id,
+        responsible_id=body.responsible_id, reviewer_id=body.reviewer_id,
+        contact_id=body.contact_id,
         classification=body.classification, created_at=clock.utcnow(),
         created_by=record.user_id,
     )
@@ -299,8 +314,6 @@ def create_project(customer_id: int, body: ProjectIn, request: Request, record: 
     project.sealed = _sealed(keyring, customer, project, body.name.strip(), body.start_date,
                              body.end_date)
     _set_sites(db, project, body.site_ids)
-    # Whoever creates it is on its team, so a TLP:RED project never locks them out.
-    _join(db, project, record.user_id, record.user_id)
     _log(db, request, record, "project.created", project,
          {"customer": customer.id, "classification": project.classification})
     db.commit()
@@ -318,7 +331,11 @@ def update_project(project_id: int, body: ProjectUpdate, request: Request, recor
                    db: DB) -> ProjectDetail:
     project, customer = _editable(db, request, record, project_id)
     sent = body.model_fields_set
-    _check_links(db, customer, body)
+    _check_links(
+        db, customer, body,
+        body.responsible_id if "responsible_id" in sent else project.responsible_id,
+        body.reviewer_id if "reviewer_id" in sent else project.reviewer_id,
+    )
     keyring = Keyring()
     opened = _opened(keyring, customer, project)
     name = body.name.strip() if body.name is not None else opened["name"]
@@ -332,16 +349,13 @@ def update_project(project_id: int, body: ProjectUpdate, request: Request, recor
         ("end_date", _date(opened["end_date"]), end)) if before != after]
     if changed:
         project.sealed = _sealed(keyring, customer, project, name, start, end)
-    for field in ("responsible_id", "contact_id", "classification"):
+    for field in ("responsible_id", "reviewer_id", "contact_id", "classification"):
         if field in sent and getattr(body, field) != getattr(project, field):
             setattr(project, field, getattr(body, field))
             changed.append(field)
     if "site_ids" in sent and sorted(set(body.site_ids)) != site_ids_of(db, project.id):
         _set_sites(db, project, body.site_ids)
         changed.append("sites")
-    if "classification" in changed and project.classification == TEAM_ONLY:
-        # Making it TLP:RED keeps whoever did it on the team.
-        _join(db, project, record.user_id, record.user_id)
     if changed:
         _log(db, request, record, "project.updated", project, {"fields": changed})
     db.commit()
@@ -351,11 +365,11 @@ def update_project(project_id: int, body: ProjectUpdate, request: Request, recor
 @router.put("/projects/{project_id}/team")
 def set_team(project_id: int, body: TeamUpdate, request: Request, record: FullSession, db: DB
              ) -> ProjectDetail:
-    """Who's on the project besides its responsible technician. They must be
-    assigned to the customer; for a TLP:RED project, only they and Administrators
-    see it."""
+    """Who's on the project besides its responsible technician and reviewer. They
+    must be assigned to the customer; a TLP:RED project is for them, Administrators
+    and Managers only."""
     project, customer = _editable(db, request, record, project_id)
-    wanted = set(body.user_ids) - ({project.responsible_id} if project.responsible_id else set())
+    wanted = set(body.user_ids) - {project.responsible_id, project.reviewer_id}
     for user_id in wanted:
         user = db.get(User, user_id)
         if user is None or not user.is_active or not is_assigned(db, user_id, customer.id):
@@ -363,13 +377,6 @@ def set_team(project_id: int, body: TeamUpdate, request: Request, record: FullSe
                 status.HTTP_400_BAD_REQUEST,
                 "Only active people assigned to this customer can be on its projects.",
             )
-    roles = roles_of(db, record.user_id)
-    if (on_team_only(project) and "all" not in sights(roles)
-            and record.user_id != project.responsible_id and record.user_id not in wanted):
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            "You'd lose access to this TLP:RED project. Keep yourself on its team.",
-        )
     current = member_ids(db, project.id)
     for user_id in sorted(wanted - current):
         db.add(ProjectMember(project_id=project.id, user_id=user_id, added_at=clock.utcnow(),
@@ -396,7 +403,8 @@ def archive_project(project_id: int, request: Request, record: FullSession, db: 
 
 
 @router.post("/projects/{project_id}/reopen")
-def reopen_project(project_id: int, request: Request, admin: Manager, db: DB) -> ProjectDetail:
+def reopen_project(project_id: int, request: Request, admin: ProjectManager, db: DB
+                   ) -> ProjectDetail:
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, NOT_FOUND)

@@ -1,7 +1,8 @@
 """The customers API: customers, their sites and contacts, who's assigned, the logo.
 
-Creating and changing customers is for Administrators (MANAGE_CUSTOMERS);
-everyone else sees what app/customers.py allows. A customer someone may not see
+Creating and changing customers is for Administrators and Managers
+(MANAGE_CUSTOMERS), deleting one for Administrators only; everyone else sees what
+app/customers.py allows. A customer someone may not see
 answers 404, the same as one that doesn't exist, and the refusal is logged.
 Everything about a customer is sealed with its key and opened per request, only
 for those allowed to see it; the audit log names customers by ID only.
@@ -30,8 +31,9 @@ from app.customers import (
     Visibility,
     assigned_customer_ids,
     level_for,
-    may_create_projects,
+    may_delete,
     may_manage,
+    may_manage_projects,
     sights,
     visibility,
 )
@@ -45,13 +47,14 @@ from app.images import (
     remove_image,
     store_image,
 )
-from app.projects import TEAM_ONLY, Project, projects_joined
+from app.projects import TEAM_ONLY, Project, ProjectMember, projects_joined
 from app.roles import Capability, Role, UserRole, roles_of
 from app.users import User
 
 router = APIRouter(prefix="/customers")
 
 Manager = Annotated[UserSession, Depends(require(Capability.MANAGE_CUSTOMERS))]
+Deleter = Annotated[UserSession, Depends(require(Capability.DELETE_CUSTOMERS))]
 
 NOT_FOUND = "That customer doesn't exist."
 ORDER: dict[Visibility, int] = {"names": 0, "metadata": 1, "full": 2}
@@ -138,8 +141,9 @@ class CustomerDetail(CustomerSummary):
     contacts: list[ContactOut] | None = None
     assigned: list[Person] | None = None
     may_manage: bool = False
-    may_create_projects: bool = False
-    # For an Administrator choosing who's assigned: everyone who may be.
+    may_delete: bool = False
+    may_manage_projects: bool = False
+    # For a Manager or Administrator choosing who's assigned: everyone who may be.
     assignable: list[Person] | None = None
 
 
@@ -271,7 +275,8 @@ def _detail(db: Session, record: UserSession, keyring: Keyring, customer: Custom
         contacts=contacts_of(db, sealer, customer.id),
         assigned=_people(db, assigned),
         may_manage=manage,
-        may_create_projects=may_create_projects(db, record.user_id, roles, customer.id),
+        may_delete=may_delete(roles),
+        may_manage_projects=may_manage_projects(roles),
         assignable=_people(db, _assignable_ids(db)) if manage else None,
     )
 
@@ -354,7 +359,7 @@ def update_customer(customer_id: int, body: CustomerUpdate, request: Request, ad
 
 @router.delete("/{customer_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_customer(customer_id: int, body: Annotated[DeleteRequest, Body()], request: Request,
-                    admin: Manager, db: DB) -> None:
+                    admin: Deleter, db: DB) -> None:
     """Delete a customer and everything under it. Its key goes with it, so whatever
     was sealed with it is unreadable from then on (crypto-shredding)."""
     customer, _ = visible_customer(db, request, admin, customer_id)
@@ -470,6 +475,24 @@ def remove_contact(customer_id: int, contact_id: int, request: Request, admin: M
 # Who's assigned
 
 
+def _leave_projects(db: Session, customer_id: int, user_id: int) -> int:
+    """Take someone off every project of a customer they're no longer assigned to:
+    its teams, and as responsible technician or reviewer. Returns how many."""
+    projects = list(db.scalars(select(Project).where(Project.customer_id == customer_id)))
+    left = 0
+    for project in projects:
+        member = db.get(ProjectMember, (project.id, user_id))
+        on = member is not None or user_id in (project.responsible_id, project.reviewer_id)
+        if member is not None:
+            db.delete(member)
+        if project.responsible_id == user_id:
+            project.responsible_id = None
+        if project.reviewer_id == user_id:
+            project.reviewer_id = None
+        left += on
+    return left
+
+
 @router.put("/{customer_id}/assignments")
 def set_assignments(customer_id: int, body: Assignments, request: Request, admin: Manager,
                     db: DB) -> CustomerDetail:
@@ -486,16 +509,20 @@ def set_assignments(customer_id: int, body: Assignments, request: Request, admin
     for user_id in sorted(wanted - current):
         db.add(CustomerAssignment(customer_id=customer.id, user_id=user_id,
                                   assigned_at=clock.utcnow(), assigned_by=admin.user_id))
+    left: dict[int, int] = {}
     for user_id in sorted(current - wanted):
         held = db.get(CustomerAssignment, (customer.id, user_id))
         if held is not None:
             db.delete(held)
+        left[user_id] = _leave_projects(db, customer.id, user_id)
     usernames = {u.id: u.username for u in db.scalars(select(User).where(
         User.id.in_(wanted ^ current)))}
-    for action, ids in (("customer.assigned", wanted - current),
-                        ("customer.unassigned", current - wanted)):
-        for user_id in sorted(ids):
-            _log(db, request, admin, action, customer.id, {"user": usernames.get(user_id)})
+    for user_id in sorted(wanted - current):
+        _log(db, request, admin, "customer.assigned", customer.id,
+             {"user": usernames.get(user_id)})
+    for user_id in sorted(current - wanted):
+        _log(db, request, admin, "customer.unassigned", customer.id,
+             {"user": usernames.get(user_id), "projects_left": left[user_id]})
     db.commit()
     return _detail(db, admin, Keyring(), customer, "full")
 

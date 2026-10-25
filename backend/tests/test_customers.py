@@ -19,7 +19,8 @@ from app.settings import settings
 from tests.conftest import PASSWORD
 
 CUSTOMERS = "/api/customers"
-A, D, T, R, U = "administrator", "report_designer", "technician", "reviewer", "auditor"
+A, M, D, T, R, U = (
+    "administrator", "manager", "report_designer", "technician", "reviewer", "auditor")
 
 
 def audit_entries(session, action):
@@ -69,9 +70,10 @@ def assign(client, admin, customer_id, *users):
 
 
 def test_who_sees_customers_follows_the_spec() -> None:
-    # The spec's "See customers" row: All, Names only, Assigned, Assigned, Metadata only.
+    # The spec's "See customers" row: All, Names only, Assigned, Assigned, Metadata
+    # only; and Managers, added since, see all.
     assert {role.value: sight for role, sight in SEES_CUSTOMERS.items()} == {
-        A: "all", D: "names", T: "assigned", R: "assigned", U: "metadata",
+        A: "all", M: "all", D: "names", T: "assigned", R: "assigned", U: "metadata",
     }
 
 
@@ -87,7 +89,7 @@ def test_technicians_see_only_the_customers_they_are_assigned_to(
     assert [(c["name"], c["visibility"]) for c in listed] == [("Nordlys IT ApS", "full")]
     detail = client.get(f"{CUSTOMERS}/{nordlys['id']}", headers=as_astrid).json()
     assert detail["contacts"][0]["email"] == "sigrid@nordlys.example"
-    assert not detail["may_manage"] and detail["may_create_projects"]
+    assert not detail["may_manage"] and not detail["may_manage_projects"]
 
     hidden = client.get(f"{CUSTOMERS}/{other['id']}", headers=as_astrid)
     assert hidden.status_code == 404
@@ -117,12 +119,37 @@ def test_people_without_a_role_see_no_customers(client, admin, nordlys, person) 
     assert client.get(f"{CUSTOMERS}/{nordlys['id']}", headers=headers).status_code == 404
 
 
-def test_only_administrators_create_and_change_customers(client, nordlys, person) -> None:
+def test_only_administrators_and_managers_create_and_change_customers(
+    client, nordlys, person
+) -> None:
     astrid, as_astrid = person("astrid", T)
     assert client.post(CUSTOMERS, headers=as_astrid, json={"name": "Mine"}).status_code == 403
     changed = client.patch(f"{CUSTOMERS}/{nordlys['id']}", headers=as_astrid,
                            json={"name": "Renamed"})
     assert changed.status_code == 403
+
+    _, as_mona = person("mona", M)
+    assert client.post(CUSTOMERS, headers=as_mona, json={"name": "Hers"}).status_code == 200
+    renamed = client.patch(f"{CUSTOMERS}/{nordlys['id']}", headers=as_mona,
+                           json={"name": "Nordlys IT A/S"})
+    assert renamed.json()["name"] == "Nordlys IT A/S"
+
+
+def test_managers_see_every_customer_but_neither_delete_one_nor_reach_the_admin_panel(
+    client, nordlys, person
+) -> None:
+    _, as_mona = person("mona", M)
+    detail = client.get(f"{CUSTOMERS}/{nordlys['id']}", headers=as_mona).json()
+    assert detail["visibility"] == "full" and detail["contacts"][0]["name"] == "Sigrid Holm"
+    assert detail["may_manage"] and detail["may_manage_projects"] and not detail["may_delete"]
+    # Refused for want of the right, not for want of a fresh confirmation.
+    client.post("/api/auth/confirm-password", headers=as_mona, json={"password": PASSWORD})
+    refused = client.request("DELETE", f"{CUSTOMERS}/{nordlys['id']}", headers=as_mona,
+                             json={"confirm_name": "Nordlys IT ApS"})
+    assert refused.status_code == 403 and refused.headers["X-Skjald-Reason"] == "forbidden"
+    assert client.get(f"{CUSTOMERS}/{nordlys['id']}", headers=as_mona).status_code == 200
+    assert client.get("/api/admin/users", headers=as_mona).status_code == 403
+    assert client.get("/api/audit", headers=as_mona).status_code == 403
 
 
 # What's kept, and how
@@ -269,10 +296,17 @@ def astrid_on_nordlys(client, admin, nordlys, person):
     return astrid, headers
 
 
-def test_an_assigned_technician_creates_numbered_projects(
-    frozen_clock, client, nordlys, astrid_on_nordlys, session
+@pytest.fixture
+def mona(person):
+    """A Manager, signed in."""
+    return person("mona", M)
+
+
+def test_a_manager_starts_numbered_projects(
+    frozen_clock, client, nordlys, astrid_on_nordlys, mona, session
 ) -> None:
-    astrid, headers = astrid_on_nordlys
+    astrid, _ = astrid_on_nordlys
+    _, headers = mona
     cid = nordlys["id"]
     site = nordlys["sites"][0]["id"]
     contact = nordlys["contacts"][0]["id"]
@@ -291,6 +325,28 @@ def test_an_assigned_technician_creates_numbered_projects(
     assert [p["number"] for p in client.get("/api/projects", headers=headers).json()] == [
         "P-2026-0002", "P-2026-0001"]
     assert len(audit_entries(session, "project.created")) == 2
+
+
+def test_technicians_work_in_projects_but_do_not_start_or_change_them(
+    client, nordlys, astrid_on_nordlys, mona
+) -> None:
+    astrid, as_astrid = astrid_on_nordlys
+    _, as_mona = mona
+    url = f"{CUSTOMERS}/{nordlys['id']}/projects"
+    assert client.post(url, headers=as_astrid, json={"name": "Mine"}).status_code == 403
+    # Even as its responsible technician.
+    project = client.post(url, headers=as_mona, json={
+        "name": "Incident", "responsible_id": astrid.id}).json()
+    pid = project["id"]
+    seen = client.get(f"/api/projects/{pid}", headers=as_astrid).json()
+    assert seen["name"] == "Incident" and not seen["may_edit"]
+    for method, path, body in (
+        ("PATCH", f"/api/projects/{pid}", {"classification": "TLP:CLEAR"}),
+        ("PUT", f"/api/projects/{pid}/team", {"user_ids": []}),
+        ("POST", f"/api/projects/{pid}/archive", None),
+    ):
+        refused = client.request(method, path, headers=as_astrid, json=body)
+        assert refused.status_code == 403, (method, path)
 
 
 def test_reviewers_see_projects_but_do_not_create_them(
@@ -336,24 +392,24 @@ def test_a_project_links_only_to_its_own_customer(
     assert backwards.status_code == 422
 
 
-def test_an_archived_project_is_read_only_until_an_administrator_reopens_it(
-    client, admin, nordlys, astrid_on_nordlys, session
+def test_an_archived_project_is_read_only_until_a_manager_reopens_it(
+    client, nordlys, astrid_on_nordlys, mona, session
 ) -> None:
-    _, as_admin = admin
-    _, headers = astrid_on_nordlys
+    _, as_astrid = astrid_on_nordlys
+    _, headers = mona
     project = client.post(f"{CUSTOMERS}/{nordlys['id']}/projects", headers=headers,
                           json={"name": "Incident"}).json()
     archived = client.post(f"/api/projects/{project['id']}/archive", headers=headers).json()
-    assert archived["archived_at"] and not archived["may_edit"]
+    assert archived["archived_at"] and not archived["may_edit"] and archived["may_reopen"]
     assert client.patch(f"/api/projects/{project['id']}", headers=headers,
                         json={"name": "Changed"}).status_code == 409
-    listed = client.get(f"{CUSTOMERS}/{nordlys['id']}/projects?archived=true", headers=headers)
+    listed = client.get(f"{CUSTOMERS}/{nordlys['id']}/projects?archived=true", headers=as_astrid)
     assert [p["id"] for p in listed.json()] == [project["id"]]
-    assert client.get("/api/projects", headers=headers).json() == []
+    assert client.get("/api/projects", headers=as_astrid).json() == []
 
-    assert client.post(f"/api/projects/{project['id']}/reopen", headers=headers
+    assert client.post(f"/api/projects/{project['id']}/reopen", headers=as_astrid
                        ).status_code == 403
-    reopened = client.post(f"/api/projects/{project['id']}/reopen", headers=as_admin).json()
+    reopened = client.post(f"/api/projects/{project['id']}/reopen", headers=headers).json()
     assert reopened["archived_at"] is None
     changed = client.patch(f"/api/projects/{project['id']}", headers=headers,
                            json={"name": "Changed", "classification": "TLP:GREEN"}).json()
@@ -408,16 +464,18 @@ def red_setup(client, admin, nordlys, person):
             "pentest": pentest, "clear": clear}
 
 
-def test_a_red_project_is_only_for_administrators_and_its_team(
-    client, admin, nordlys, red_setup, session
+def test_a_red_project_is_only_for_administrators_managers_and_its_team(
+    client, admin, nordlys, red_setup, mona, session
 ) -> None:
     _, as_admin = admin
+    _, as_mona = mona
     _, as_bob = red_setup["bob"]
     _, as_bo = red_setup["bo"]
     url = f"{CUSTOMERS}/{nordlys['id']}/projects"
 
     names = lambda headers: [p["name"] for p in client.get(url, headers=headers).json()]  # noqa: E731
     assert names(as_admin) == ["Open day", "Pentest", "Ransomware"]
+    assert names(as_mona) == ["Open day", "Pentest", "Ransomware"]
     assert names(as_bob) == ["Open day", "Ransomware"]  # responsible for Ransomware
     assert names(as_bo) == ["Open day"]
     assert [p["name"] for p in client.get("/api/projects", headers=as_bo).json()] == ["Open day"]
@@ -458,29 +516,64 @@ def test_only_people_assigned_to_the_customer_join_a_team(
     assert refused.status_code == 400
 
 
-def test_whoever_creates_or_reds_a_project_stays_on_its_team(
-    client, nordlys, red_setup
+def test_a_reviewer_is_on_the_team_and_never_reviews_their_own_report(
+    client, admin, nordlys, red_setup, person
 ) -> None:
-    bo, as_bo = red_setup["bo"]
-    url = f"{CUSTOMERS}/{nordlys['id']}/projects"
-    mine = client.post(url, headers=as_bo, json={"name": "Bo's red", "classification": "TLP:RED"})
-    assert [m["name"] for m in mine.json()["team"]] == ["Bo"]
-    assert client.get(f"/api/projects/{mine.json()['id']}", headers=as_bo).status_code == 200
+    _, as_admin = admin
+    bob, _ = red_setup["bob"]
+    rikke, as_rikke = person("rikke", R)
+    both, _ = person("bjorn", T, R)
+    assign(client, admin, nordlys["id"], bob, red_setup["bo"][0], rikke, both)
+    ransomware = red_setup["ransomware"]["id"]  # TLP:RED, Bob responsible
+    url = f"/api/projects/{ransomware}"
+    assert client.get(url, headers=as_rikke).status_code == 404
 
-    clear = red_setup["clear"]["id"]
-    reddened = client.patch(f"/api/projects/{clear}", headers=as_bo,
-                            json={"classification": "TLP:RED"}).json()
-    assert "Bo" in [m["name"] for m in reddened["team"]]
-    assert client.get(f"/api/projects/{clear}", headers=as_bo).status_code == 200
+    chosen = client.patch(url, headers=as_admin, json={"reviewer_id": rikke.id}).json()
+    assert chosen["reviewer"]["name"] == "Rikke"
+    assert [(m["name"], m["responsible"], m["reviewer"]) for m in chosen["team"]] == [
+        ("Bob", True, False), ("Rikke", False, True)]
+    seen = client.get(url, headers=as_rikke).json()
+    assert seen["name"] == "Ransomware" and not seen["may_edit"]
+
+    not_a_reviewer = client.patch(url, headers=as_admin, json={"reviewer_id": bob.id})
+    assert not_a_reviewer.status_code == 400
+    outsider, _ = person("olga", R)
+    assert client.patch(url, headers=as_admin,
+                        json={"reviewer_id": outsider.id}).status_code == 400
+    # Someone with both roles can't review a project they're responsible for.
+    own = client.patch(url, headers=as_admin, json={"responsible_id": both.id,
+                                                    "reviewer_id": both.id})
+    assert own.status_code == 400 and "own report" in own.json()["detail"]
+    # Changing one is checked against the other as it stands, in either order.
+    client.patch(url, headers=as_admin, json={"reviewer_id": both.id})
+    assert client.patch(url, headers=as_admin,
+                        json={"responsible_id": both.id}).status_code == 400
+    client.patch(url, headers=as_admin, json={"reviewer_id": None, "responsible_id": both.id})
+    assert client.patch(url, headers=as_admin, json={"reviewer_id": both.id}).status_code == 400
 
 
-def test_you_cannot_take_yourself_off_a_red_team(client, nordlys, red_setup) -> None:
-    bo, as_bo = red_setup["bo"]
-    url = f"{CUSTOMERS}/{nordlys['id']}/projects"
-    mine = client.post(url, headers=as_bo, json={"name": "Bo's red", "classification": "TLP:RED"})
-    refused = client.put(f"/api/projects/{mine.json()['id']}/team", headers=as_bo,
-                         json={"user_ids": []})
-    assert refused.status_code == 400 and "lose access" in refused.json()["detail"]
+def test_unassigning_someone_takes_them_off_the_customers_projects(
+    client, admin, nordlys, red_setup, person, session
+) -> None:
+    _, as_admin = admin
+    bob, as_bob = red_setup["bob"]
+    bo, _ = red_setup["bo"]
+    rikke, _ = person("rikke", R)
+    assign(client, admin, nordlys["id"], bob, bo, rikke)
+    pentest = red_setup["pentest"]["id"]
+    client.put(f"/api/projects/{pentest}/team", headers=as_admin, json={"user_ids": [bob.id]})
+    client.patch(f"/api/projects/{pentest}", headers=as_admin, json={"reviewer_id": rikke.id})
+
+    assign(client, admin, nordlys["id"], bo)
+    ransomware = client.get(f"/api/projects/{red_setup['ransomware']['id']}",
+                            headers=as_admin).json()
+    assert ransomware["responsible"] is None and ransomware["team"] == []
+    detail = client.get(f"/api/projects/{pentest}", headers=as_admin).json()
+    assert detail["reviewer"] is None and detail["team"] == []
+    assert client.get(f"/api/projects/{pentest}", headers=as_bob).status_code == 404
+    unassigned = [e.details for e in audit_entries(session, "customer.unassigned")]
+    assert unassigned == ['{"projects_left":2,"user":"bob"}',
+                          '{"projects_left":1,"user":"rikke"}']
 
 
 def test_project_names_and_dates_are_sealed(client, admin, nordlys, session) -> None:

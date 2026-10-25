@@ -10,18 +10,22 @@ from app.auth.sessions import UserSession
 from app.main import app
 from app.roles import GRANTS, Capability, Role, grant_role, roles_of
 
-A, D, T, R, U = "administrator", "report_designer", "technician", "reviewer", "auditor"
+A, M, D, T, R, U = (
+    "administrator", "manager", "report_designer", "technician", "reviewer", "auditor")
 
-# The access table from the spec ("Users, roles and access"), row by row.
+# The access table from the spec ("Users, roles and access"), row by row, with the
+# Manager role added since (docs/architecture.md, Roles).
 SPEC = {
-    "manage_customers": {A},
-    "create_projects_and_reports": {A, T},
+    "manage_customers": {A, M},
+    "delete_customers": {A},
+    "manage_projects": {A, M},
+    "create_reports": {A, T},
     "fill_in_reports": {A, T},
     "review_and_countersign": {A, R},
     "build_templates": {A, D},
     "edit_library": {A, D, T},
     "lock_library_entries": {A},
-    "check_signed_reports": {A, D, T, R, U},
+    "check_signed_reports": {A, M, D, T, R, U},
     "edit_styles": {A, D},
     "administer": {A},
     "break_checkouts": {A},
