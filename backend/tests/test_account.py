@@ -53,7 +53,23 @@ def test_name_email_and_theme_can_be_changed(astrid, session) -> None:
     )
     assert browser.get("/api/auth/session").json()["user"]["theme"] == "dark"
     assert browser.patch("/api/account", headers=csrf, json={"theme": "pink"}).status_code == 422
-    assert "account.updated" in actions(session)
+    logged = session.scalars(select(AuditEntry.details).where(
+        AuditEntry.action == "account.updated")).all()
+    session.commit()
+    assert logged == ['{"fields":["display_name","email"]}']  # not the theme
+
+
+def test_how_skjald_looks_to_someone_isnt_logged(astrid, session) -> None:
+    browser, csrf = astrid
+    before = actions(session)
+    assert browser.patch("/api/account", headers=csrf, json={"theme": "light"}).status_code == 200
+    assert browser.patch("/api/account", headers=csrf,
+                         json={"primary_colour": "teal"}).status_code == 200
+    uploaded = browser.put("/api/account/avatar", content=picture(), headers=csrf | {
+        "Content-Type": "application/octet-stream"}).json()
+    assert uploaded["avatar_url"]
+    assert browser.delete("/api/account/avatar", headers=csrf).json()["avatar_url"] is None
+    assert actions(session) == before
 
 
 def test_changing_the_password_needs_the_current_one(astrid, no_breach_found) -> None:
@@ -191,7 +207,6 @@ def test_a_profile_picture_is_cleaned_scaled_and_served(astrid, session) -> None
     with Image.open(io.BytesIO(served.content)) as image:
         assert image.format == "PNG" and max(image.size) <= 256
         assert not image.getexif()
-    assert "account.avatar_changed" in actions(session)
 
     removed = browser.delete("/api/account/avatar", headers=csrf).json()
     assert removed["avatar_url"] is None

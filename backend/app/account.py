@@ -295,13 +295,14 @@ def update_account(body: AccountUpdate, request: Request, record: FullSession, d
                    ) -> AccountInfo:
     user = record.user
     changed = apply_profile(user, body)
+    # How Skjald looks to someone (light or dark, colours, their picture) is theirs
+    # alone and isn't logged; their name, email and other details are, since reports
+    # and notices use them.
     if body.theme and body.theme != user.theme:
         user.theme = body.theme
-        changed.append("theme")
     for name in ("primary_colour", "accent_colour"):
         if name in body.model_fields_set and getattr(body, name) != getattr(user, name):
             setattr(user, name, getattr(body, name))
-            changed.append(name)
     if changed:
         _log(db, request, record, "account.updated", {"fields": sorted(changed)})
     db.commit()
@@ -318,15 +319,13 @@ def upload_avatar(
     except ImageRejected as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     store_image(db, avatar_key(record.user_id), png)
-    _log(db, request, record, "account.avatar_changed")
     db.commit()
     return get_account(record, db)
 
 
 @router.delete("/account/avatar")
 def remove_avatar(request: Request, record: FullSession, db: DB) -> AccountInfo:
-    if remove_image(db, avatar_key(record.user_id)):
-        _log(db, request, record, "account.avatar_removed")
+    remove_image(db, avatar_key(record.user_id))
     db.commit()
     return get_account(record, db)
 
