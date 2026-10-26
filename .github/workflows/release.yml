@@ -122,13 +122,21 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # The one-line install from main takes the newest full release (the newest
+          # pre-release only while there's none): a pre-release names its own installer.
           prerelease=()
-          if [[ "$VERSION" == *-* ]]; then prerelease=(--prerelease); fi
+          install="Install on Ubuntu Server LTS:"
+          oneline="https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh"
+          if [[ "$VERSION" == *-* ]]; then
+            prerelease=(--prerelease)
+            install="Install this pre-release on Ubuntu Server LTS:"
+            oneline="$SOURCE/releases/download/$VERSION/install.sh"
+          fi
           identity="$SOURCE/.github/workflows/release.yml@refs/tags/$VERSION"
           cat >notes.md <<EOF
-          Install on Ubuntu Server LTS:
+          $install
 
-              curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | sudo bash
+              curl -fsSL $oneline | sudo bash
 
           Or check the installer yourself first, with [cosign](https://docs.sigstore.dev/cosign/system_config/installation/):
 
