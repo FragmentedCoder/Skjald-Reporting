@@ -72,6 +72,14 @@ check "the skjald command is linked onto the PATH" \
 	test "$(readlink "${WORK}/bin/skjald")" = "${DEPLOY_DIR}/skjald"
 check "  and runs" grep -q "keys rotate" <("${WORK}/bin/skjald" help)
 
+# Built from this checkout, Skjald calls itself what git calls the commit (docker
+# stands in, saying which version the build was told).
+# shellcheck disable=SC2317 # called by compose
+docker() { printf '%s' "${SKJALD_VERSION}"; }
+check "a build from a checkout is told what git calls the commit" \
+	test "$(compose up -d --build)" = "$(git -C "${DEPLOY_DIR}/.." describe --tags --always)"
+unset -f docker
+
 # A release's compose file must name its images; one naming none would pass every check.
 printf 'services:\n  app:\n    command: ["true"]\n' >"${WORK}/empty-compose.yml"
 printf 'services:\n  app:\n    build:\n      context: .\n    image: x@sha256:%s\n' "$(printf 'a%.0s' {1..64})" >"${WORK}/built-compose.yml"
