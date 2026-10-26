@@ -1,10 +1,15 @@
 <script lang="ts">
+  import CircleCheck from "@lucide/svelte/icons/circle-check";
+  import CircleMinus from "@lucide/svelte/icons/circle-minus";
+  import CircleX from "@lucide/svelte/icons/circle-x";
   import RefreshCw from "@lucide/svelte/icons/refresh-cw";
+  import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
   import { onMount } from "svelte";
   import { api, ApiError } from "#lib/api.js";
   import { pageTitle } from "#lib/branding.svelte.js";
   import Pill from "#lib/components/Pill.svelte";
   import { bytes, dateTime, since } from "#lib/format.js";
+  import { toast } from "#lib/toast.svelte.js";
 
   type Status = "ok" | "warning" | "problem" | "off";
 
@@ -13,6 +18,13 @@
     label: string;
     status: Status;
     detail: string;
+  }
+
+  interface StampRun {
+    id: number;
+    state: "queued" | "running" | "done" | "failed";
+    result: { seq?: number } | null;
+    error: string | null;
   }
 
   interface Health {
@@ -63,10 +75,20 @@
     problem: { tone: "critical", text: "Problem" },
     off: { tone: "neutral", text: "Off" },
   };
+  // At a glance: a check mark when all is well, a cross when it isn't.
+  const ICONS = {
+    ok: { icon: CircleCheck, class: "is-ok" },
+    warning: { icon: TriangleAlert, class: "is-warning" },
+    problem: { icon: CircleX, class: "is-problem" },
+    off: { icon: CircleMinus, class: "is-off" },
+  } as const;
   // Authenticator codes change every 30 seconds; a server clock this far off breaks them.
   const CLOCK_TOLERANCE_S = 30;
 
   let health = $state<Health | null>(null);
+  // The audit log's daily timestamp: which authority, and asking for one now.
+  let tsaUrl = $state("");
+  let stamping = $state(false);
   let results = $state<Record<string, Check | { failed: string }>>({});
   let pending = $state<Record<string, boolean>>({});
   let error = $state<string | null>(null);
@@ -126,7 +148,42 @@
     for (const row of ROWS) if (row.key !== "clock") void runCheck(row.key);
   }
 
-  onMount(check);
+  onMount(() => {
+    check();
+    void api<{ tsa_url: string }>("GET", "/audit/verify").then((chain) => (tsaUrl = chain.tsa_url),
+      () => {});
+  });
+
+  // Ask the worker for a timestamp now, and follow it until it's done.
+  async function stampNow() {
+    stamping = true;
+    try {
+      let run = await api<StampRun>("POST", "/audit/stamps/run");
+      while ((run.state === "queued" && !run.error) || run.state === "running") {
+        await new Promise((done) => setTimeout(done, 2000));
+        run = await api<StampRun>("GET", `/audit/stamps/runs/${run.id}`);
+      }
+      if (run.state === "done") toast(`Timestamped entry ${run.result?.seq}.`, "ok");
+      else toast(run.error ?? "The timestamp couldn't be had.", "critical");
+      await runCheck("audit_stamps");
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : "Something went wrong.", "critical");
+    } finally {
+      stamping = false;
+    }
+  }
+
+  async function saveAuthority(event: SubmitEvent) {
+    event.preventDefault();
+    try {
+      const chain = await api<{ tsa_url: string }>("PUT", "/audit/stamps/authority", { tsa_url: tsaUrl });
+      tsaUrl = chain.tsa_url;
+      toast("Timestamp authority saved.", "ok", { key: "saved" });
+      await runCheck("audit_stamps");
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : "Something went wrong.", "critical");
+    }
+  }
 </script>
 
 <svelte:head><title>{pageTitle("Server health · Admin")}</title></svelte:head>
@@ -166,7 +223,13 @@
         {@const result = results[row.key]}
         <tr aria-busy={pending[row.key] ?? false}>
           <th scope="row">
-            <span class="check-label">{row.label}</span>
+            <span class="check-label">
+              {#if !pending[row.key] && result}
+                {@const shown = ICONS["status" in result ? result.status : "problem"]}
+                <shown.icon class="mark {shown.class}" size={18} aria-hidden="true" />
+              {/if}
+              {row.label}
+            </span>
             <span class="small muted detail">
               {#if result && "status" in result}
                 {result.detail}
@@ -190,6 +253,34 @@
       {/each}
     </tbody>
   </table>
+</section>
+
+<section class="section stack" aria-labelledby="stamps-title">
+  <h2 class="section-title" id="stamps-title">The audit log's timestamps</h2>
+  <p class="small muted">
+    Once a day the worker has a timestamp authority sign a fingerprint of the newest entry, so
+    a log cut short shows even though its chain still holds. Only the fingerprint leaves the
+    server. The checks above say whether the chain and every timestamp still match.
+  </p>
+  <div>
+    <button class="button button-secondary" type="button" disabled={stamping} onclick={stampNow}>
+      {stamping ? "Timestamping…" : "Timestamp now"}
+    </button>
+  </div>
+  <details class="authority">
+    <summary class="small">Timestamp authority</summary>
+    <form class="authority-form stack" onsubmit={saveAuthority}>
+      <div class="field">
+        <label for="tsa">Address of an RFC 3161 timestamp authority</label>
+        <input id="tsa" class="input" type="url" required maxlength="300" bind:value={tsaUrl} />
+        <span class="hint">
+          Free ones include DigiCert's (http://timestamp.digicert.com) and FreeTSA
+          (https://freetsa.org/tsr).
+        </span>
+      </div>
+      <div><button class="button button-secondary" type="submit">Save</button></div>
+    </form>
+  </details>
 </section>
 
 <section class="section" aria-labelledby="space-title">
@@ -301,8 +392,29 @@
     text-align: left;
   }
   .check-label {
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
     font: var(--type-label);
+  }
+  .check-label :global(.mark) {
+    flex: none;
+  }
+  .check-label :global(.is-ok) {
+    color: var(--ok-text);
+  }
+  .check-label :global(.is-warning) {
+    color: var(--warning-text);
+  }
+  .check-label :global(.is-problem) {
+    color: var(--critical-text);
+  }
+  .check-label :global(.is-off) {
+    color: var(--text-muted);
+  }
+  .authority-form {
+    max-width: 520px;
+    margin-top: var(--space-3);
   }
   .detail {
     display: block;

@@ -160,18 +160,21 @@ test("the admin panel, from adding a user to their first sign-in", async ({ brow
   await expect(admin).toHaveTitle(/Nordlys Rapport/);
   await shot(admin, "9-branding");
 
-  // Server health: every check runs, and the audit chain is intact.
+  // Server health: every check runs, and the audit chain is intact; the daily
+  // timestamp (it needs the internet) is asked for here too.
   await adminMenu(admin, "Server health").click();
   await expect(admin.getByText(/Chain intact: \d+ entries checked/)).toBeVisible();
   await expect(admin.getByText("Encrypted, and every page passed")).toBeVisible();
   await expect(admin.getByText("Running.", { exact: true })).toBeVisible();
+  await expect(admin.locator(".check-label .is-ok").first()).toBeVisible();
+  await expect(admin.getByRole("button", { name: "Timestamp now" })).toBeVisible();
+  await expect(admin.getByText("Timestamp authority")).toBeVisible();
   await shot(admin, "10-health");
 
-  // Audit log: the chain checks out, filters work, and the export downloads.
+  // Audit log: one line on the chain, filters work, and the export downloads.
   await adminMenu(admin, "Audit log").click();
-  await expect(admin.getByText("Chain intact")).toBeVisible();
-  // The daily timestamp needs the internet; either way the page says how it stands.
-  await expect(admin.getByText(/^(Timestamped|Not timestamped yet)$/)).toBeVisible();
+  await expect(admin.getByText(/The chain is intact: all \d+ entries check out/)).toBeVisible();
+  await expect(admin.getByRole("button", { name: "Timestamp now" })).toHaveCount(0);
   await admin.getByLabel("What").selectOption("admin.*");
   await admin.getByRole("button", { name: "Show" }).click();
   // Times are ISO 8601, in UTC.
