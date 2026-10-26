@@ -80,6 +80,35 @@ check "a build from a checkout is told what git calls the commit" \
 	test "$(compose up -d --build)" = "$(git -C "${DEPLOY_DIR}/.." describe --tags --always)"
 unset -f docker
 
+# Which release is newest, with GitHub's answers made up: curl stands in, answering
+# /releases/latest with LATEST and the list of releases with LISTED ("status tag").
+# shellcheck disable=SC2317 # called by newest_release
+curl() {
+	local out="" url="" answer
+	while [[ $# -gt 0 ]]; do
+		case "$1" in
+		-o | -w) [[ "$1" == -o ]] && out=$2; shift 2 ;;
+		-*) shift ;;
+		*) url=$1; shift ;;
+		esac
+	done
+	case "${url}" in
+	*/releases/latest) answer=${LATEST} ;;
+	*/releases\?per_page=1) answer=${LISTED} ;;
+	*) answer=404 ;;
+	esac
+	[[ "${answer}" == 000 ]] && { printf 000; return 7; }
+	printf '[\n  {\n    "tag_name": "%s",\n    "prerelease": true\n  }\n]\n' "${answer#* }" >"${out}"
+	printf '%s' "${answer%% *}"
+}
+picks() { [[ "$(LATEST=$1 LISTED=$2 newest_release)" == "$3" ]]; }
+check "the installer installs the newest full release" picks "200 v1.0.0" "200 v1.1.0-rc.1" v1.0.0
+check "  while there's none yet, the newest pre-release" picks 404 "200 v1.1.0-rc.1" v1.1.0-rc.1
+check "  nothing while GitHub doesn't answer, not a pre-release instead" picks 000 "200 v1.1.0-rc.1" ""
+check "  nor when it refuses (rate limited)" picks 403 "200 v1.1.0-rc.1" ""
+check "  nor when there's no release at all" picks 404 "200 " ""
+unset -f curl
+
 # A release's compose file must name its images; one naming none would pass every check.
 printf 'services:\n  app:\n    command: ["true"]\n' >"${WORK}/empty-compose.yml"
 printf 'services:\n  app:\n    build:\n      context: .\n    image: x@sha256:%s\n' "$(printf 'a%.0s' {1..64})" >"${WORK}/built-compose.yml"

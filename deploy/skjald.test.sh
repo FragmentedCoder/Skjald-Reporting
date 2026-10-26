@@ -82,6 +82,35 @@ docker() { case " $* " in *" run "*) tar -C "${WORK}" -czf - ./calls ;; esac; }
 check "a copy without the database is refused" refused "${WORK}/empty.tar.gz"
 unset -f docker
 
+# Which release is newest, with GitHub's answers made up: curl stands in, answering
+# /releases/latest with LATEST and the list of releases with LISTED ("status tag").
+# shellcheck disable=SC2317 # called by newest_release
+curl() {
+	local out="" url="" answer
+	while [[ $# -gt 0 ]]; do
+		case "$1" in
+		-o | -w) [[ "$1" == -o ]] && out=$2; shift 2 ;;
+		-*) shift ;;
+		*) url=$1; shift ;;
+		esac
+	done
+	case "${url}" in
+	*/releases/latest) answer=${LATEST} ;;
+	*/releases\?per_page=1) answer=${LISTED} ;;
+	*) answer=404 ;;
+	esac
+	[[ "${answer}" == 000 ]] && { printf 000; return 7; }
+	printf '[\n  {\n    "tag_name": "%s",\n    "prerelease": true\n  }\n]\n' "${answer#* }" >"${out}"
+	printf '%s' "${answer%% *}"
+}
+picks() { [[ "$(LATEST=$1 LISTED=$2 newest_release)" == "$3" ]]; }
+check "update moves to the newest full release" picks "200 v1.0.0" "200 v1.1.0-rc.1" v1.0.0
+check "  while there's none yet, the newest pre-release" picks 404 "200 v1.1.0-rc.1" v1.1.0-rc.1
+check "  nothing while GitHub doesn't answer, not a pre-release instead" picks 000 "200 v1.1.0-rc.1" ""
+check "  nor when it refuses (rate limited)" picks 403 "200 v1.1.0-rc.1" ""
+check "  nor when there's no release at all" picks 404 "200 " ""
+unset -f curl
+
 touch "${WORK}/repo/stray-file"
 check "update refuses a checkout with changes of its own" \
 	grep -q "has changes of its own" <(skjald update 2>&1 || true)
