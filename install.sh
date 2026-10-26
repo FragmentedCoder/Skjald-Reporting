@@ -52,7 +52,8 @@ die() {
 }
 
 usage() {
-	sed -n '2,15s/^# \{0,1\}//p' "${BASH_SOURCE[0]}"
+	# Piped (curl | bash), there's no file to read the help from.
+	[[ -n "${BASH_SOURCE[0]:-}" ]] && sed -n '2,15s/^# \{0,1\}//p' "${BASH_SOURCE[0]}"
 }
 
 # From a checkout, or from a release.
@@ -123,7 +124,8 @@ create_directories() {
 	# Owned by the app container's non-root UID, not actual root: the app
 	# reads the master key directly, and it never runs as root (see
 	# docs/architecture.md's hardening section).
-	install -d -o "${APP_UID}" -g "${APP_UID}" -m 0700 "${SKJALD_ETC}"
+	install -d -m 0700 "${SKJALD_ETC}"
+	chown "${APP_UID}:${APP_UID}" "${SKJALD_ETC}" # an existing folder too
 	log "${SKJALD_HOME} and ${SKJALD_ETC} are in place."
 }
 
@@ -427,7 +429,8 @@ main() {
 	start_stack
 }
 
-# Sourced by deploy/install.test.sh, which tests the functions on their own.
-if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+# Sourced by deploy/install.test.sh, which tests the functions on their own. Piped
+# (curl | bash) there's no BASH_SOURCE at all: set -u would stop at it.
+if [[ "${BASH_SOURCE[0]:-$0}" == "$0" ]]; then
 	main "$@"
 fi

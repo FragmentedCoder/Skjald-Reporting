@@ -84,6 +84,12 @@ check "the signer is the release workflow, for that very tag" \
 check "something that isn't a release is refused before anything is fetched" \
 	grep -q "isn't a release" <( (fetch_release "v1.2; rm -rf /" "${WORK}/fetched") 2>&1)
 
+# As the one-line install runs it: the script on stdin, with no file name.
+piped() { bash -s -- "$@" <"$(dirname "$0")/../install.sh" 2>&1; }
+check "piped (as curl | sudo bash runs it), it gets to its first real step" \
+	grep -q "Run this installer as root" <(piped --address https://skjald.example.internal)
+check "  and refuses a bad option plainly" grep -q "Unknown option --nope" <(piped --nope)
+
 if [[ ${failures} -gt 0 ]]; then
 	echo "${failures} failed."
 	exit 1
