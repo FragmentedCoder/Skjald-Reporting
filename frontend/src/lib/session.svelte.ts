@@ -151,19 +151,24 @@ export function can(info: SessionInfo | null, capability: Capability): boolean {
 let leaving: Promise<void> | null = null;
 
 // Found out this long after the session was due to run out, the page (or the
-// computer) was asleep: whoever comes back finds the sign-in page, which says enough.
+// computer) was asleep.
 const LATE_MS = 5 * 60_000;
+// A session that ran out, or is gone without a reason: whoever comes back to it
+// later finds the sign-in page, which says enough.
+const RAN_OUT = ["session_timed_out", "session_expired", "session_ended"];
 
 /**
- * The server ended the session: go straight to the sign-in page, and say why to
- * someone using Skjald here when it happened. Opening Skjald again later, or
- * coming back to a page that slept through it, there's nothing to explain.
+ * The server ended the session: go straight to the sign-in page, and say why.
+ * One that ran out is explained only to someone using Skjald here when it did,
+ * not on opening Skjald again later or coming back to a page that slept through
+ * it; what someone else did (an administrator, say) is always told, once.
  * Several requests may find out at once; they share one toast and one move.
  */
-export async function sessionEnded(message: string): Promise<void> {
+export async function sessionEnded(message: string, reason: string): Promise<void> {
   const info = session.current;
   const due = info ? Math.min(Date.parse(info.idle_expires_at), Date.parse(info.expires_at)) : 0;
-  const tell = info !== null && Date.now() - due < LATE_MS;
+  const watching = info !== null && Date.now() - due < LATE_MS;
+  const tell = watching || !RAN_OUT.includes(reason);
   if (info) clearToasts(); // they were about the session that ended
   useSession(null, true);
   if (tell) toast(message, "warning", { key: "session" });
@@ -208,7 +213,7 @@ async function reload(): Promise<void> {
 onRefusal((error) => {
   const reason = error.reason ?? "";
   if (error.status === 401 && (reason.startsWith("session_") || (reason === "signed_out" && session.current))) {
-    void sessionEnded(error.message);
+    void sessionEnded(error.message, reason);
   } else if (error.status === 403 && ["mfa_required", "password_change_required", "network", "forbidden"].includes(reason)) {
     if (reason === "network" || reason === "forbidden") toast(error.message, "warning", { key: "rights" });
     void refresh();

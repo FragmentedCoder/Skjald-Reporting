@@ -100,32 +100,42 @@ describe("an ended session", () => {
 
   it("is explained to someone using Skjald when it ends", async () => {
     useSession(signedIn(LATER));
-    await sessionEnded("An administrator signed you out. Sign in again to continue.");
-    expect(told()).toEqual(["An administrator signed you out. Sign in again to continue."]);
+    await sessionEnded("An administrator signed you out.", "session_by_admin");
+    expect(told()).toEqual(["An administrator signed you out."]);
     expect(session.current).toBeNull();
   });
 
   it("is explained just after it ran out, as the page found out by itself", async () => {
     useSession(signedIn("2026-10-24T11:59:58Z"));
-    await sessionEnded("You were signed out after 30 minutes without activity.");
+    await sessionEnded("You were signed out after 30 minutes without activity.", "session_timed_out");
     expect(told()).toHaveLength(1);
   });
 
   it("isn't, long after it ran out: the page or the computer slept through it", async () => {
     useSession(signedIn("2026-10-24T09:00:00Z"));
-    await sessionEnded("Your session has ended. Sign in again to continue.");
+    await sessionEnded("Your session has ended. Sign in again to continue.", "session_ended");
     expect(told()).toHaveLength(0);
     expect(session.current).toBeNull();
   });
 
-  it("isn't, opening Skjald again later", async () => {
-    await sessionEnded("Your session has ended. Sign in again to continue.");
+  it("isn't, opening Skjald again later after it ran out", async () => {
+    for (const reason of ["session_ended", "session_timed_out", "session_expired"]) {
+      await sessionEnded("Your session has ended. Sign in again to continue.", reason);
+    }
     expect(told()).toHaveLength(0);
+  });
+
+  it("is, whenever someone else ended it: that's told once, however late", async () => {
+    await sessionEnded("An administrator reset your multifactor authentication.", "session_mfa_reset");
+    expect(told()).toHaveLength(1);
+    useSession(signedIn("2026-10-24T09:00:00Z"));
+    await sessionEnded("An administrator signed you out.", "session_by_admin");
+    expect(told()).toEqual(["An administrator signed you out."]);
   });
 
   it("is told once when several requests find out at once", async () => {
     useSession(signedIn(LATER));
-    await Promise.all([sessionEnded("Ended."), sessionEnded("Ended."), sessionEnded("Ended.")]);
+    await Promise.all([1, 2, 3].map(() => sessionEnded("Ended.", "session_by_admin")));
     expect(told()).toEqual(["Ended."]);
   });
 });

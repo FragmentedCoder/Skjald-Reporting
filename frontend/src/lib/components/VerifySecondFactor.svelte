@@ -33,7 +33,7 @@
       onDone(await attempt());
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        await sessionEnded(e.message);
+        await sessionEnded(e.message, e.reason ?? "");
         return;
       }
       error = e instanceof ApiError ? e.message : passkeyErrorMessage(e);
