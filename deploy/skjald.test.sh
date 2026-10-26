@@ -45,7 +45,17 @@ check "the version names the commit" grep -qE '^Skjald [0-9a-f]{7,} \([0-9]{4}-[
 printf 'v1.2.3\n' >"${WORK}/repo/deploy/VERSION"
 check "installed from a release, the version is the release's" test "$(version)" = "Skjald v1.2.3"
 check "  and update knows it" from_release
+# docker stands in, saying which version a build would be told.
+# shellcheck disable=SC2317 # called by compose
+docker() { printf '%s' "${SKJALD_VERSION}"; }
+check "  and builds nothing, so tells no version to a build" test -z "$(compose ps)"
 rm "${WORK}/repo/deploy/VERSION"
+check "a build from a checkout calls itself what git calls the commit" \
+	test "$(compose up -d --build)" = "$(git -C "${WORK}/repo" rev-parse --short HEAD)"
+git -C "${WORK}/repo" -c user.name=t -c user.email=t@example.invalid commit --quiet --allow-empty -m next
+git -C "${WORK}/repo" tag v9.9.9
+check "  the commit an update moved to, not the one before" test "$(compose up -d --build)" = "v9.9.9"
+unset -f docker
 
 touch "${WORK}/repo/stray-file"
 check "update refuses a checkout with changes of its own" \
