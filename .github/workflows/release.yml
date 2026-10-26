@@ -1,0 +1,158 @@
+name: Release
+
+# A tag such as v1.0.0 (or v1.0.0-rc.1, published as a pre-release) builds the
+# images, scans them, makes their SBOMs, signs images, SBOMs and installer with
+# Sigstore cosign (keyless, as this workflow), publishes the images to ghcr.io and
+# the installer and compose file to a GitHub release. The installer checks every
+# signature against this workflow's identity before it starts anything.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # the GitHub release
+  packages: write # ghcr.io
+  id-token: write # cosign's keyless signatures
+
+concurrency:
+  group: release-${{ github.ref }}
+
+jobs:
+  release:
+    name: Build, scan, sign and publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      VERSION: ${{ github.ref_name }}
+      COSIGN_VERSION: v3.1.3
+      COSIGN_SHA256: 4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71
+      SOURCE: https://github.com/${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: The version, and where the images go
+        run: |
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "A release tag looks like v1.2.3 or v1.2.3-rc.1, not $VERSION." >&2
+            exit 1
+          fi
+          owner=$(tr '[:upper:]' '[:lower:]' <<<"${{ github.repository_owner }}")
+          echo "APP=ghcr.io/$owner/skjald-app" >>"$GITHUB_ENV"
+          echo "CADDY=ghcr.io/$owner/skjald-caddy" >>"$GITHUB_ENV"
+          mkdir -p dist
+
+      - name: Install cosign (pinned, checked)
+        run: |
+          curl -fsSLo /tmp/cosign "https://github.com/sigstore/cosign/releases/download/$COSIGN_VERSION/cosign-linux-amd64"
+          echo "$COSIGN_SHA256  /tmp/cosign" | sha256sum -c -
+          sudo install -m 0755 /tmp/cosign /usr/local/bin/cosign
+          cosign version
+
+      - uses: docker/login-action@v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push the images
+        run: |
+          label=(--label "org.opencontainers.image.source=$SOURCE"
+                 --label "org.opencontainers.image.version=$VERSION"
+                 --label "org.opencontainers.image.revision=$GITHUB_SHA")
+          docker build "${label[@]}" --build-arg "SKJALD_VERSION=$VERSION" -t "$APP:$VERSION" backend
+          docker build "${label[@]}" -t "$CADDY:$VERSION" -f deploy/caddy.Dockerfile .
+          docker push "$APP:$VERSION"
+          docker push "$CADDY:$VERSION"
+          # Everything after this refers to the images by digest, never by tag.
+          digest() { docker inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$1:$VERSION" | grep -m1 "^$1@sha256:"; }
+          echo "APP_REF=$(digest "$APP")" >>"$GITHUB_ENV"
+          echo "CADDY_REF=$(digest "$CADDY")" >>"$GITHUB_ENV"
+
+      # The same check as on every pull request: high and critical vulnerabilities
+      # with a fix released stop the release.
+      - name: Scan the images
+        run: |
+          for ref in "$APP_REF" "$CADDY_REF"; do
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+              aquasec/trivy:0.75.0 image --quiet --scanners vuln --severity HIGH,CRITICAL \
+              --ignore-unfixed --exit-code 1 "$ref"
+          done
+
+      - name: SBOM of the app image
+        uses: anchore/sbom-action@v0.24.2
+        with:
+          image: ${{ env.APP_REF }}
+          format: spdx-json
+          output-file: dist/skjald-app.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: SBOM of the Caddy image
+        uses: anchore/sbom-action@v0.24.2
+        with:
+          image: ${{ env.CADDY_REF }}
+          format: spdx-json
+          output-file: dist/skjald-caddy.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Sign the images, and attach their SBOMs as signed attestations
+        run: |
+          cosign sign --yes "$APP_REF"
+          cosign sign --yes "$CADDY_REF"
+          cosign attest --yes --type spdxjson --predicate dist/skjald-app.spdx.json "$APP_REF"
+          cosign attest --yes --type spdxjson --predicate dist/skjald-caddy.spdx.json "$CADDY_REF"
+
+      - name: The files of the release
+        run: |
+          python3 deploy/release-compose.py deploy/docker-compose.yml "$APP_REF" "$CADDY_REF" \
+            >dist/docker-compose.yml
+          sed "s|^SKJALD_RELEASE=.*|SKJALD_RELEASE=\${SKJALD_RELEASE:-$VERSION}|" install.sh >dist/install.sh
+          grep -qx "SKJALD_RELEASE=\${SKJALD_RELEASE:-$VERSION}" dist/install.sh
+          # No leading dot in a release file's name: GitHub renames such files.
+          cp deploy/skjald dist/skjald
+          cp deploy/.env.example dist/env.example
+          chmod 0755 dist/install.sh dist/skjald
+          (cd dist && sha256sum docker-compose.yml install.sh skjald env.example \
+            skjald-app.spdx.json skjald-caddy.spdx.json >SHA256SUMS)
+          cosign sign-blob --yes --bundle dist/SHA256SUMS.sigstore.json dist/SHA256SUMS
+          cosign sign-blob --yes --bundle dist/install.sh.sigstore.json dist/install.sh
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=()
+          if [[ "$VERSION" == *-* ]]; then prerelease=(--prerelease); fi
+          identity="$SOURCE/.github/workflows/release.yml@refs/tags/$VERSION"
+          cat >notes.md <<EOF
+          Install on Ubuntu Server LTS:
+
+              curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | sudo bash
+
+          Or check the installer yourself first, with [cosign](https://docs.sigstore.dev/cosign/system_config/installation/):
+
+              cosign verify-blob --bundle install.sh.sigstore.json \\
+                --certificate-identity $identity \\
+                --certificate-oidc-issuer https://token.actions.githubusercontent.com install.sh
+              sudo bash install.sh
+
+          Either way, the installer checks the signature of every image before starting it.
+
+          Images: \`$APP_REF\` and \`$CADDY_REF\`
+          EOF
+          files=(docker-compose.yml install.sh install.sh.sigstore.json skjald env.example
+                 SHA256SUMS SHA256SUMS.sigstore.json skjald-app.spdx.json skjald-caddy.spdx.json)
+          # A draft first, read back and checked as the installer will check it, and
+          # published only then: a release missing a file never goes out.
+          gh release create "$VERSION" "${files[@]/#/dist/}" --draft --verify-tag \
+            --title "Skjald $VERSION" --notes-file notes.md "${prerelease[@]}"
+          gh release download "$VERSION" --dir published
+          for name in "${files[@]}"; do
+            test -f "published/$name" || { echo "The release lacks $name." >&2; exit 1; }
+          done
+          cosign verify-blob --bundle published/SHA256SUMS.sigstore.json \
+            --certificate-identity "$identity" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com published/SHA256SUMS
+          (cd published && sha256sum -c SHA256SUMS)
+          gh release edit "$VERSION" --draft=false

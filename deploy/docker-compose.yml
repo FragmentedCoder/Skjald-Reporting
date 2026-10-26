@@ -1,0 +1,105 @@
+services:
+  caddy:
+    build:
+      context: ..
+      dockerfile: deploy/caddy.Dockerfile
+    restart: unless-stopped
+    ports:
+      # Another port only for a second stack beside this one, such as the browser
+      # tests' (frontend/e2e/run.sh); SKJALD_ADDRESS must then carry it too.
+      - "${SKJALD_HTTPS_PORT:-443}:${SKJALD_HTTPS_PORT:-443}"
+    environment:
+      SKJALD_ADDRESS: ${SKJALD_ADDRESS:-https://localhost}
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+      # The TLS settings (and an uploaded certificate) the app writes.
+      - skjald_tls:/etc/caddy/skjald:ro
+    depends_on:
+      - app
+
+  app:
+    build:
+      context: ../backend
+      args:
+        # What the build calls itself: set by the installer and the skjald command.
+        SKJALD_VERSION: ${SKJALD_VERSION:-}
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    environment:
+      SKJALD_ADDRESS: ${SKJALD_ADDRESS:-https://localhost}
+      SKJALD_DATA_DIR: /data
+      SKJALD_MASTER_KEY_PATH: /etc/skjald/master.key
+    volumes:
+      - skjald_data:/data
+      - ${SKJALD_ETC:-/etc/skjald}:/etc/skjald:ro
+      - skjald_tls:/tls
+
+  # The background worker: backups, the audit log's daily timestamp, email. The
+  # same image and limits as the app, without a port.
+  worker:
+    build:
+      context: ../backend
+      args:
+        # What the build calls itself: set by the installer and the skjald command.
+        SKJALD_VERSION: ${SKJALD_VERSION:-}
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    command: ["python", "-m", "app.worker"]
+    environment:
+      SKJALD_ADDRESS: ${SKJALD_ADDRESS:-https://localhost}
+      SKJALD_DATA_DIR: /data
+      SKJALD_MASTER_KEY_PATH: /etc/skjald/master.key
+    volumes:
+      - skjald_data:/data
+      - ${SKJALD_ETC:-/etc/skjald}:/etc/skjald:ro
+      # Backups kept on this server: a volume by default, or a folder on the host
+      # (owned by UID 10001) when SKJALD_BACKUP_DIR names one, such as a mounted disk.
+      - ${SKJALD_BACKUP_DIR:-skjald_backups}:/backups
+    depends_on:
+      - app
+
+  # For the skjald command, never started with the others: what has to write to
+  # the master key's folder (rotating the key) or work on the data while the app
+  # is stopped (copying it aside before an update). The same image and limits.
+  tools:
+    build:
+      context: ../backend
+      args:
+        # What the build calls itself: set by the installer and the skjald command.
+        SKJALD_VERSION: ${SKJALD_VERSION:-}
+    profiles: ["tools"]
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    environment:
+      SKJALD_ADDRESS: ${SKJALD_ADDRESS:-https://localhost}
+      SKJALD_DATA_DIR: /data
+      SKJALD_MASTER_KEY_PATH: /etc/skjald/master.key
+    volumes:
+      - skjald_data:/data
+      - ${SKJALD_ETC:-/etc/skjald}:/etc/skjald
+      - ${SKJALD_BACKUP_DIR:-skjald_backups}:/backups
+
+volumes:
+  caddy_data:
+  caddy_config:
+  skjald_data:
+  skjald_backups:
+  skjald_tls:

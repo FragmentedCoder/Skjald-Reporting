@@ -1,0 +1,40 @@
+<script lang="ts">
+  import { goto } from "$app/navigation";
+  import { resolve } from "$app/paths";
+  import { onMount } from "svelte";
+  import { pageTitle } from "#lib/branding.svelte.js";
+  import AuthLayout from "#lib/components/AuthLayout.svelte";
+  import VerifySecondFactor from "#lib/components/VerifySecondFactor.svelte";
+  import {
+    settle,
+    signOut,
+    useSession,
+    type SecondFactorResult,
+    type SessionInfo,
+  } from "#lib/session.svelte.js";
+
+  let info = $state<SessionInfo | null>(null);
+
+  onMount(async () => {
+    info = await settle("/sign-in/verify");
+  });
+
+  async function done(result: SecondFactorResult) {
+    useSession(result.session);
+    await goto(resolve("/(app)"));
+  }
+</script>
+
+<svelte:head><title>{pageTitle("Confirm it's you")}</title></svelte:head>
+
+{#if info}
+  <AuthLayout
+    heading="Confirm it's you"
+    intro={`Signed in as ${info.user.display_name}. Finish with your multifactor method.`}
+  >
+    <VerifySecondFactor {info} onDone={done} />
+    {#snippet footer()}
+      <button class="link-button" type="button" onclick={signOut}>Sign out</button>
+    {/snippet}
+  </AuthLayout>
+{/if}

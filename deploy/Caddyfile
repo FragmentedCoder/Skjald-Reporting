@@ -1,0 +1,56 @@
+{
+	auto_https disable_redirects
+}
+
+{$SKJALD_ADDRESS:https://localhost} {
+	# Caddy's own certificate authority, the organisation's certificate, or Let's
+	# Encrypt: chosen in Skjald (Admin -> Certificate), put here by caddy-start.sh.
+	import /etc/caddy/active-tls.caddy
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		# The page's full CSP is a <meta> tag the frontend build writes (with script
+		# hashes); these are the parts only a header can carry.
+		Content-Security-Policy "frame-ancestors 'none'; object-src 'none'; base-uri 'none'"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+		Referrer-Policy "same-origin"
+		-Server
+	}
+
+	request_body {
+		max_size 2GB
+	}
+
+	handle /api/* {
+		# The API takes small bodies only; the largest is a 2 MB picture.
+		request_body {
+			max_size 5MB
+		}
+		# The admin panel's allowlist (Admin -> Security), here as well as in the app:
+		# refused requests to /api/admin never reach it.
+		import /etc/caddy/active-admin-allowlist.caddy
+		reverse_proxy app:8000 {
+			transport http {
+				read_timeout 60s
+			}
+		}
+	}
+
+	# The root certificate of Caddy's own authority, for computers to trust. Only
+	# that one file: the folder also holds the authority's keys.
+	handle /skjald-root.crt {
+		root * /data/caddy/pki/authorities/local
+		rewrite * /root.crt
+		header Content-Type application/x-x509-ca-cert
+		header Content-Disposition "attachment; filename=\"skjald-root.crt\""
+		file_server
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}
