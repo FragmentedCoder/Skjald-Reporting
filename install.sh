@@ -258,9 +258,19 @@ signer() {
 	fi
 }
 
+# The newest full release; while there's none yet, the newest pre-release. Nothing
+# when GitHub doesn't answer plainly: never a pre-release for a release unseen.
 newest_release() {
-	curl -fsSL "https://api.github.com/repos/${SKJALD_REPOSITORY}/releases/latest" |
-		sed -n 's/^ *"tag_name": *"\([^"]*\)".*/\1/p' | head -1
+	local releases="https://api.github.com/repos/${SKJALD_REPOSITORY}/releases" answer status
+	answer=$(mktemp)
+	status=$(curl -sSL -o "${answer}" -w '%{http_code}' "${releases}/latest") || status=000
+	if [[ "${status}" == 404 ]]; then
+		status=$(curl -sSL -o "${answer}" -w '%{http_code}' "${releases}?per_page=1") || status=000
+	fi
+	if [[ "${status}" == 200 ]]; then
+		sed -n 's/^ *"tag_name": *"\([^"]*\)".*/\1/p' "${answer}" | head -1
+	fi
+	rm -f "${answer}"
 }
 
 # A release's files into a folder, each checked against the signed checksums.
@@ -306,8 +316,9 @@ install_release() {
 	local version=${SKJALD_RELEASE:-} staging name mode
 	if [[ -z "${version}" ]]; then
 		version=$(newest_release)
-		[[ -n "${version}" ]] || die "There's no Skjald release to install yet."
+		[[ -n "${version}" ]] || die "No Skjald release found to install: GitHub didn't answer, or there's none yet."
 	fi
+	if [[ "${version}" == *-* ]]; then warn "Skjald ${version} is a pre-release: for trying out, not for real data."; fi
 	install_cosign
 	staging=$(mktemp -d)
 	fetch_release "${version}" "${staging}"

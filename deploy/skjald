@@ -181,9 +181,19 @@ cmd_keys() {
 # Installed from a release (in /opt/skjald, with its VERSION), or run from a checkout.
 from_release() { [[ -f "${DEPLOY_DIR}/VERSION" ]]; }
 
+# The newest full release; while there's none yet, the newest pre-release. Nothing
+# when GitHub doesn't answer plainly: never a pre-release for a release unseen.
 newest_release() {
-	curl -fsSL "https://api.github.com/repos/${SKJALD_REPOSITORY:-FragmentedCoder/Skjald-Reporting}/releases/latest" |
-		sed -n 's/^ *"tag_name": *"\([^"]*\)".*/\1/p' | head -1
+	local releases="https://api.github.com/repos/${SKJALD_REPOSITORY:-FragmentedCoder/Skjald-Reporting}/releases" answer status
+	answer=$(mktemp)
+	status=$(curl -sSL -o "${answer}" -w '%{http_code}' "${releases}/latest") || status=000
+	if [[ "${status}" == 404 ]]; then
+		status=$(curl -sSL -o "${answer}" -w '%{http_code}' "${releases}?per_page=1") || status=000
+	fi
+	if [[ "${status}" == 200 ]]; then
+		sed -n 's/^ *"tag_name": *"\([^"]*\)".*/\1/p' "${answer}" | head -1
+	fi
+	rm -f "${answer}"
 }
 
 RELEASE_FILES="docker-compose.yml install.sh skjald .env.example VERSION"
@@ -219,7 +229,7 @@ cmd_update() {
 	if from_release; then
 		old=$(cat "${DEPLOY_DIR}/VERSION")
 		target=${ref:-$(newest_release)}
-		[[ -n "${target}" ]] || die "There's no Skjald release to update to."
+		[[ -n "${target}" ]] || die "No Skjald release found to update to: GitHub didn't answer, or there's none yet."
 		if [[ "${target}" == "${old}" ]]; then
 			log "Already up to date: Skjald ${old}."
 			return 0
