@@ -54,11 +54,11 @@ export const session = $state<{
 export const appearance = $state({ applied: 0 });
 
 /**
- * Light or dark as the user chose; "system" leaves it to the browser's setting. A
- * change you'd see (as when someone's own choice applies after their password)
- * fades across, where the browser can and motion is welcome.
+ * Light or dark as the user chose; "system" leaves it to the browser's setting.
+ * With `fade`, a change you'd see fades slowly across, where the browser can and
+ * motion is welcome; otherwise it's instant, as when someone picks it in the app.
  */
-export function applyTheme(theme: Theme | undefined): void {
+export function applyTheme(theme: Theme | undefined, fade = false): void {
   if (typeof document === "undefined") return;
   const root = document.documentElement;
   const systemDark = matchMedia("(prefers-color-scheme: dark)").matches;
@@ -71,15 +71,26 @@ export function applyTheme(theme: Theme | undefined): void {
   };
   const changes = darkWith(root.dataset.theme) !== darkWith(theme);
   const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  if (changes && !calm && "startViewTransition" in document) document.startViewTransition(set);
+  if (fade && changes && !calm && "startViewTransition" in document) document.startViewTransition(set);
   else set();
 }
 
-export function useSession(info: SessionInfo | null): void {
+// Where the browser is; nowhere outside one (page can only be read there).
+function here(): string {
+  return typeof document === "undefined" ? "" : (page.url?.pathname ?? "");
+}
+
+// The sign-in screens: someone's own light or dark fades in there as they sign in.
+function onSignInScreens(): boolean {
+  return here().startsWith("/sign-in") || here().startsWith("/setup");
+}
+
+/** `fade`: on the way to or from the sign-in screens, light or dark fades across. */
+export function useSession(info: SessionInfo | null, fade = onSignInScreens()): void {
   const before = session.current;
   session.current = info;
   setCsrfToken(info?.csrf_token ?? null);
-  applyTheme(info?.user.theme);
+  applyTheme(info?.user.theme, fade);
   watch(info);
   if (info?.second_factor === "done" && before?.second_factor !== "done") {
     warnAboutRecoveryCodes(info);
@@ -139,15 +150,24 @@ export function can(info: SessionInfo | null, capability: Capability): boolean {
 
 let leaving: Promise<void> | null = null;
 
+// Found out this long after the session was due to run out, the page (or the
+// computer) was asleep: whoever comes back finds the sign-in page, which says enough.
+const LATE_MS = 5 * 60_000;
+
 /**
- * The server ended the session: say why, and go straight to the sign-in page.
+ * The server ended the session: go straight to the sign-in page, and say why to
+ * someone using Skjald here when it happened. Opening Skjald again later, or
+ * coming back to a page that slept through it, there's nothing to explain.
  * Several requests may find out at once; they share one toast and one move.
  */
 export async function sessionEnded(message: string): Promise<void> {
-  if (session.current) clearToasts(); // they were about the session that ended
-  useSession(null);
-  toast(message, "warning", { key: "session" });
-  if (page.url?.pathname === "/sign-in") return;
+  const info = session.current;
+  const due = info ? Math.min(Date.parse(info.idle_expires_at), Date.parse(info.expires_at)) : 0;
+  const tell = info !== null && Date.now() - due < LATE_MS;
+  if (info) clearToasts(); // they were about the session that ended
+  useSession(null, true);
+  if (tell) toast(message, "warning", { key: "session" });
+  if (here() === "/sign-in") return;
   leaving ??= goto(resolve("/sign-in"), { replace: true }).finally(() => (leaving = null));
   await leaving;
 }
@@ -158,7 +178,7 @@ export async function signOut(): Promise<void> {
   } catch {
     // Signed out on the server already, or unreachable: forget the session either way.
   }
-  useSession(null);
+  useSession(null, true);
   clearToasts();
   await goto(resolve(placeFor(null)), { replace: true });
 }

@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useSession, type SessionInfo } from "./session.svelte";
+import { session, sessionEnded, useSession, type SessionInfo } from "./session.svelte";
 import { dismiss, toasts } from "./toast.svelte";
+
+vi.mock("$app/navigation", () => ({ goto: vi.fn(async () => {}) }));
 
 const NOW = Date.parse("2026-10-24T12:00:00Z");
 const LATER = "2026-10-25T00:00:00Z";
@@ -90,5 +92,40 @@ describe("the idle warning", () => {
     expect(toasts.filter((t) => t.key === "idle")).toHaveLength(0);
     await vi.advanceTimersByTimeAsync(2 * 60_000);
     expect(toasts.filter((t) => t.key === "idle")).toHaveLength(1);
+  });
+});
+
+describe("an ended session", () => {
+  const told = () => toasts.filter((t) => t.key === "session").map((t) => t.text);
+
+  it("is explained to someone using Skjald when it ends", async () => {
+    useSession(signedIn(LATER));
+    await sessionEnded("An administrator signed you out. Sign in again to continue.");
+    expect(told()).toEqual(["An administrator signed you out. Sign in again to continue."]);
+    expect(session.current).toBeNull();
+  });
+
+  it("is explained just after it ran out, as the page found out by itself", async () => {
+    useSession(signedIn("2026-10-24T11:59:58Z"));
+    await sessionEnded("You were signed out after 30 minutes without activity.");
+    expect(told()).toHaveLength(1);
+  });
+
+  it("isn't, long after it ran out: the page or the computer slept through it", async () => {
+    useSession(signedIn("2026-10-24T09:00:00Z"));
+    await sessionEnded("Your session has ended. Sign in again to continue.");
+    expect(told()).toHaveLength(0);
+    expect(session.current).toBeNull();
+  });
+
+  it("isn't, opening Skjald again later", async () => {
+    await sessionEnded("Your session has ended. Sign in again to continue.");
+    expect(told()).toHaveLength(0);
+  });
+
+  it("is told once when several requests find out at once", async () => {
+    useSession(signedIn(LATER));
+    await Promise.all([sessionEnded("Ended."), sessionEnded("Ended."), sessionEnded("Ended.")]);
+    expect(told()).toEqual(["Ended."]);
   });
 });

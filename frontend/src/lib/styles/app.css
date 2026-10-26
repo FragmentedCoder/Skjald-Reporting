@@ -29,7 +29,7 @@ body {
   min-height: 100vh;
 }
 
-/* Switching between light and dark fades the page across (see applyTheme). */
+/* Light or dark fades the page across as someone signs in (see applyTheme). */
 ::view-transition-old(root),
 ::view-transition-new(root) {
   animation-duration: 1400ms;

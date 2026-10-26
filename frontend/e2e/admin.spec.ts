@@ -206,6 +206,17 @@ test("the admin panel, from adding a user to their first sign-in", async ({ brow
   const link = () =>
     admin.evaluate(() => document.documentElement.style.getPropertyValue("--link"));
   await admin.getByRole("link", { name: "Your account" }).click();
+  // In the app the change is instant: the slow fade is for the sign-in screens.
+  const fades = () => admin.evaluate(() => (window as unknown as { fades: number }).fades);
+  await admin.evaluate(() => {
+    const counted = window as unknown as { fades: number };
+    counted.fades = 0;
+    const fade = document.startViewTransition.bind(document);
+    document.startViewTransition = (update) => {
+      counted.fades++;
+      return fade(update);
+    };
+  });
   await admin.getByRole("radio", { name: "Dark", exact: true }).check();
   await expect(admin.locator("html")).toHaveAttribute("data-theme", "dark");
   await admin.getByRole("radio", { name: "Pine" }).check();
@@ -214,6 +225,7 @@ test("the admin panel, from adding a user to their first sign-in", async ({ brow
   await admin.getByRole("button", { name: "Switch to light mode" }).click();
   await expect(admin.locator("html")).toHaveAttribute("data-theme", "light");
   await expect.poll(link).toBe("#2F6B47");
+  expect(await fades()).toBe(0);
   await admin.reload();
   await expect(admin.locator("html")).toHaveAttribute("data-theme", "light");
   await expect.poll(link).toBe("#2F6B47");
