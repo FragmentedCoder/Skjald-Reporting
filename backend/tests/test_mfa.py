@@ -122,6 +122,27 @@ def test_a_returning_user_signs_in_with_the_app(frozen_clock, client, enrolled) 
     assert response.json()["recovery_codes"] is None
 
 
+def test_the_version_is_shown_only_once_signed_in(
+    frozen_clock, client, enrolled, monkeypatch
+) -> None:
+    monkeypatch.setenv("SKJALD_VERSION", "v1.2.3")
+    secret, _ = enrolled
+    # A password alone doesn't say which Skjald this is.
+    assert sign_in(client).json()["version"] is None
+    response = post(client, f"{MFA}/totp/verify", {"code": code_at(secret, frozen_clock.now)})
+    assert response.json()["session"]["version"] == "v1.2.3"
+    assert client.get("/api/auth/session").json()["version"] == "v1.2.3"
+
+
+def test_a_build_without_a_version_says_it_is_a_development_build(monkeypatch) -> None:
+    from app.version import skjald_version
+
+    monkeypatch.delenv("SKJALD_VERSION", raising=False)
+    assert skjald_version().endswith("-dev")
+    monkeypatch.setenv("SKJALD_VERSION", " ")
+    assert skjald_version().endswith("-dev")
+
+
 def test_a_code_cannot_be_used_twice(frozen_clock, client, enrolled) -> None:
     secret, _ = enrolled
     code = code_at(secret, frozen_clock.now)

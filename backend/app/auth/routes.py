@@ -41,6 +41,7 @@ from app.images import avatar_url
 from app.notices import notify_administrators
 from app.policy import load_policy, login_allowed_from
 from app.roles import Capability, Role, roles_of
+from app.version import skjald_version
 
 router = APIRouter(prefix="/auth")
 
@@ -86,6 +87,8 @@ class SessionInfo(BaseModel):
     csrf_token: str
     idle_expires_at: datetime
     expires_at: datetime
+    # Only once signed in: which Skjald this is, shown in the menu.
+    version: str | None
 
 
 class SessionStatus(BaseModel):
@@ -118,6 +121,7 @@ def session_info(db: Session, record: UserSession, token: str, request: Request)
         csrf_token=csrf_token_for(token),
         idle_expires_at=idle_deadline(record, policy),
         expires_at=record.expires_at,
+        version=skjald_version() if state == "done" else None,
     )
 
 

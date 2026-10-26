@@ -18,6 +18,7 @@ function signedIn(idleExpiresAt: string): SessionInfo {
     csrf_token: "t",
     idle_expires_at: idleExpiresAt,
     expires_at: LATER,
+    version: null,
   };
 }
 

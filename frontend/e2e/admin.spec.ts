@@ -156,7 +156,12 @@ test("the admin panel, from adding a user to their first sign-in", async ({ brow
   await expect
     .poll(() => admin.evaluate(() => document.documentElement.style.getPropertyValue("--link")))
     .toBe("");
-  await expect(admin.getByRole("complementary", { name: "Side menu" })).toContainText("Nordlys Rapport");
+  // The menu's head: the name, the tag line under it, and which Skjald this is
+  // (a development build here).
+  const menuHead = admin.getByRole("complementary", { name: "Side menu" }).locator(".side-head");
+  await expect(menuHead).toContainText("Nordlys Rapport");
+  await expect(menuHead).toContainText("Rapporter fra fjorden.");
+  await expect(menuHead).toContainText(/\d+\.\d+\.\d+-dev/);
   await expect(admin).toHaveTitle(/Nordlys Rapport/);
   await shot(admin, "9-branding");
 

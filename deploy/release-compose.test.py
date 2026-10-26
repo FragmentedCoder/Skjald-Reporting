@@ -27,6 +27,7 @@ check("a registry with a port will do", local in release_compose.release_compose
 check("no service is built", "build:" not in made)
 check("the app, worker and tools run the app image", made.count(f"image: {APP}") == 3)
 check("Caddy runs the Caddy image", made.count(f"image: {CADDY}") == 1)
+check("the version is the image's own, not a setting", "SKJALD_VERSION" not in made)
 check("the rest is as it was", made.count("SKJALD_ETC") == compose.count("SKJALD_ETC"))
 for bad in ("ghcr.io/fragmentedcoder/skjald-app:v1.0.0", "evil\nimage: x@sha256:" + "c" * 64):
     try:

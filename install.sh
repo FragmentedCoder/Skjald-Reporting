@@ -330,7 +330,14 @@ link_command() {
 }
 
 compose() {
-	docker compose --project-directory "${DEPLOY_DIR}" -f "${DEPLOY_DIR}/docker-compose.yml" "$@"
+	# Built from a checkout, Skjald calls itself what git calls the commit.
+	local repo version=""
+	if from_checkout; then
+		repo=$(dirname "${DEPLOY_DIR}")
+		version=$(git -c safe.directory="${repo}" -C "${repo}" describe --tags --always 2>/dev/null) || true
+	fi
+	SKJALD_VERSION=${version} docker compose --project-directory "${DEPLOY_DIR}" \
+		-f "${DEPLOY_DIR}/docker-compose.yml" "$@"
 }
 
 start_stack() {

@@ -38,6 +38,7 @@ from app.policy import load_policy
 from app.settings import settings
 from app.setup import setup_completed_at
 from app.users import User
+from app.version import skjald_version
 
 router = APIRouter(prefix="/admin")
 
@@ -387,7 +388,7 @@ def server_health(_: Admin, db: DB) -> ServerHealth:
         usage=Usage(disk_total_bytes=disk.total, disk_free_bytes=disk.free,
                     database_bytes=database_bytes, **counts),
         versions=Versions(
-            skjald=importlib.metadata.version("skjald-backend"),
+            skjald=skjald_version(),
             python=platform.python_version(),
             sqlite=sqlite_version,
             sqlcipher=sqlcipher_version,

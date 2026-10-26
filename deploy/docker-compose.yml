@@ -21,6 +21,9 @@ services:
   app:
     build:
       context: ../backend
+      args:
+        # What the build calls itself: set by the installer and the skjald command.
+        SKJALD_VERSION: ${SKJALD_VERSION:-}
     restart: unless-stopped
     read_only: true
     tmpfs:
@@ -43,6 +46,9 @@ services:
   worker:
     build:
       context: ../backend
+      args:
+        # What the build calls itself: set by the installer and the skjald command.
+        SKJALD_VERSION: ${SKJALD_VERSION:-}
     restart: unless-stopped
     read_only: true
     tmpfs:
@@ -71,6 +77,9 @@ services:
   tools:
     build:
       context: ../backend
+      args:
+        # What the build calls itself: set by the installer and the skjald command.
+        SKJALD_VERSION: ${SKJALD_VERSION:-}
     profiles: ["tools"]
     read_only: true
     tmpfs:

@@ -30,6 +30,11 @@ RUN pip install --no-cache-dir . \
 # on the host set by SKJALD_BACKUP_DIR). /tls: the TLS settings the app gives Caddy.
 RUN mkdir -p /data /backups /tls && chown skjald:skjald /data /backups /tls
 
+# Which Skjald this is, shown to people signed in: the release's tag, or for a build
+# from a checkout what git calls that commit. Last, so a new one rebuilds nothing.
+ARG SKJALD_VERSION=
+ENV SKJALD_VERSION=${SKJALD_VERSION}
+
 USER skjald
 EXPOSE 8000
 

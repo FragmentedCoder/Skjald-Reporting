@@ -28,6 +28,8 @@ export interface SessionInfo {
   csrf_token: string;
   idle_expires_at: string;
   expires_at: string;
+  // Only once signed in: which Skjald this is.
+  version: string | null;
 }
 
 export interface SecondFactorResult {

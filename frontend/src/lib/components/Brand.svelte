@@ -2,8 +2,13 @@
   import { branding } from "#lib/branding.svelte.js";
   import Mark from "./Mark.svelte";
 
-  // The company's logo and site name when an Administrator set them, else Skjald's.
-  let { size = 32, tagline = false }: { size?: number; tagline?: boolean } = $props();
+  // The company's logo and site name when an Administrator set them, else Skjald's;
+  // the version, when given, beside the name.
+  let {
+    size = 32,
+    tagline = false,
+    version = null,
+  }: { size?: number; tagline?: boolean; version?: string | null } = $props();
 
   const look = $derived(branding.current);
 </script>
@@ -15,7 +20,10 @@
     <Mark {size} />
   {/if}
   <span class="names">
-    <span class="wordmark">{look.site_name}</span>
+    <span class="name-line">
+      <span class="wordmark">{look.site_name}</span>
+      {#if version}<span class="version small muted" title="Skjald {version}">{version}</span>{/if}
+    </span>
     {#if tagline && look.tagline}<span class="tagline small muted">{look.tagline}</span>{/if}
   </span>
 </span>
@@ -38,10 +46,24 @@
     flex-direction: column;
     min-width: 0;
   }
-  .wordmark {
+  .name-line {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+  .wordmark,
+  .version {
     overflow: hidden;
-    font: var(--type-subheading);
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .wordmark {
+    font: var(--type-subheading);
+  }
+  /* A long build name (a commit past a release) gives way before the site name. */
+  .version {
+    flex-shrink: 4;
+    min-width: 3ch;
   }
 </style>

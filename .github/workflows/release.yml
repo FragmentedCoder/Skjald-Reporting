@@ -59,7 +59,7 @@ jobs:
           label=(--label "org.opencontainers.image.source=$SOURCE"
                  --label "org.opencontainers.image.version=$VERSION"
                  --label "org.opencontainers.image.revision=$GITHUB_SHA")
-          docker build "${label[@]}" -t "$APP:$VERSION" backend
+          docker build "${label[@]}" --build-arg "SKJALD_VERSION=$VERSION" -t "$APP:$VERSION" backend
           docker build "${label[@]}" -t "$CADDY:$VERSION" -f deploy/caddy.Dockerfile .
           docker push "$APP:$VERSION"
           docker push "$CADDY:$VERSION"

@@ -46,7 +46,12 @@ EOF
 }
 
 compose() {
-	docker compose --project-directory "${DEPLOY_DIR}" -f "${DEPLOY_DIR}/docker-compose.yml" "$@"
+	# Built from a checkout, Skjald calls itself what git calls the commit: worked
+	# out each time, as an update changes the commit.
+	local version=""
+	if ! from_release; then version=$(git_read describe --tags --always 2>/dev/null) || true; fi
+	SKJALD_VERSION=${version} docker compose --project-directory "${DEPLOY_DIR}" \
+		-f "${DEPLOY_DIR}/docker-compose.yml" "$@"
 }
 
 running() {

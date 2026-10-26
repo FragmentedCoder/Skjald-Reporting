@@ -10,7 +10,11 @@ changed shape, rather than publish a compose file that still builds.
 import re
 import sys
 
-APP_BUILD = "    build:\n      context: ../backend\n"
+APP_BUILD = (
+    "    build:\n      context: ../backend\n      args:\n"
+    "        # What the build calls itself: set by the installer and the skjald command.\n"
+    "        SKJALD_VERSION: ${SKJALD_VERSION:-}\n"
+)
 CADDY_BUILD = "    build:\n      context: ..\n      dockerfile: deploy/caddy.Dockerfile\n"
 # registry[:port]/path@sha256:digest
 DIGEST = re.compile(r"^[a-z0-9.-]+(:[0-9]+)?(/[a-z0-9._-]+)+@sha256:[0-9a-f]{64}$")

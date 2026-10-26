@@ -278,7 +278,7 @@
   <div class="side-column">
     <aside class="side" id="side-menu" aria-label="Side menu">
       <div class="side-head">
-        <a class="home" href={resolve("/(app)")}><Brand size={30} /></a>
+        <a class="home" href={resolve("/(app)")}><Brand size={30} tagline version={current.version} /></a>
         <button class="icon-button close" type="button" aria-label="Close the menu"
           onclick={() => (menuOpen = false)}>
           <X size={20} aria-hidden="true" />
