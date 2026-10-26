@@ -28,11 +28,14 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import sqlcipher3
 from sqlalchemy import select
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 import app.models  # noqa: F401 - run on their own, these load every table
-from app import clock
+from app import audit, clock
+from app.auth.mfa import RecoveryCode
 from app.backups import (
     HOST,
     KEY_FILES,
@@ -49,6 +52,7 @@ from app.crypto.rotation import key_id, opens, rewrap_restored
 from app.db import make_engine
 from app.jobs import Job
 from app.settings import settings
+from app.users import User
 
 DATA_FILES = ("skjald.db", "skjald.db-wal", "skjald.db-shm", *KEY_FILES)
 
@@ -64,6 +68,76 @@ def _settle_jobs(folder: Path) -> None:
             for job in db.scalars(select(Job).where(Job.state == "running")):
                 job.state, job.finished_at = "failed", clock.utcnow()
                 job.error = "It was running when the backup was made; the restore ended it."
+            db.commit()
+    finally:
+        engine.dispose()
+
+
+def _carry_recovery_codes(restored: Path, data_dir: Path) -> dict[str, Any]:
+    """Recovery codes as they are now, not as they were at the backup: a code used
+    since would work again, and someone who made new codes since would get the old
+    ones back. Carried over for everyone in both, matched by ID and username, from
+    the data being replaced; when that can't be read, say what that means."""
+    current = load_master_key(settings.master_key_path)
+    if not (data_dir / "skjald.db").exists() or not opens(data_dir, current):
+        return {"recovery_codes": "as_backed_up"}
+    try:
+        engine = make_engine(data_dir, settings.master_key_path)
+        try:
+            with Session(engine) as now:
+                people = {u.id: u.username for u in now.scalars(select(User))}
+                codes = list(now.scalars(select(RecoveryCode)))
+                now.expunge_all()
+        finally:
+            engine.dispose()
+    except (DBAPIError, sqlcipher3.Error):
+        return {"recovery_codes": "as_backed_up"}
+    engine = make_engine(restored, settings.master_key_path)
+    try:
+        with Session(engine) as db:
+            carried = 0
+            for user in db.scalars(select(User)):
+                if people.get(user.id) != user.username:
+                    continue
+                theirs = [c for c in codes if c.user_id == user.id]
+                then = list(db.scalars(select(RecoveryCode).where(RecoveryCode.user_id == user.id)))
+                if sorted((c.code_hash, c.used_at) for c in then) == sorted(
+                        (c.code_hash, c.used_at) for c in theirs):
+                    continue
+                for code in then:
+                    db.delete(code)
+                for code in theirs:
+                    db.add(RecoveryCode(user_id=code.user_id, salt=code.salt,
+                                        code_hash=code.code_hash, created_at=code.created_at,
+                                        used_at=code.used_at))
+                carried += 1
+            db.commit()
+    finally:
+        engine.dispose()
+    return {"recovery_codes": "carried_over", "recovery_codes_changed_for": carried}
+
+
+def _record(restored: Path, snapshot: str, found: dict[str, Any]) -> None:
+    """The restore, in the restored audit log, and to the Administrators by email (the
+    worker sends it once Skjald runs again)."""
+    from app.notices import notify_administrators
+
+    codes = ("Recovery codes are as they were just before the restore: used ones stay "
+             "used." if found["recovery_codes"] == "carried_over" else
+             "Recovery codes are as they were at the backup: any used since work again, "
+             "so people who used one should make new ones under Your account.")
+    engine = make_engine(restored, settings.master_key_path)
+    try:
+        with Session(engine) as db:
+            audit.append(db, "backup.restored", actor_name="console", details={
+                "snapshot": snapshot, "made_at": found.get("made_at"),
+                "recovery_codes": found["recovery_codes"]})
+            notify_administrators(db, "Skjald was restored from a backup", (
+                f"Skjald was restored on the server from the backup made "
+                f"{str(found.get('made_at'))[:16]}Z (snapshot {snapshot}). Everything done "
+                f"since that backup is gone from Skjald; the data from before the restore "
+                f"is kept on the server.\n\n{codes} Passwords and second factors are as they "
+                "were at the backup."))
             db.commit()
     finally:
         engine.dispose()
@@ -94,6 +168,10 @@ def restore(env: dict[str, str], snapshot: str, data_dir: Path,
             rewrap_restored(restored, old, settings.master_key_path)
         found = check_restored(restored)
         _settle_jobs(restored)
+        found |= _carry_recovery_codes(restored, data_dir)
+        snapshot_id = _snapshot_id(env, snapshot)
+        _record(restored, snapshot_id, found)
+        found["snapshot"] = snapshot_id
         kept = data_dir / f".before-restore-{clock.utcnow().strftime('%Y%m%dT%H%M%SZ')}"
         kept.mkdir(mode=0o700)
         for name in DATA_FILES:
@@ -105,6 +183,15 @@ def restore(env: dict[str, str], snapshot: str, data_dir: Path,
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
     return found | {"kept": str(kept)}
+
+
+def _snapshot_id(env: dict[str, str], snapshot: str) -> str:
+    """The snapshot's short ID ("latest" names no particular one)."""
+    try:
+        listed = json.loads(restic(env, "snapshots", snapshot, "--host", HOST, "--json"))
+        return str(listed[-1].get("short_id", snapshot)) if listed else snapshot
+    except (BackupError, ValueError):
+        return snapshot
 
 
 def _target_environment(key_text: str, repository: str | None,
@@ -176,8 +263,20 @@ def main(argv: list[str] | None = None) -> int:
     except BackupError as exc:
         print(f"Not restored: {exc}", file=sys.stderr)
         return 1
-    print(f"Restored: schema {found['schema']}, {found['audit_entries']:,} audit log entries, "
-          f"backed up {found['made_at']}. The data that was there is in {found['kept']}.")
+    print(f"Restored snapshot {found['snapshot']}: schema {found['schema']}, "
+          f"{found['audit_entries']:,} audit log entries, backed up {found['made_at']}. The "
+          f"data that was there is in {found['kept']}.")
+    if found["recovery_codes"] == "carried_over":
+        changed = found["recovery_codes_changed_for"]
+        print("Recovery codes are as they were just before the restore, not at the backup: "
+              f"used ones stay used ({changed} {'person' if changed == 1 else 'people'} "
+              "had used or replaced codes since the backup).")
+    else:
+        print("Recovery codes are as they were at the backup (the data before couldn't be "
+              "read): any code used since works again. Ask people who used one to make new "
+              "ones under Your account.")
+    print("Passwords and second factors are as they were at the backup. The restore is in "
+          "the audit log, and the Administrators are emailed when Skjald runs again.")
     if not os.environ.get("SKJALD_COMMAND"):  # skjald restore starts it again itself
         print("Start Skjald again with: skjald start (or docker compose up -d)")
     return 0

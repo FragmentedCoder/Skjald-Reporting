@@ -354,6 +354,115 @@ def test_a_restore_puts_the_backup_back_and_keeps_what_was_there(
 
 
 @needs_restic
+def test_a_restore_keeps_recovery_codes_as_they_are_now_and_is_recorded(
+    local_repository, session, engine, make_user, data_dir, master_key_path, monkeypatch
+) -> None:
+    """A code used since the backup stays used, someone's codes made since stay theirs,
+    and the restore is in the restored audit log and mailed to the Administrators."""
+    from sqlalchemy.orm import Session
+
+    from app import mail
+    from app.audit import AuditEntry, verify
+    from app.auth.mfa import issue_recovery_codes, use_recovery_code
+    from app.db import make_engine
+    from app.restore import restore
+
+    ingrid = make_user("ingrid", email="ingrid@nordlys.example")
+    grant_role(session, ingrid, Role.ADMINISTRATOR, actor=None, ip=None)
+    bodil = make_user("bodil")
+    ingrids = issue_recovery_codes(session, ingrid.id)
+    issue_recovery_codes(session, bodil.id)
+    mail.save_server(session, mail.MailServer(host="smtp.nordlys.example",
+                                              from_address="skjald@nordlys.example"))
+    session.commit()
+    assert run(session, "backup").state == "done"
+    # Since the backup: Ingrid used a code, Bodil made new ones.
+    assert use_recovery_code(session, ingrid.id, ingrids[0]) is not None
+    bodils_new = issue_recovery_codes(session, bodil.id)
+    session.commit()
+    session.close()
+    engine.dispose()  # Skjald is stopped
+
+    key_text = backups.password(load_or_create_backup_key(data_dir, master_key_path))
+    found = restore(backups.environment(Target(), {}, key_text), "latest", data_dir)
+    assert found["recovery_codes"] == "carried_over"
+    assert found["recovery_codes_changed_for"] == 2
+    restored = make_engine(data_dir, master_key_path)
+    with Session(restored) as db:
+        assert use_recovery_code(db, ingrid.id, ingrids[0]) is None  # still used
+        assert use_recovery_code(db, bodil.id, bodils_new[0]) is not None  # the new set
+        logged = db.scalar(select(AuditEntry).where(AuditEntry.action == "backup.restored"))
+        assert logged.actor_name == "console" and found["snapshot"] in logged.details
+        assert '"recovery_codes":"carried_over"' in logged.details
+        assert verify(db).ok
+        [notice] = [j.data() for j in db.scalars(select(jobs.Job).where(jobs.Job.kind == "mail"))]
+        assert notice["subject"] == "Skjald was restored from a backup"
+        assert notice["to"] == ["ingrid@nordlys.example"]
+        assert "used ones stay used" in notice["body"]
+        db.rollback()
+    restored.dispose()
+
+
+@needs_restic
+def test_recovery_codes_go_only_to_the_same_person(
+    local_repository, session, engine, make_user, data_dir, master_key_path
+) -> None:
+    """A backup from another server can have someone else under the same ID: their
+    codes aren't carried over to them."""
+    from sqlalchemy import text
+    from sqlalchemy.orm import Session
+
+    from app.auth.mfa import issue_recovery_codes, use_recovery_code
+    from app.db import make_engine
+    from app.restore import restore
+
+    bodil = make_user("bodil")
+    backed_up = issue_recovery_codes(session, bodil.id)
+    session.commit()
+    assert run(session, "backup").state == "done"
+    # Now, here, that ID belongs to someone else, with codes of their own.
+    session.execute(text("UPDATE users SET username = 'mette' WHERE id = :id"), {"id": bodil.id})
+    issue_recovery_codes(session, bodil.id)
+    session.commit()
+    session.close()
+    engine.dispose()
+
+    key_text = backups.password(load_or_create_backup_key(data_dir, master_key_path))
+    found = restore(backups.environment(Target(), {}, key_text), "latest", data_dir)
+    assert found["recovery_codes_changed_for"] == 0
+    restored = make_engine(data_dir, master_key_path)
+    with Session(restored) as db:
+        assert use_recovery_code(db, bodil.id, backed_up[0]) is not None  # Bodil's own
+        db.rollback()
+    restored.dispose()
+
+
+@needs_restic
+def test_a_restore_without_readable_data_says_codes_are_as_backed_up(
+    local_repository, session, engine, make_user, data_dir, master_key_path, capsys,
+    monkeypatch
+) -> None:
+    """After losing the server, there's nothing to carry over: say what that means."""
+    from app import restore as restore_module
+
+    make_user("ingrid")
+    assert run(session, "backup").state == "done"
+    session.close()
+    engine.dispose()
+    (data_dir / "skjald.db").write_bytes(b"not a database")  # the disk went
+    key_text = backups.password(load_or_create_backup_key(data_dir, master_key_path))
+    monkeypatch.setattr(restore_module, "_target_environment",
+                        lambda key, repository, target: backups.environment(Target(), {},
+                                                                            key_text))
+    monkeypatch.setattr("getpass.getpass", lambda prompt="": to_kit_text(
+        load_or_create_backup_key(data_dir, master_key_path)))
+    assert restore_module.main(["--yes"]) == 0
+    out = capsys.readouterr().out
+    assert "Recovery codes are as they were at the backup" in out
+    assert "any code used since works again" in out
+
+
+@needs_restic
 def test_a_backup_from_before_a_rotation_restores_with_its_master_key(
     local_repository, session, engine, make_user, data_dir, master_key_path
 ) -> None:
