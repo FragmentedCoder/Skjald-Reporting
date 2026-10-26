@@ -134,10 +134,15 @@ cmd_start() {
 
 # The data, copied aside with Skjald stopped, and put back.
 copy_data_to() {
+	# The tools image on its own first: built by compose run, its build log would
+	# land in the copy, ahead of the archive.
+	compose build --quiet tools >&2 || return 1
 	(
 		umask 077 # encrypted, but no one else's business either
 		compose run --rm --no-deps -T tools tar -C /data -czf - . >"$1.part"
-	)
+	) || return 1
+	# A copy to roll back to that can't be read, or lacks the database, is none.
+	gzip -t "$1.part" 2>/dev/null && tar -tzf "$1.part" | grep -qx './skjald.db' || return 1
 	mv "$1.part" "$1"
 }
 

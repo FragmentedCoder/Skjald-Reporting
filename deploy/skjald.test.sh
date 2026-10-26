@@ -57,6 +57,31 @@ git -C "${WORK}/repo" tag v9.9.9
 check "  the commit an update moved to, not the one before" test "$(compose up -d --build)" = "v9.9.9"
 unset -f docker
 
+# Copying the data aside: what docker hands over must be the archive, whole.
+mkdir -p "${WORK}/data"
+: >"${WORK}/data/skjald.db"
+archive() { tar -C "${WORK}/data" -czf - ./skjald.db; }
+refused() { ! copy_data_to "$1" 2>/dev/null && test ! -e "$1"; }
+# shellcheck disable=SC2317 # called by compose
+docker() {
+	echo "$*" >>"${WORK}/calls"
+	case " $* " in
+	*" build "*) echo "#1 [internal] load build definition from Dockerfile" ;;
+	*" run "*) archive ;;
+	esac
+}
+copied() { copy_data_to "$1" 2>/dev/null; }
+check "the data's copy is kept when it's the archive" copied "${WORK}/copy.tar.gz"
+check "  the tools image built first, apart" grep -qE "build .*tools" <(head -1 "${WORK}/calls")
+check "  its build log kept out of the copy" grep -qx './skjald.db' <(tar -tzf "${WORK}/copy.tar.gz")
+# shellcheck disable=SC2317
+docker() { case " $* " in *" run "*) printf '#1 [internal] load build definition\n' && archive ;; esac; }
+check "a copy with anything else in it is refused" refused "${WORK}/noisy.tar.gz"
+# shellcheck disable=SC2317
+docker() { case " $* " in *" run "*) tar -C "${WORK}" -czf - ./calls ;; esac; }
+check "a copy without the database is refused" refused "${WORK}/empty.tar.gz"
+unset -f docker
+
 touch "${WORK}/repo/stray-file"
 check "update refuses a checkout with changes of its own" \
 	grep -q "has changes of its own" <(skjald update 2>&1 || true)
