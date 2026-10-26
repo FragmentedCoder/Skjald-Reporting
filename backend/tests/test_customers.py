@@ -330,15 +330,15 @@ def test_a_manager_starts_numbered_projects(
         "responsible_id": astrid.id, "contact_id": contact, "site_ids": [site],
         "classification": "TLP:RED",
     }).json()
-    assert first["number"] == "P-2026-0001"
+    assert first["number"] == "P-2026-10-001"
     assert first["responsible"]["name"] == "Astrid"
     assert first["contact"]["name"] == "Sigrid Holm" and first["sites"][0]["name"] == "Head office"
     assert first["may_edit"]
     second = client.post(f"{CUSTOMERS}/{cid}/projects", headers=headers,
                          json={"name": "Yearly review"}).json()
-    assert (second["number"], second["classification"]) == ("P-2026-0002", "TLP:AMBER")
+    assert (second["number"], second["classification"]) == ("P-2026-10-002", "TLP:AMBER")
     assert [p["number"] for p in client.get("/api/projects", headers=headers).json()] == [
-        "P-2026-0002", "P-2026-0001"]
+        "P-2026-10-002", "P-2026-10-001"]
     assert len(audit_entries(session, "project.created")) == 2
 
 
@@ -436,25 +436,28 @@ def test_an_archived_project_is_read_only_until_a_manager_reopens_it(
                        "project.updated"]
 
 
-def test_project_numbers_are_never_reused(
+def test_project_numbers_count_each_month_and_are_never_reused(
     frozen_clock, client, admin, nordlys, full_session
 ) -> None:
     user, headers = admin
     url = f"{CUSTOMERS}/{nordlys['id']}/projects"
     numbers = [client.post(url, headers=headers, json={"name": f"P{i}"}).json()["number"]
                for i in range(3)]
-    assert numbers == ["P-2026-0001", "P-2026-0002", "P-2026-0003"]
+    assert numbers == ["P-2026-10-001", "P-2026-10-002", "P-2026-10-003"]
     # Even the newest one gone, with its customer, doesn't free its number.
     client.post("/api/auth/confirm-password", headers=headers, json={"password": PASSWORD})
     client.request("DELETE", f"{CUSTOMERS}/{nordlys['id']}", headers=headers,
                    json={"confirm_name": "Nordlys IT ApS"})
     other = client.post(CUSTOMERS, headers=headers, json={"name": "Fjeldstue A/S"}).json()
     assert client.post(f"{CUSTOMERS}/{other['id']}/projects", headers=headers,
-                       json={"name": "next"}).json()["number"] == "P-2026-0004"
-    frozen_clock.advance(days=70)  # into 2027
+                       json={"name": "next"}).json()["number"] == "P-2026-10-004"
+    frozen_clock.advance(days=10)  # into November: its own count
+    assert client.post(f"{CUSTOMERS}/{other['id']}/projects", headers=full_session(user),
+                       json={"name": "november"}).json()["number"] == "P-2026-11-001"
+    frozen_clock.advance(days=60)  # into 2027
     headers = full_session(user)
     assert client.post(f"{CUSTOMERS}/{other['id']}/projects", headers=headers,
-                       json={"name": "new year"}).json()["number"] == "P-2027-0001"
+                       json={"name": "new year"}).json()["number"] == "P-2027-01-001"
 
 
 # TLP:RED projects are for their team
@@ -686,3 +689,13 @@ def test_search_finds_sealed_names_and_cvr_numbers(client, admin, nordlys) -> No
     assert found("5678") == ["Nordlys IT ApS"]
     assert found("") == ["Fjeldstue A/S", "Nordlys IT ApS"]
 
+
+
+def test_a_thousandth_project_in_a_month_gets_four_digits(frozen_clock, session) -> None:
+    from app.policy import Setting
+    from app.projects import next_number
+
+    session.merge(Setting(key="project_counter/2026-10", value="998"))
+    assert [next_number(session) for _ in range(3)] == [
+        "P-2026-10-999", "P-2026-10-1000", "P-2026-10-1001"]
+    session.rollback()

@@ -110,14 +110,17 @@ def on_team_only(project: Project) -> bool:
 
 
 def next_number(db: Session) -> str:
-    """The next project number this year, from a counter that only goes up, so a
-    number stays unique even after its project (or customer) is deleted. Every
-    transaction holds the write lock from its start, so two can't get the same one."""
-    year = clock.utcnow().year
-    counter = db.get(Setting, f"project_counter/{year}")
+    """The next project number this month, such as P-2026-10-001, from a counter that
+    only goes up, so a number stays unique even after its project (or customer) is
+    deleted; a thousandth in a month gets four digits. Every transaction holds the
+    write lock from its start, so two can't get the same one. Projects numbered
+    before there was a month in it (P-2026-0001) keep their numbers."""
+    now = clock.utcnow()
+    key = f"project_counter/{now.year}-{now.month:02d}"
+    counter = db.get(Setting, key)
     issued = int(counter.value) + 1 if counter else 1
-    db.merge(Setting(key=f"project_counter/{year}", value=str(issued)))
-    return f"P-{year}-{issued:04d}"
+    db.merge(Setting(key=key, value=str(issued)))
+    return f"P-{now.year}-{now.month:02d}-{issued:03d}"
 
 
 def site_ids_of(db: Session, project_id: int) -> list[int]:

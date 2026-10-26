@@ -299,7 +299,7 @@ def list_projects(customer_id: int, request: Request, record: FullSession, db: D
     query = select(Project).where(
         Project.customer_id == customer.id,
         Project.archived_at.is_not(None) if archived else Project.archived_at.is_(None),
-    ).order_by(Project.number.desc())
+    ).order_by(Project.created_at.desc(), Project.id.desc())
     keyring = Keyring()
     return [_summary(db, keyring, project, customer) for project in db.scalars(query)
             if sees(db, record.user_id, roles, project)]

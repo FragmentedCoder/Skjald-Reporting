@@ -88,7 +88,7 @@ test("customers and projects, from adding one to deleting it", async ({ browser 
   await manager.getByRole("radio", { name: /TLP:RED/ }).check();
   await shot(manager, "2-new-project");
   await manager.getByRole("button", { name: "Create project" }).click();
-  await expect(manager.getByText(/^P-\d{4}-0001$/)).toBeVisible();
+  await expect(manager.getByText(/^P-\d{4}-\d{2}-001$/)).toBeVisible();
   await expect(manager.locator(".tags").getByText("TLP:RED")).toBeVisible();
   await expect(menu(manager, /^Projects/)).toContainText("1");
   await expect(menu(manager, "Reports")).toHaveAttribute("aria-current", "page");
