@@ -198,11 +198,18 @@
 
   $effect(() => {
     if (!nav) return;
-    const changes = new MutationObserver(() => {
+    const keep = () => {
       if (following) requestAnimationFrame(showCurrent);
-    });
+    };
+    const changes = new MutationObserver(keep);
     changes.observe(nav, { childList: true, subtree: true, characterData: true });
-    return () => changes.disconnect();
+    // Less room changes it too: the menu's head grows when the tag line arrives.
+    const resized = new ResizeObserver(keep);
+    resized.observe(nav);
+    return () => {
+      changes.disconnect();
+      resized.disconnect();
+    };
   });
 
   async function toggleTheme() {

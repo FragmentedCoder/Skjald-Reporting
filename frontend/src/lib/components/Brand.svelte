@@ -3,7 +3,7 @@
   import Mark from "./Mark.svelte";
 
   // The company's logo and site name when an Administrator set them, else Skjald's;
-  // the version, when given, beside the name.
+  // under the name the tag line, and the version when given.
   let {
     size = 32,
     tagline = false,
@@ -20,11 +20,13 @@
     <Mark {size} />
   {/if}
   <span class="names">
-    <span class="name-line">
-      <span class="wordmark">{look.site_name}</span>
-      {#if version}<span class="version small muted" title="Skjald {version}">{version}</span>{/if}
-    </span>
-    {#if tagline && look.tagline}<span class="tagline small muted">{look.tagline}</span>{/if}
+    <span class="wordmark">{look.site_name}</span>
+    {#if (tagline && look.tagline) || version}
+      <span class="under small muted">
+        {#if tagline && look.tagline}<span class="tagline" title={look.tagline}>{look.tagline}</span>{/if}
+        {#if version}<span class="version" title="Skjald {version}">{version}</span>{/if}
+      </span>
+    {/if}
   </span>
 </span>
 
@@ -46,14 +48,8 @@
     flex-direction: column;
     min-width: 0;
   }
-  .name-line {
-    display: flex;
-    align-items: baseline;
-    gap: var(--space-2);
-    min-width: 0;
-  }
   .wordmark,
-  .version {
+  .tagline {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -61,9 +57,18 @@
   .wordmark {
     font: var(--type-subheading);
   }
-  /* A long build name (a commit past a release) gives way before the site name. */
+  /* The tag line, and beside it which Skjald this is; the tag line gives way. */
+  .under {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+    min-width: 0;
+  }
   .version {
-    flex-shrink: 4;
-    min-width: 3ch;
+    flex: none;
+    padding: 0 var(--space-2);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    white-space: nowrap;
   }
 </style>
