@@ -114,6 +114,15 @@ test("the side menu, with customers and projects", async ({ browser }) => {
   await mette.goto("/admin/audit");
   await expect(menu(mette).getByRole("link", { name: "Audit log" })).toBeInViewport();
   await expect(mette.getByRole("button", { name: "Sign out" })).toBeInViewport();
+  // Also when the session answers slowly, so the menu comes after the page has
+  // loaded (SvelteKit's afterNavigate doesn't run for it then).
+  await mette.route("**/api/auth/session", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await route.continue();
+  });
+  await mette.goto("/admin/audit");
+  await expect(menu(mette).getByRole("link", { name: "Audit log" })).toBeInViewport();
+  await mette.unroute("**/api/auth/session");
 
   // Opening a customer's page fetches the customer once: what loading it changes
   // (the menu's list, the customer itself) doesn't start it again.

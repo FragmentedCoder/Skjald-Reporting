@@ -168,11 +168,8 @@
     };
   });
 
-  // Moving to another page closes the menu on a phone, and a long menu scrolls
-  // to show where you are.
-  afterNavigate(async () => {
-    menuOpen = false;
-    refreshSoon();
+  // Where you are: its groups open, and a long menu scrolled to show it.
+  async function showWhereYouAre() {
     const [, section, id] = page.url.pathname.split("/");
     if (section === "admin") folded.delete("admin");
     if (section === "projects") {
@@ -183,7 +180,17 @@
     following = true;
     await tick();
     showCurrent();
+  }
+
+  // Moving to another page closes the menu on a phone, and shows where you are.
+  afterNavigate(() => {
+    menuOpen = false;
+    refreshSoon();
+    void showWhereYouAre();
   });
+  // So does arriving: the menu comes once the session has loaded, after the
+  // first page has, and afterNavigate only runs for the pages after that.
+  onMount(() => void showWhereYouAre());
 
   const listedProjects = $derived(activeProjects(workspace.projects, workspace.project));
 
@@ -197,15 +204,24 @@
   }
 
   $effect(() => {
-    if (!nav) return;
+    const menu = nav;
+    if (!menu) return;
     const keep = () => {
       if (following) requestAnimationFrame(showCurrent);
     };
-    const changes = new MutationObserver(keep);
-    changes.observe(nav, { childList: true, subtree: true, characterData: true });
-    // Less room changes it too: the menu's head grows when the tag line arrives.
+    // Sizes change it too, with nothing in the menu changed: less room as the
+    // head grows (the tag line arrives), taller parts as the fonts load.
     const resized = new ResizeObserver(keep);
-    resized.observe(nav);
+    const watchSizes = () => {
+      resized.observe(menu);
+      for (const part of menu.children) resized.observe(part);
+    };
+    const changes = new MutationObserver(() => {
+      watchSizes();
+      keep();
+    });
+    changes.observe(menu, { childList: true, subtree: true, characterData: true });
+    watchSizes();
     return () => {
       changes.disconnect();
       resized.disconnect();
