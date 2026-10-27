@@ -26,6 +26,8 @@ dependencies = [
   "google-re2>=1.1.20251105,<1.2",
   # SVG uploads are parsed without DTDs or entities before they're cleaned.
   "defusedxml>=0.7.1,<0.8",
+  # CVSS 3.1 and 4.0 scores for CVSS questions (Red Hat's, LGPL-3.0, which AGPL allows).
+  "cvss>=3.6,<4",
 ]
 
 [project.optional-dependencies]
@@ -54,7 +56,7 @@ python_version = "3.13"
 strict = true
 
 [[tool.mypy.overrides]]
-module = ["sqlcipher3", "re2", "cel_expr_python", "cel_expr_python.*", "defusedxml", "defusedxml.*"]
+module = ["sqlcipher3", "re2", "cel_expr_python", "cel_expr_python.*", "defusedxml", "defusedxml.*", "cvss", "cvss.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
