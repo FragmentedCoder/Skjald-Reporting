@@ -142,11 +142,18 @@ test("the side menu, with customers and projects", async ({ browser }) => {
   await expect(menu(mette).getByRole("link", { name: /^Insider investigation/ })).toBeVisible();
   const adminItem = menu(mette).getByRole("link", { name: "Admin", exact: true });
   const usersItem = menu(mette).getByRole("link", { name: "Users", exact: true });
+  // With the builder's items above it, Admin can start below the fold: in view first, so
+  // clicking it doesn't scroll the menu.
+  await adminItem.scrollIntoViewIfNeeded();
   const before = await adminItem.boundingBox();
   await adminItem.click();
   await expect(mette.getByRole("heading", { name: "Users" })).toBeVisible();
   await expect(adminItem).toHaveAttribute("aria-expanded", "true");
-  expect((await adminItem.boundingBox())?.y).toBe(before?.y);
+  // Nothing above it moves down: Admin stays where it was or, when the menu is taller
+  // than the window, goes up just far enough for its page's link to show as well.
+  expect((await adminItem.boundingBox())?.y).toBeLessThanOrEqual(before?.y ?? 0);
+  await expect(adminItem).toBeInViewport();
+  await expect(usersItem).toBeInViewport();
   await adminItem.click();
   await expect(adminItem).toHaveAttribute("aria-expanded", "false");
   await expect(usersItem).toBeHidden();
