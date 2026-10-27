@@ -184,7 +184,7 @@
       "group": "Lists",
       "summary": "Whether a row of a repeating group has a value for a column.",
       "overloads": [{"id": "has_macro", "signature": "has(dyn): bool", "where": "engine"}],
-      "examples": [{"expr": "has({\"ip\": \"198.51.100.23\"}.ip)", "result": true}]
+      "examples": [{"expr": "[{\"ip\": \"198.51.100.23\"}].exists(r, has(r.ip))", "result": true}]
     },
     {
       "name": "exists",
