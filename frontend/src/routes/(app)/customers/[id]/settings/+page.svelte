@@ -5,6 +5,7 @@
   import { api, ApiError, sessionGone } from "#lib/api.js";
   import { pageTitle } from "#lib/branding.svelte.js";
   import CustomerFields from "#lib/components/CustomerFields.svelte";
+  import ReportLook from "#lib/components/customers/ReportLook.svelte";
   import Dialog from "#lib/components/Dialog.svelte";
   import { sharedCustomer } from "#lib/context.js";
   import type { CustomerDetail } from "#lib/customers.js";
@@ -110,6 +111,8 @@
       {/if}
     </div>
   </section>
+
+  {#key customer.id}<ReportLook customerId={customer.id} customerName={customer.name} />{/key}
 
   {#if customer.may_delete}
     <section class="section danger-zone" aria-labelledby="delete-title">

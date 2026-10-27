@@ -92,6 +92,7 @@
   const showAdmin = $derived(can(current, "administer") || can(current, "read_audit_log"));
   const builds = $derived(can(current, "build_templates"));
   const shares = $derived(can(current, "edit_library"));
+  const styles = $derived(can(current, "edit_styles"));
   const sees = $derived(current.user.roles.length > 0);
   let menuOpen = $state(false);
   let nav = $state<HTMLElement>();
@@ -359,7 +360,7 @@
           </div>
         {/if}
 
-        {#if builds || shares}
+        {#if builds || shares || styles}
           <ul class="items divided">
             {#if builds}
               <li>{@render link({ href: resolve("/(app)/templates"), label: "Templates", icon: LayoutTemplate,
@@ -368,6 +369,10 @@
             {#if shares}
               <li>{@render link({ href: resolve("/(app)/library"), label: "Library", icon: LibraryBig,
                 current: path.startsWith("/library") })}</li>
+            {/if}
+            {#if styles}
+              <li>{@render link({ href: resolve("/(app)/styles"), label: "Styles", icon: Palette,
+                current: path.startsWith("/styles") })}</li>
             {/if}
           </ul>
         {/if}

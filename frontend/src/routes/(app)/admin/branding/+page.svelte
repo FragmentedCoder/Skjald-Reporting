@@ -17,7 +17,17 @@
     primary_colour: "fjord",
     accent_colour: "rav",
     enforce_colours: false,
+    made_with_skjald: true,
+    time_zone: "Europe/Copenhagen",
   });
+  // Every time zone the browser knows; a saved one it doesn't know is listed first.
+  const zones = (() => {
+    try {
+      return Intl.supportedValuesOf("timeZone");
+    } catch {
+      return ["Europe/Copenhagen"];
+    }
+  })();
   let loaded = $state(false);
   let error = $state<string | null>(null);
   let busy = $state(false);
@@ -33,6 +43,8 @@
       primary_colour: current.primary_colour,
       accent_colour: current.accent_colour,
       enforce_colours: current.enforce_colours,
+      made_with_skjald: current.made_with_skjald,
+      time_zone: current.time_zone,
     };
     loaded = true;
   });
@@ -131,6 +143,23 @@
     </form>
   </section>
 
+  <section class="section" aria-labelledby="reports-title">
+    <h2 class="section-title" id="reports-title">Reports</h2>
+    <form class="stack" onsubmit={(event) => save(event, "Report settings saved.")}>
+      <div class="field">
+        <label for="time-zone">Time zone</label>
+        <select id="time-zone" class="input zone" bind:value={form.time_zone}>
+          {#each zones.includes(form.time_zone) ? zones : [form.time_zone, ...zones] as zone (zone)}<option value={zone}>{zone.replaceAll("_", " ")}</option>{/each}
+        </select>
+        <span class="hint">Reports' dates and times are written in it, and template rules work them out in it.</span>
+      </div>
+      <Switch title="Print “Made with Skjald” on reports" bind:checked={form.made_with_skjald}>
+        A small line at the foot of each page. Turn it off for reports in your brand alone.
+      </Switch>
+      <div><button class="button button-primary" type="submit" disabled={busy}>Save report settings</button></div>
+    </form>
+  </section>
+
   <section class="section" aria-labelledby="logo-title">
     <h2 class="section-title" id="logo-title">Logo</h2>
     <p class="small muted">
@@ -156,6 +185,9 @@
 {/if}
 
 <style>
+  .zone {
+    max-width: 20rem;
+  }
   .preview {
     display: flex;
     padding: var(--space-6);
