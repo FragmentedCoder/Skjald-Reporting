@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from app import audit, clock
 from app.auth.dependencies import DB, FullSession, client_ip, require
 from app.auth.sessions import UserSession
+from app.custom_fields import merge_values, shown_values
 from app.customer_routes import contacts_of, sites_of, visible_customer
 from app.customers import (
     Customer,
@@ -62,6 +63,9 @@ class ProjectFields(BaseModel):
     contact_id: int | None = None
     site_ids: list[int] = Field(default=[], max_length=200)
     classification: Classification = DEFAULT_CLASSIFICATION
+    # Custom fields' values by key (app/custom_fields.py); None or "" clears one. On a
+    # change, only the fields given change.
+    custom: dict[str, Any] = Field(default_factory=dict, max_length=100)
 
     @model_validator(mode="after")
     def _dates_in_order(self) -> ProjectFields:
@@ -113,6 +117,7 @@ class ProjectSummary(BaseModel):
 
 
 class ProjectDetail(ProjectSummary):
+    custom: dict[str, Any]
     contact: Named | None
     sites: list[Named]
     team: list[Member]
@@ -137,11 +142,12 @@ def _opened(keyring: Keyring, customer: Customer, project: Project) -> dict[str,
 
 
 def _sealed(keyring: Keyring, customer: Customer, project: Project, name: str,
-            start: date | None, end: date | None) -> bytes:
+            start: date | None, end: date | None, custom: dict[str, Any]) -> bytes:
     return keyring.sealer(customer).seal("project", project.id, {
         "name": name,
         "start_date": start.isoformat() if start else None,
         "end_date": end.isoformat() if end else None,
+        "custom": custom,
     })
 
 
@@ -210,6 +216,7 @@ def _detail(db: Session, record: UserSession, keyring: Keyring, project: Project
     roles = roles_of(db, record.user_id)
     return ProjectDetail(
         **_summary(db, keyring, project, customer).model_dump(),
+        custom=shown_values(db, "project", _opened(keyring, customer, project).get("custom")),
         contact=(Named(id=project.contact_id, name=contacts[project.contact_id])
                  if project.contact_id in contacts else None),
         sites=[Named(id=i, name=sites[i]) for i in site_ids_of(db, project.id) if i in sites],
@@ -324,7 +331,7 @@ def create_project(customer_id: int, body: ProjectIn, request: Request, record: 
     db.flush()
     keyring = Keyring()
     project.sealed = _sealed(keyring, customer, project, body.name.strip(), body.start_date,
-                             body.end_date)
+                             body.end_date, merge_values(db, "project", None, body.custom))
     _set_sites(db, project, body.site_ids)
     _log(db, request, record, "project.created", project,
          {"customer": customer.id, "classification": project.classification})
@@ -356,11 +363,14 @@ def update_project(project_id: int, body: ProjectUpdate, request: Request, recor
     if start and end and end < start:
         raise HTTPException(status.HTTP_400_BAD_REQUEST,
                             "The end date comes before the start date.")
+    custom = (merge_values(db, "project", opened.get("custom"), body.custom)
+              if "custom" in sent else opened.get("custom", {}))
     changed = [field for field, before, after in (
         ("name", opened["name"], name), ("start_date", _date(opened["start_date"]), start),
-        ("end_date", _date(opened["end_date"]), end)) if before != after]
+        ("end_date", _date(opened["end_date"]), end),
+        ("custom", opened.get("custom", {}), custom)) if before != after]
     if changed:
-        project.sealed = _sealed(keyring, customer, project, name, start, end)
+        project.sealed = _sealed(keyring, customer, project, name, start, end, custom)
     for field in ("responsible_id", "reviewer_id", "contact_id", "classification"):
         if field in sent and getattr(body, field) != getattr(project, field):
             setattr(project, field, getattr(body, field))

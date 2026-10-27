@@ -10,6 +10,7 @@ from app import (
     background_routes,
     backup_routes,
     branding,
+    custom_fields,
     customer_routes,
     maintenance,
     project_routes,
@@ -60,3 +61,4 @@ app.include_router(library_routes.router, prefix="/api")
 app.include_router(background_routes.router, prefix="/api")
 app.include_router(style_routes.router, prefix="/api")
 app.include_router(style_routes.customer_router, prefix="/api")
+app.include_router(custom_fields.router, prefix="/api")

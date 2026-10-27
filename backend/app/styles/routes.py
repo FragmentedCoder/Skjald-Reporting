@@ -26,6 +26,7 @@ from app.auth.dependencies import DB, FullSession, client_ip, effective_capabili
 from app.auth.sessions import UserSession
 from app.background_routes import Styler
 from app.branding import company_timezone
+from app.custom_fields import custom_names
 from app.customer_routes import visible_customer
 from app.customers import Customer, Keyring, visibility
 from app.library.routes import current_entries
@@ -233,7 +234,7 @@ def _log(db: Session, request: Request, record: UserSession, action: str, style:
 
 
 def _problems(db: Session, content: StyleContent) -> list[str]:
-    library = library_names(entry for entry, _ in current_entries(db))
+    library = {**library_names(entry for entry, _ in current_entries(db)), **custom_names(db)}
     return problems(content, timezone=company_timezone(db), library=library)
 
 

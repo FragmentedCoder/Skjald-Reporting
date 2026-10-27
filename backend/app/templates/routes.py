@@ -26,6 +26,7 @@ from app import audit, clock
 from app.auth.dependencies import DB, client_ip, require
 from app.auth.sessions import UserSession
 from app.branding import company_timezone
+from app.custom_fields import custom_names
 from app.library.routes import current_entries
 from app.library.values import library_names
 from app.roles import Capability
@@ -227,7 +228,7 @@ def _asset_out(asset: TemplateAsset) -> AssetOut:
 def _problems(db: Session, template_id: int, content: TemplateContent) -> list[Problem]:
     assets = set(db.scalars(select(TemplateAsset.sha256)
                             .where(TemplateAsset.template_id == template_id)))
-    library = library_names(entry for entry, _ in current_entries(db))
+    library = {**library_names(entry for entry, _ in current_entries(db)), **custom_names(db)}
     return check(content, assets=assets, library=library, timezone=company_timezone(db))
 
 
