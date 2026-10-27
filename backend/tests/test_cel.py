@@ -129,13 +129,11 @@ def test_check_gives_the_type() -> None:
     assert engine.check("{\"a\": 1.5}") == "map<string, double>"
 
 
-def test_engine_errors_are_short() -> None:
+def test_engine_errors_are_said_plainly() -> None:
     engine = Engine({"answers.title": "string"})
     with pytest.raises(ExpressionError) as caught:
         engine.check("answers.title >= 9.0")
-    assert caught.value.message == (
-        "found no matching overload for '_>=_' applied to '(string, double)' (line 1, column 15)"
-    )
+    assert caught.value.message == ">= doesn't work with text and a decimal number."
     with pytest.raises(ExpressionError) as caught:
         engine.evaluate("re_match(\"a\", \"a(?=b)\")", {})
     assert caught.value.message == "invalid perl operator: (?="

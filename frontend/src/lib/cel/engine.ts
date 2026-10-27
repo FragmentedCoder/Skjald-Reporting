@@ -15,10 +15,74 @@ export const MAX_LENGTH = 2000;
 export const DEFAULT_ZONE = "Europe/Copenhagen";
 const EPOCH = new Date(0);
 
+/** A type in words: bool is "yes or no", list<string> "a list". */
+export function human(type: string): string {
+  if (type.startsWith("list")) return "a list";
+  if (type.startsWith("map")) return "a map";
+  const words: Record<string, string> = {
+    bool: "yes or no",
+    string: "text",
+    int: "a whole number",
+    uint: "a whole number",
+    double: "a decimal number",
+    timestamp: "a date and time",
+    "google.protobuf.timestamp": "a date and time",
+    duration: "a length of time",
+    "google.protobuf.duration": "a length of time",
+    null: "nothing",
+    dyn: "any value",
+    null_type: "nothing",
+  };
+  return words[type.toLowerCase()] ?? type;
+}
+
+const and = (words: string[]) =>
+  words.length === 1 ? words[0] : `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
+
+// The engines word their errors differently; the common ones are said the same way on
+// both sides (backend/app/cel/engine.py), from the facts each engine gives. cel-js
+// would compare whole numbers with decimals, which Google's engine refuses, so the
+// browser refuses those comparisons itself.
 export const MIXED_COMPARISON =
   "A whole number can't be compared with a decimal: write 9.0 rather than 9, or convert one side with double() or int().";
 export const MIXED_ARITHMETIC =
   "Whole numbers and decimals can't be mixed in a sum: write 9.0 rather than 9, or convert one side with double() or int().";
+export const LOGICAL = "AND (&&) and OR (||) need yes or no on both sides.";
+const NUMBERS = new Set(["int", "uint", "double"]);
+
+export const unknownName = (name: string) => `${name.split(".")[0]} isn't a name this template has.`;
+
+export const branches = (first: string, second: string) =>
+  `Both results of an IF / ELSE must be the same kind of value: here ${human(first)} and ${human(second)}.`;
+
+export function operatorProblem(op: string, types: string[]): string {
+  if (op === "&&" || op === "||") return LOGICAL;
+  if (types.length === 2 && types.every((t) => NUMBERS.has(t)) && (types[0] === "double") !== (types[1] === "double")) {
+    return "+-*/%".includes(op) ? MIXED_ARITHMETIC : MIXED_COMPARISON;
+  }
+  if (types.length === 1) return `${op} doesn't work with ${human(types[0])}.`;
+  return `${op} doesn't work with ${human(types[0])} and ${human(types[1])}.`;
+}
+
+export const functionProblem = (name: string, types: string[]) => `${name}() can't take ${and(types.map(human))}.`;
+
+function splitTypes(text: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (const c of text) {
+    if (c === "," && depth === 0) {
+      parts.push(current.trim());
+      current = "";
+      continue;
+    }
+    if (c === "<" || c === "(") depth += 1;
+    if (c === ">" || c === ")") depth -= 1;
+    current += c;
+  }
+  if (current.trim()) parts.push(current.trim());
+  return parts;
+}
 
 export type Kind = "invalid" | "compile" | "runtime";
 
@@ -111,16 +175,21 @@ export function validate(expr: string, declared: ReadonlySet<string>): Token[] {
   return tokens;
 }
 
-const MIXED = /no such overload: (int|uint|double) (==|!=|<|<=|>|>=|[-+*/%]) (int|uint|double)/;
-const NUMBERS = new Set(["int", "uint", "double"]);
-
 function engineMessage(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error);
-  const mixed = MIXED.exec(raw);
-  if (mixed && (mixed[1] === "double") !== (mixed[3] === "double")) {
-    return "+-*/%".includes(mixed[2]) ? MIXED_ARITHMETIC : MIXED_COMPARISON;
-  }
-  return raw.split("\n")[0];
+  const first = raw.split("\n")[0];
+  let match = /^Unknown variable: (\S+)/.exec(first);
+  if (match) return unknownName(match[1]);
+  if (first.startsWith("Logical operator requires bool operands")) return LOGICAL;
+  match = /^Ternary branches must have the same type, got '(.+)' and '(.+)'$/.exec(first);
+  if (match) return branches(match[1], match[2]);
+  match = /^no such overload: (.+?) (==|!=|<=|>=|<|>|\+|-|\*|\/|%|in) (.+)$/.exec(first);
+  if (match) return operatorProblem(match[2], [match[1], match[3]]);
+  match = /^no such overload: ([!-])(.+)$/.exec(first);
+  if (match) return operatorProblem(match[1], [match[2]]);
+  match = /^found no matching overload for '(?:(.+)\.)?([A-Za-z_]\w*)\((.*)\)'$/.exec(first);
+  if (match) return functionProblem(match[2], [...(match[1] ? [match[1]] : []), ...splitTypes(match[3])]);
+  return first;
 }
 
 interface Node {
@@ -136,7 +205,9 @@ function comparesMixedNumbers(node: unknown): boolean {
   const { op, args } = node as Node;
   if (["<", "<=", ">", ">="].includes(op) && Array.isArray(args)) {
     const [left, right] = (args as Node[]).map((a) => a?.checkedType?.name ?? "dyn");
-    if (NUMBERS.has(left) && NUMBERS.has(right) && (left === "double") !== (right === "double")) return true;
+    if (NUMBERS.has(left) && NUMBERS.has(right) && (left === "double") !== (right === "double")) {
+      return true;
+    }
   }
   return comparesMixedNumbers(args);
 }

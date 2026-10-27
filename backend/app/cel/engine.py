@@ -185,23 +185,95 @@ def validate(expr: str, declared: Collection[str]) -> list[Token]:
     return tokens
 
 
+def human(type_: str) -> str:
+    """A type in words: bool is "yes or no", list<string> "a list"."""
+    if type_.startswith("list"):
+        return "a list"
+    if type_.startswith("map"):
+        return "a map"
+    return {
+        "bool": "yes or no", "string": "text", "int": "a whole number",
+        "uint": "a whole number", "double": "a decimal number", "timestamp": "a date and time",
+        "google.protobuf.timestamp": "a date and time", "duration": "a length of time",
+        "google.protobuf.duration": "a length of time", "null": "nothing", "dyn": "any value",
+        "null_type": "nothing",
+    }.get(type_.lower(), type_)
+
+
+def _and(words: list[str]) -> str:
+    return words[0] if len(words) == 1 else ", ".join(words[:-1]) + " and " + words[-1]
+
+
+# The engines word their errors differently; the common ones are said the same way on
+# both sides (frontend/src/lib/cel/engine.ts), from the facts each engine gives.
 # Google's type checker won't mix whole numbers and decimals; cel-js would, so the
-# browser refuses the same comparisons itself. Both sides say it the same way.
+# browser refuses the same comparisons itself.
 MIXED_COMPARISON = ("A whole number can't be compared with a decimal: write 9.0 rather than 9, "
                     "or convert one side with double() or int().")
 MIXED_ARITHMETIC = ("Whole numbers and decimals can't be mixed in a sum: write 9.0 rather than 9, "
                     "or convert one side with double() or int().")
-_MIXED = re.compile(
-    r"found no matching overload for '_(==|!=|<|<=|>|>=|\+|-|\*|/|%)_' applied to "
-    r"'\((int|uint|double), (int|uint|double)\)'"
-)
+LOGICAL = "AND (&&) and OR (||) need yes or no on both sides."
+NUMBERS = ("int", "uint", "double")
+
+
+def unknown_name(name: str) -> str:
+    return f"{name.split('.')[0]} isn't a name this template has."
+
+
+def branches(first: str, second: str) -> str:
+    return (f"Both results of an IF / ELSE must be the same kind of value: here "
+            f"{human(first)} and {human(second)}.")
+
+
+def operator_problem(op: str, types: list[str]) -> str:
+    """What's wrong with an operator given these types, in Skjald's words."""
+    if op in ("&&", "||"):
+        return LOGICAL
+    if len(types) == 2 and all(t in NUMBERS for t in types) and (
+            (types[0] == "double") != (types[1] == "double")):
+        return MIXED_ARITHMETIC if op in ("+", "-", "*", "/", "%") else MIXED_COMPARISON
+    if len(types) == 1:
+        return f"{op} doesn't work with {human(types[0])}."
+    return f"{op} doesn't work with {human(types[0])} and {human(types[1])}."
+
+
+def function_problem(name: str, types: list[str]) -> str:
+    return f"{name}() can't take {_and([human(t) for t in types])}."
+
+
+def _split_types(text: str) -> list[str]:
+    parts, depth, current = [], 0, ""
+    for c in text:
+        if c == "," and depth == 0:
+            parts.append(current.strip())
+            current = ""
+            continue
+        depth += {"(": 1, "<": 1, ")": -1, ">": -1}.get(c, 0)
+        current += c
+    if current.strip():
+        parts.append(current.strip())
+    return parts
+
+
+_OVERLOAD = re.compile(r"found no matching overload for '([^']+)' applied to '\((.*)\)'")
+_UNDECLARED = re.compile(r"undeclared reference to '([^']+)'")
 
 
 def _engine_message(raw: str) -> str:
-    """The first error the engine reports, without its codes and source excerpt."""
-    mixed = _MIXED.search(raw)
-    if mixed and (mixed.group(2) == "double") != (mixed.group(3) == "double"):
-        return MIXED_ARITHMETIC if mixed.group(1) in "+-*/%" else MIXED_COMPARISON
+    """The first error the engine reports, in Skjald's words where it's a common one."""
+    undeclared = _UNDECLARED.search(raw)
+    if undeclared:
+        return unknown_name(undeclared.group(1))
+    overload = _OVERLOAD.search(raw)
+    if overload:
+        name, types = overload.group(1), _split_types(overload.group(2))
+        if name == "_?_:_" and len(types) == 3 and types[0] == "bool":
+            return branches(types[1], types[2])
+        operator = re.fullmatch(r"_(.+)_|(.)_", name)
+        if operator:
+            return operator_problem(operator.group(1) or operator.group(2), types)
+        if re.fullmatch(r"\w+", name):
+            return function_problem(name, types)
     found = re.search(r"ERROR: <input>:(\d+):(\d+): ([^\n]*)", raw)
     if found:
         line, column, message = found.groups()
