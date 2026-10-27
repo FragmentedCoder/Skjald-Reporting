@@ -38,6 +38,8 @@ export default defineConfig({
     assetsInlineLimit: 0,
   },
   server: {
+    // src/lib/shared.ts reads files the server shares, from ../shared.
+    fs: { allow: [".", "../shared"] },
     proxy: {
       "/api": "http://localhost:8000",
     },

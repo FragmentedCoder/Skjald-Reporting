@@ -3,6 +3,8 @@ WORKDIR /app
 COPY frontend/package*.json ./
 RUN npm ci
 COPY frontend/ ./
+# What the frontend shares with the server (src/lib/shared.ts reads it from ../shared).
+COPY shared/ /shared/
 RUN npm run build
 
 # Caddy itself, with the DNS providers that Let's Encrypt's DNS challenge can use
