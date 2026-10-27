@@ -26,6 +26,8 @@
   const tabs = $derived([
     { href: base, label: "Questions" },
     { href: resolve("/(app)/templates/[id]/layout", { id: String(id) }), label: "Layout" },
+    { href: resolve("/(app)/templates/[id]/data", { id: String(id) }), label: "Data" },
+    { href: resolve("/(app)/templates/[id]/try", { id: String(id) }), label: "Try it" },
     { href: resolve("/(app)/templates/[id]/settings", { id: String(id) }), label: "Settings" },
     { href: resolve("/(app)/templates/[id]/versions", { id: String(id) }), label: "Versions" },
   ]);

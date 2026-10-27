@@ -254,6 +254,29 @@ test("a designer lays out the PDF and sees its pages", async ({ browser }) => {
   await page.reload();
   await page.getByRole("button", { name: "Pages", exact: true }).click();
   await expect(page.getByRole("region", { name: "Page 1 of 1" }).getByText("Destroyed on site for Fjordvik Logistik A/S today")).toBeVisible();
+
+  // Try it: the technician's form beside the PDF, which follows the answers.
+  await page.getByRole("link", { name: "Try it" }).click();
+  const pdf = page.getByRole("region", { name: "The PDF" });
+  await page.getByRole("textbox", { name: "Serial numbers" }).fill("SN-4471");
+  await expect(pdf.getByText("SN-4471")).toBeVisible();
+  await expect(pdf.locator("aside.callout.tone-critical")).toBeVisible();
+  await page.getByRole("button", { name: "Add a row" }).click();
+  await page.getByRole("textbox", { name: "Value, row 1" }).fill("Seagate ST4000, SN-4471");
+  await expect(pdf.locator("aside.callout.tone-info")).toBeVisible();
+  await expect(pdf.getByRole("cell", { name: "Seagate ST4000, SN-4471" })).toBeVisible();
+  await page.getByRole("button", { name: "Check the answers" }).click();
+  await expect(page.getByText("Nothing missing: a report like this could go for review.")).toBeVisible();
+  await saved(page);
+  await shot(page, "try-it");
+
+  // The Data tab: every name, with the sample answers; expressions tried on them.
+  await page.getByRole("link", { name: "Data" }).click();
+  await expect(page.getByRole("row", { name: /answers\.serials Serial numbers text "SN-4471"/ })).toBeVisible();
+  await page.getByRole("textbox", { name: "Expression" }).fill("answers.serials.lowerAscii()");
+  await expect(page.getByRole("status")).toHaveText('"sn-4471", which is text');
+  await page.getByRole("textbox", { name: "Expression" }).fill("answers.serials > 1");
+  await expect(page.getByRole("status")).toHaveText("> doesn't work with text and a whole number.");
   expect(violations).toEqual([]);
   await context.close();
 });

@@ -14,11 +14,13 @@
 
   // Rich text for the PDF: formatting, lists, links, and names whose value is printed
   // where they sit (shown as {{ answers.summary }} chips).
-  let { value = $bindable(), entries, label, id }: {
+  let { value = $bindable(), entries, label, id, names = true }: {
     value: RichText | null;
     entries: NameEntry[];
     label: string;
     id: string;
+    /** Whether names can be inserted: a template's text can; a technician's answer can't. */
+    names?: boolean;
   } = $props();
 
   let element = $state<HTMLDivElement>();
@@ -88,8 +90,10 @@
     <button type="button" aria-label="Numbered list" title="Numbered list" aria-pressed={on("orderedList")} onclick={() => editor?.chain().focus().toggleOrderedList().run()}><ListOrdered size={15} aria-hidden="true" /></button>
     <button type="button" aria-label="Link" title="Link" aria-pressed={on("link")}
       onclick={() => { address = String(editor?.getAttributes("link").href ?? ""); linking = !linking; naming = false; }}><LinkIcon size={15} aria-hidden="true" /></button>
-    <span class="divider"></span>
-    <button type="button" class="text" aria-expanded={naming} onclick={() => { naming = !naming; linking = false; }}><Braces size={15} aria-hidden="true" /> Insert a name</button>
+    {#if names}
+      <span class="divider"></span>
+      <button type="button" class="text" aria-expanded={naming} onclick={() => { naming = !naming; linking = false; }}><Braces size={15} aria-hidden="true" /> Insert a name</button>
+    {/if}
   </div>
   {#if linking}
     <form class="popover" onsubmit={(e) => { e.preventDefault(); setLink(); }}>
