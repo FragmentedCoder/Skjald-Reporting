@@ -15,7 +15,7 @@ import json
 import re
 import uuid
 from datetime import datetime, timedelta
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, Field, ValidationError, field_validator
@@ -148,6 +148,8 @@ class VersionOut(VersionSummary):
 
 class CopyIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
+    # For a translation: the copy's report language.
+    language: Literal["da", "en"] | None = None
 
     _strip = field_validator("name")(_stripped)
 
@@ -396,15 +398,17 @@ def copy_template(template_id: int, body: CopyIn, request: Request, record: Desi
                     updated_by=record.user_id)
     db.add(copy)
     db.flush()
-    db.add(_new_version(copy.id, TemplateContent.model_validate_json(start.content),
-                        record.user_id))
+    content = TemplateContent.model_validate_json(start.content)
+    if body.language is not None:
+        content.settings.language = body.language
+    db.add(_new_version(copy.id, content, record.user_id))
     for asset in _assets(db, source.id):
         db.add(TemplateAsset(template_id=copy.id, sha256=asset.sha256, name=asset.name,
                              content_type=asset.content_type, width=asset.width,
                              height=asset.height, data=asset.data, created_at=now,
                              created_by=record.user_id))
     _log(db, request, record, "template.copied", copy.id,
-         {"from": source.id, "name": copy.name})
+         {"from": source.id, "name": copy.name, "language": body.language})
     db.commit()
     return _detail(db, copy)
 
