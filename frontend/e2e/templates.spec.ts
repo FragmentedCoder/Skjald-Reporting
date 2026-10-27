@@ -176,6 +176,88 @@ test("a designer builds a template's form, with rules, and publishes it", async 
   await context.close();
 });
 
+test("a designer lays out the PDF and sees its pages", async ({ browser }) => {
+  const { context, page } = await signedIn(browser, "e2e-designer2");
+  const violations = watchForCspViolations(page);
+  await menu(page, "Templates").click();
+  await page.getByRole("button", { name: "New template" }).click();
+  await page.getByRole("dialog").getByLabel("Name").fill("Storage device destruction");
+  await page.getByRole("dialog").getByRole("button", { name: "Create" }).click();
+  await expect(page.getByRole("heading", { name: "Storage device destruction" })).toBeVisible();
+
+  // Two questions to print.
+  await addField(page, "Short text");
+  await panel(page).getByLabel("Question", { exact: true }).fill("Serial numbers");
+  await rename(page, "serials");
+  await addField(page, "Repeating group");
+  await panel(page).getByLabel("Question", { exact: true }).fill("Devices");
+  await rename(page, "devices");
+
+  await page.getByRole("link", { name: "Layout" }).click();
+  const blocks = page.getByRole("region", { name: "Blocks" });
+  await expect(page.getByRole("button", { name: "Section: Summary, edit" })).toBeVisible();
+
+  // Selecting the section and clicking a block adds it inside the section.
+  await page.getByRole("button", { name: "Section: Summary, edit" }).click();
+  await blocks.getByRole("button", { name: /^Answer/ }).click();
+  await panel(page).getByLabel("Answer to print").selectOption({ label: "Serial numbers" });
+  await expect(page.getByRole("list", { name: "Blocks in “Summary”" }).getByRole("button", { name: "Answer: Answer, edit" })).toBeVisible();
+  await blocks.getByRole("button", { name: /^Table/ }).click();
+  await panel(page).getByLabel("Rows from").selectOption({ label: "Devices" });
+  await panel(page).getByLabel("Caption", { exact: true }).fill("Devices destroyed");
+
+  // Rich text with a name in it.
+  await blocks.getByRole("button", { name: /^Text/ }).click();
+  const editor = panel(page).getByRole("textbox", { name: "Text" });
+  await editor.click();
+  await page.keyboard.press("ControlOrMeta+a");
+  await page.keyboard.type("Destroyed on site for ");
+  await panel(page).getByRole("button", { name: "Insert a name" }).click();
+  await panel(page).getByLabel("Name to insert").selectOption({ label: "The customer's name" });
+  await expect(editor.locator("span.variable")).toHaveText("{{ customer.name }}");
+  await panel(page).getByRole("button", { name: "Bold" }).click();
+  await page.keyboard.type(" today");
+  await expect(editor.locator("strong")).toHaveText("today");
+
+  // A callout whose tone the answers set; an image uploaded with the template.
+  await blocks.getByRole("button", { name: /^Callout/ }).click();
+  await panel(page).getByLabel("Title", { exact: true }).fill("Handle with care");
+  const tone = panel(page).getByRole("group", { name: "Tone set by the answers" });
+  await tone.getByRole("button", { name: "Add a rule" }).click();
+  await tone.getByLabel("Tone set by the answers: how it's worked out").selectOption({ label: "By conditions (IF / ELSE)" });
+  await tone.getByLabel("Tone set by the answers, if 1: what to check").selectOption({ label: "Devices" });
+  await tone.getByLabel("Tone set by the answers, if 1: how").selectOption({ label: "has no rows" });
+  await tone.getByLabel("Tone set by the answers, if: then").selectOption({ label: "Critical" });
+  await tone.getByLabel("Tone set by the answers: otherwise").selectOption({ label: "Info" });
+  await expect(tone.getByText('answers.devices.size() == 0 ? "critical" : "info"', { exact: true })).toBeVisible();
+
+  await blocks.getByRole("button", { name: /^Image/ }).click();
+  // An 8 by 6 pixel picture in Fjord blue.
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAgAAAAGCAIAAABxZ0isAAAAEUlEQVR4nGPQju3CihgGUgIA/LgzYXxR8ZMAAAAASUVORK5CYII=", "base64");
+  await panel(page).getByText("Upload an image").locator("input[type=file]").setInputFiles({ name: "network.png", mimeType: "image/png", buffer: png });
+  await expect(panel(page).getByLabel("Image", { exact: true })).toHaveValue(/^[0-9a-f]{64}$/);
+  await expect(page.getByText("No problems", { exact: true })).toBeVisible();
+
+  // The pages: the section's blocks, the callout critical (no devices yet), the image.
+  await page.getByRole("button", { name: "Pages", exact: true }).click();
+  const sheet = page.getByRole("region", { name: "Page 1 of 1" });
+  await expect(sheet.getByRole("heading", { name: "1 Summary" })).toBeVisible();
+  await expect(sheet.getByText("Destroyed on site for Fjordvik Logistik A/S today")).toBeVisible();
+  await expect(sheet.locator("strong", { hasText: "today" })).toBeVisible();
+  await expect(sheet.getByText("Table 1. Devices destroyed")).toBeVisible();
+  await expect(sheet.locator("aside.callout.tone-critical")).toContainText("Handle with care");
+  await expect(sheet.locator("figure.image img")).toBeVisible();
+  await saved(page);
+  await shot(page, "pages");
+
+  // Saved as the server accepts it: the same after a reload.
+  await page.reload();
+  await page.getByRole("button", { name: "Pages", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Page 1 of 1" }).getByText("Destroyed on site for Fjordvik Logistik A/S today")).toBeVisible();
+  expect(violations).toEqual([]);
+  await context.close();
+});
+
 test("technicians don't see the builder, and the API refuses them", async ({ browser }) => {
   const { context, page } = await signedIn(browser, "e2e-fitter");
   await expect(page.getByRole("navigation", { name: "Main" })).toBeVisible();

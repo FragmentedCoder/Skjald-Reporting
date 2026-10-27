@@ -56,6 +56,7 @@ with Session(get_engine()) as db:
         ("e2e-bob", "Bob Bager", Role.TECHNICIAN),
         ("e2e-postmaster", "Pia Post", Role.ADMINISTRATOR),
         ("e2e-designer", "Dagny Designer", Role.REPORT_DESIGNER),
+        ("e2e-designer2", "Dorte Designer", Role.REPORT_DESIGNER),
         ("e2e-fitter", "Frode Fitter", Role.TECHNICIAN),
     ):
         password = vet_new_password(os.environ["E2E_PASSWORD"], policy, username=username)
