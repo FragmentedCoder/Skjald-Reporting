@@ -22,6 +22,10 @@
     "@lucide/svelte": "1.54.0",
     "@marcbachmann/cel-js": "8.0.0",
     "@simplewebauthn/browser": "14.0.0",
+    "@tiptap/core": "3.32.0",
+    "@tiptap/extension-link": "3.32.0",
+    "@tiptap/pm": "3.32.0",
+    "@tiptap/starter-kit": "3.32.0",
     "re2js": "2.9.0",
     "svelte-dnd-action": "0.9.80",
     "uqr": "0.1.3"
