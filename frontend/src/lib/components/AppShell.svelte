@@ -10,6 +10,7 @@
   import House from "@lucide/svelte/icons/house";
   import LayoutDashboard from "@lucide/svelte/icons/layout-dashboard";
   import LayoutTemplate from "@lucide/svelte/icons/layout-template";
+  import LibraryBig from "@lucide/svelte/icons/library-big";
   import ListChecks from "@lucide/svelte/icons/list-checks";
   import LockKeyhole from "@lucide/svelte/icons/lock-keyhole";
   import LogOut from "@lucide/svelte/icons/log-out";
@@ -90,6 +91,7 @@
   const full = $derived(customer?.visibility === "full");
   const showAdmin = $derived(can(current, "administer") || can(current, "read_audit_log"));
   const builds = $derived(can(current, "build_templates"));
+  const shares = $derived(can(current, "edit_library"));
   const sees = $derived(current.user.roles.length > 0);
   let menuOpen = $state(false);
   let nav = $state<HTMLElement>();
@@ -357,10 +359,16 @@
           </div>
         {/if}
 
-        {#if builds}
+        {#if builds || shares}
           <ul class="items divided">
-            <li>{@render link({ href: resolve("/(app)/templates"), label: "Templates", icon: LayoutTemplate,
-              current: path.startsWith("/templates") })}</li>
+            {#if builds}
+              <li>{@render link({ href: resolve("/(app)/templates"), label: "Templates", icon: LayoutTemplate,
+                current: path.startsWith("/templates") })}</li>
+            {/if}
+            {#if shares}
+              <li>{@render link({ href: resolve("/(app)/library"), label: "Library", icon: LibraryBig,
+                current: path.startsWith("/library") })}</li>
+            {/if}
           </ul>
         {/if}
 
