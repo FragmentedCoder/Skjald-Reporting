@@ -41,7 +41,7 @@
 <style>
   .colour {
     display: grid;
-    grid-template-columns: minmax(8rem, 1fr) 2.25rem 6.5rem minmax(7rem, auto);
+    grid-template-columns: minmax(0, 1fr) 2.25rem 6.5rem 8.5rem;
     align-items: center;
     gap: var(--space-2);
   }

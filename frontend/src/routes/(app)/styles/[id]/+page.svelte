@@ -343,14 +343,14 @@
               <div class="field">
                 <label for="font-heading">Headings</label>
                 <select id="font-heading" class="input" value={content.fonts.heading ?? ""} onchange={(e) => (content.fonts.heading = (e.currentTarget.value || null) as Font | null)}>
-                  <option value="">From the one below ({FONTS.find((f) => f.value === lower.fonts.heading)?.label})</option>
+                  <option value="">{FONTS.find((f) => f.value === lower.fonts.heading)?.label}, from the one below</option>
                   {#each FONTS as f (f.value)}<option value={f.value}>{f.label}</option>{/each}
                 </select>
               </div>
               <div class="field">
                 <label for="font-body">Body text</label>
                 <select id="font-body" class="input" value={content.fonts.body ?? ""} onchange={(e) => (content.fonts.body = (e.currentTarget.value || null) as Font | null)}>
-                  <option value="">From the one below ({FONTS.find((f) => f.value === lower.fonts.body)?.label})</option>
+                  <option value="">{FONTS.find((f) => f.value === lower.fonts.body)?.label}, from the one below</option>
                   {#each FONTS as f (f.value)}<option value={f.value}>{f.label}</option>{/each}
                 </select>
               </div>
@@ -445,7 +445,7 @@
         {/if}
       </section>
 
-      <section class="canvas" aria-label={tab === "pages" ? `The ${PAGE_LABELS[pageName].toLowerCase()}'s design` : "The sample report in this style"}>
+      <section class="canvas" class:sticky={tab === "pages"} aria-label={tab === "pages" ? `The ${PAGE_LABELS[pageName].toLowerCase()}'s design` : "The sample report in this style"}>
         {#if customerArt}
           <label class="check small"><input type="checkbox" bind:checked={showBackground} /> Show with {style.customer_name}'s report background</label>
         {/if}
@@ -487,13 +487,16 @@
       grid-template-columns: minmax(0, 1fr);
     }
   }
+  /* The page being designed stays in view; the sample report scrolls with the page. */
+  .sticky {
+    position: sticky;
+    top: var(--space-4);
+  }
   .settings {
     display: grid;
     gap: var(--space-4);
   }
   .canvas {
-    position: sticky;
-    top: var(--space-4);
     display: grid;
     gap: var(--space-3);
     justify-items: center;

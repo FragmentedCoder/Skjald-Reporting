@@ -117,6 +117,7 @@
     allowed = on ? [...allowed, id] : allowed.filter((a) => a !== id);
   }
 
+  const others = $derived((styles?.choices ?? []).filter((s) => String(s.id) !== chosenDefault));
   const companyDefault = $derived(styles?.choices.find((s) => s.id === styles?.company_default)?.name ?? "the Skjald default");
   onMount(() => void Promise.all([loadBackground(), loadStyles()]));
 </script>
@@ -188,10 +189,10 @@
           {#each styles.choices as s (s.id)}<option value={String(s.id)}>{s.name}{s.customer_id ? ` (${customerName}'s own)` : ""}</option>{/each}
         </select>
       </div>
-      {#if styles.choices.length}
+      {#if others.length}
         <fieldset class="field">
           <legend>Technicians may also choose</legend>
-          {#each styles.choices.filter((s) => String(s.id) !== chosenDefault) as s (s.id)}
+          {#each others as s (s.id)}
             <label class="check"><input type="checkbox" checked={allowed.includes(s.id)} onchange={(e) => toggle(s.id, e.currentTarget.checked)} /> {s.name}</label>
           {/each}
         </fieldset>
