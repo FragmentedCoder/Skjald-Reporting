@@ -1,4 +1,7 @@
-"""The site's look: its name, tag line, logo and colours, set by Administrators.
+"""The site's look: its name, tag line, logo and colours, set by Administrators, and
+two things about the company's reports: whether they carry a small "Made with
+Skjald" line (they do unless it's turned off, for full white-label) and the time
+zone their dates are written in.
 
 Shown on the sign-in page too, so reading them needs no sign-in; none of it is
 secret. Changing them is in the admin panel (app/admin.py).
@@ -7,10 +10,11 @@ secret. Changing them is in the admin panel (app/admin.py).
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Annotated, Any
+from zoneinfo import available_timezones
 
 from fastapi import APIRouter, HTTPException, Response, status
-from pydantic import BaseModel
+from pydantic import AfterValidator, BaseModel
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import DB
@@ -23,6 +27,16 @@ BRANDING_KEY = "branding"
 LOGO_KEY = "branding/logo"
 DEFAULT_SITE_NAME = "Skjald"
 DEFAULT_TAGLINE = "Reports worth keeping."
+DEFAULT_TIME_ZONE = "Europe/Copenhagen"
+
+
+def _zone(name: str) -> str:
+    if name not in available_timezones():
+        raise ValueError("Choose a time zone from the list.")
+    return name
+
+
+TimeZone = Annotated[str, AfterValidator(_zone)]
 
 router = APIRouter(prefix="/branding")
 
@@ -36,6 +50,8 @@ class Branding(BaseModel):
     primary_colour: SitePrimary
     accent_colour: SiteAccent
     enforce_colours: bool
+    made_with_skjald: bool
+    time_zone: str
 
 
 def _stored(db: Session) -> dict[str, Any]:
@@ -45,12 +61,13 @@ def _stored(db: Session) -> dict[str, Any]:
 
 def save_branding(
     db: Session, *, site_name: str, tagline: str, primary_colour: str,
-    accent_colour: str, enforce_colours: bool,
+    accent_colour: str, enforce_colours: bool, made_with_skjald: bool, time_zone: str,
 ) -> None:
     db.merge(Setting(key=BRANDING_KEY, value=json.dumps({
         "site_name": site_name.strip(), "tagline": tagline.strip(),
         "primary_colour": primary_colour, "accent_colour": accent_colour,
-        "enforce_colours": enforce_colours,
+        "enforce_colours": enforce_colours, "made_with_skjald": made_with_skjald,
+        "time_zone": time_zone,
     })))
 
 
@@ -65,7 +82,15 @@ def branding(db: Session) -> Branding:
         primary_colour=stored.get("primary_colour", DEFAULT_PRIMARY),
         accent_colour=stored.get("accent_colour", DEFAULT_ACCENT),
         enforce_colours=bool(stored.get("enforce_colours", False)),
+        made_with_skjald=bool(stored.get("made_with_skjald", True)),
+        time_zone=stored.get("time_zone", DEFAULT_TIME_ZONE),
     )
+
+
+def company_timezone(db: Session) -> str:
+    """The time zone reports' dates are written in."""
+    zone: str = _stored(db).get("time_zone", DEFAULT_TIME_ZONE)
+    return zone
 
 
 @router.get("")

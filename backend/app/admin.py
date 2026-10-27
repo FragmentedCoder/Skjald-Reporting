@@ -48,7 +48,14 @@ from app.auth.mfa_routes import FactorInfo
 from app.auth.passwords import PasswordRejected
 from app.auth.pwned import BreachCheckUnavailable
 from app.auth.sessions import UserSession, end_sessions
-from app.branding import LOGO_KEY, Branding, branding, save_branding
+from app.branding import (
+    DEFAULT_TIME_ZONE,
+    LOGO_KEY,
+    Branding,
+    TimeZone,
+    branding,
+    save_branding,
+)
 from app.colours import DEFAULT_ACCENT, DEFAULT_PRIMARY, SiteAccent, SitePrimary
 from app.images import LOGO_SIZE, ImageRejected, avatar_url, clean_image, remove_image, store_image
 from app.policy import (
@@ -162,6 +169,8 @@ class BrandingUpdate(BaseModel):
     primary_colour: SitePrimary = DEFAULT_PRIMARY
     accent_colour: SiteAccent = DEFAULT_ACCENT
     enforce_colours: bool = False
+    made_with_skjald: bool = True
+    time_zone: TimeZone = DEFAULT_TIME_ZONE
 
 
 def _log(
@@ -505,14 +514,15 @@ def update_branding(body: BrandingUpdate, request: Request, admin: Admin, db: DB
     before = branding(db)
     save_branding(db, site_name=body.site_name, tagline=body.tagline,
                   primary_colour=body.primary_colour, accent_colour=body.accent_colour,
-                  enforce_colours=body.enforce_colours)
+                  enforce_colours=body.enforce_colours,
+                  made_with_skjald=body.made_with_skjald, time_zone=body.time_zone)
     set_company_name(db, body.company_name)
     db.flush()
     after = branding(db)
     changes = {
         name: [getattr(before, name), getattr(after, name)]
         for name in ("site_name", "tagline", "company_name", "primary_colour",
-                     "accent_colour", "enforce_colours")
+                     "accent_colour", "enforce_colours", "made_with_skjald", "time_zone")
         if getattr(before, name) != getattr(after, name)
     }
     if changes:

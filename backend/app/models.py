@@ -12,5 +12,6 @@ import app.library.models
 import app.policy
 import app.projects
 import app.roles
+import app.styles.models
 import app.templates.models
 import app.users  # noqa: F401

@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 from app import audit, clock
 from app.auth.dependencies import DB, client_ip, require
 from app.auth.sessions import UserSession
+from app.branding import company_timezone
 from app.library.routes import current_entries
 from app.library.values import library_names
 from app.roles import Capability
@@ -227,7 +228,7 @@ def _problems(db: Session, template_id: int, content: TemplateContent) -> list[P
     assets = set(db.scalars(select(TemplateAsset.sha256)
                             .where(TemplateAsset.template_id == template_id)))
     library = library_names(entry for entry, _ in current_entries(db))
-    return check(content, assets=assets, library=library)
+    return check(content, assets=assets, library=library, timezone=company_timezone(db))
 
 
 def _problems_out(problems: list[Problem]) -> list[ProblemOut]:

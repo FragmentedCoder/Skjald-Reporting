@@ -21,6 +21,7 @@ from app.auth import mfa_routes
 from app.auth import routes as auth_routes
 from app.auth.dependencies import SAFE_METHODS
 from app.library import routes as library_routes
+from app.styles import routes as style_routes
 from app.templates import routes as template_routes
 
 app = FastAPI(title="Skjald", docs_url=None, redoc_url=None, openapi_url=None)
@@ -57,3 +58,5 @@ app.include_router(server_routes.router, prefix="/api")
 app.include_router(template_routes.router, prefix="/api")
 app.include_router(library_routes.router, prefix="/api")
 app.include_router(background_routes.router, prefix="/api")
+app.include_router(style_routes.router, prefix="/api")
+app.include_router(style_routes.customer_router, prefix="/api")

@@ -30,7 +30,7 @@ def test_branding_starts_with_the_defaults_and_needs_no_sign_in(client) -> None:
     assert client.get("/api/branding").json() == {
         "site_name": "Skjald", "tagline": "Reports worth keeping.", "company_name": None,
         "logo_url": None, "primary_colour": "fjord", "accent_colour": "rav",
-        "enforce_colours": False,
+        "enforce_colours": False, "made_with_skjald": True, "time_zone": "Europe/Copenhagen",
     }
 
 

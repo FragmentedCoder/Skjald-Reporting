@@ -135,6 +135,16 @@ def render_pdf(pdf: bytes, exchange: Path = EXCHANGE, wait: float = WAIT_FOR_REN
     return [str(page) for page in result["pages"]]
 
 
+def convert_pdf(pdf: bytes) -> list[str]:
+    """A PDF's first one or two pages as clean SVG, converted by the renderer. Holds no
+    database lock: commit before calling it."""
+    try:
+        return [clean_svg(page.encode(), MAX_PAGE_BYTES).data.decode()
+                for page in render_pdf(pdf)]
+    except (RenderError, SvgRejected) as exc:
+        raise BackgroundRejected(str(exc)) from exc
+
+
 @jobs.handles("background.convert")
 def convert(db: Session, job: jobs.Job) -> dict[str, Any]:
     customer_id = int(job.data()["customer_id"])
@@ -147,10 +157,9 @@ def convert(db: Session, job: jobs.Job) -> dict[str, Any]:
     uploaded_at = row.uploaded_at
     db.commit()  # long work follows: hold no lock meanwhile
     try:
-        pages = [clean_svg(page.encode(), MAX_PAGE_BYTES).data.decode()
-                 for page in render_pdf(base64.b64decode(original["file"]))]
+        pages = convert_pdf(base64.b64decode(original["file"]))
         status, message = "ready", ""
-    except (RenderError, SvgRejected) as exc:
+    except BackgroundRejected as exc:
         pages, status, message = [], "failed", str(exc)
     row = db.get(CustomerBackground, customer_id)
     if row is None or row.uploaded_at != uploaded_at:
