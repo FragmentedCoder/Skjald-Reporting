@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, tick } from "svelte";
+  import { onDestroy, onMount, tick } from "svelte";
   import { ApiError, sessionGone } from "#lib/api.js";
   import { Engine } from "#lib/cel/engine.js";
   import BlockList from "#lib/components/builder/BlockList.svelte";
@@ -9,6 +9,9 @@
   import Where from "#lib/components/builder/Where.svelte";
   import Dialog from "#lib/components/Dialog.svelte";
   import PdfPages from "#lib/components/preview/PdfPages.svelte";
+  import StylePicker from "#lib/components/preview/StylePicker.svelte";
+  import { branding } from "#lib/branding.svelte.js";
+  import { PreviewStyle } from "#lib/reportStyles/preview.svelte.js";
   import { templatesApi, type Asset } from "#lib/templates/api.js";
   import { BLOCK_GROUPS, BLOCK_TYPES, newBlock } from "#lib/templates/blocks.js";
   import { catalogue, type NameEntry } from "#lib/templates/catalogue.js";
@@ -134,11 +137,14 @@
 
   // The preview, worked out again a moment after each change.
   const live = new LivePreview();
+  const looks = new PreviewStyle();
+  onMount(() => void looks.load());
   onDestroy(() => live.close());
   $effect(() => {
     const snapshot = $state.snapshot(content) as TemplateContent;
     const assets = Object.fromEntries((draft.template?.assets ?? []).map((a) => [a.sha256, { url: a.url, width: a.width, height: a.height }]));
-    live.update({ content: snapshot, answers: snapshot.sample.answers, context: sampleContext(), assets, library: draft.libraryPreview });
+    live.update({ content: snapshot, answers: snapshot.sample.answers, context: sampleContext(), assets, library: draft.libraryPreview,
+      timezone: branding.current.time_zone, pageTexts: looks.texts });
   });
   const hidden = $derived(new Map((live.model?.hidden ?? []).map((h) => [h.id, h.reason])));
 
@@ -184,7 +190,9 @@
       {#if live.model?.errors.length}
         <p class="alert alert-warning small">{live.model.errors.length} expression{live.model.errors.length === 1 ? "" : "s"} failed with the sample answers, shown as ⚠ on the pages.</p>
       {/if}
-      <PdfPages paged={live.paged} classification={String(sampleContext().project.classification)} selected={selectedId} onselect={select} />
+      <StylePicker {looks} />
+      <PdfPages paged={live.paged} look={looks.look(live.model?.pageTexts)} language={content.settings.language}
+        classification={String(sampleContext().project.classification)} selected={selectedId} onselect={select} />
     {:else}
       <p class="muted">Working out the pages…</p>
     {/if}

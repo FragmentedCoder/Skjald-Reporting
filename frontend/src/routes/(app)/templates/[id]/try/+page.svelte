@@ -1,8 +1,11 @@
 <script lang="ts">
-  import { onDestroy } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import Where from "#lib/components/builder/Where.svelte";
   import AnswerField from "#lib/components/form/AnswerField.svelte";
   import PdfPages from "#lib/components/preview/PdfPages.svelte";
+  import StylePicker from "#lib/components/preview/StylePicker.svelte";
+  import { branding } from "#lib/branding.svelte.js";
+  import { PreviewStyle } from "#lib/reportStyles/preview.svelte.js";
   import { checkAnswer } from "#lib/templates/answers.js";
   import { useDraft } from "#lib/templates/draft.svelte.js";
   import { fieldType, settingsOf } from "#lib/templates/fields.js";
@@ -19,12 +22,15 @@
   let local = $state<Record<string, unknown>>({});
 
   const live = new LivePreview();
+  const looks = new PreviewStyle();
+  onMount(() => void looks.load());
   onDestroy(() => live.close());
   $effect(() => {
     const snapshot = $state.snapshot(content) as TemplateContent;
     const answers = { ...snapshot.sample.answers, ...($state.snapshot(local) as Record<string, unknown>) };
     const assets = Object.fromEntries((draft.template?.assets ?? []).map((a) => [a.sha256, { url: a.url, width: a.width, height: a.height }]));
-    live.update({ content: snapshot, answers, context: sampleContext(), assets, library: draft.libraryPreview });
+    live.update({ content: snapshot, answers, context: sampleContext(), assets, library: draft.libraryPreview,
+      timezone: branding.current.time_zone, pageTexts: looks.texts });
   });
 
   const model = $derived(live.model);
@@ -143,7 +149,9 @@
     <h2 id="pdf-heading" class="section-title">The PDF <Where pdf /></h2>
     {#if live.problem}<p class="alert alert-warning small">{live.problem}</p>{/if}
     {#if live.paged}
-      <PdfPages paged={live.paged} classification={String(sampleContext().project.classification)} />
+      <StylePicker {looks} />
+      <PdfPages paged={live.paged} look={looks.look(live.model?.pageTexts)} language={content.settings.language}
+        classification={String(sampleContext().project.classification)} />
     {:else}
       <p class="muted">Working out the pages…</p>
     {/if}

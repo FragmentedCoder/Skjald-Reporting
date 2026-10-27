@@ -24,6 +24,8 @@ export interface PreviewInput {
   /** Template images by SHA-256: where to load them from. */
   assets: Record<string, { url: string; width: number; height: number }>;
   timezone?: string;
+  /** The style's text elements, by key: their words, to fill in like the template's. */
+  pageTexts?: Record<string, string>;
 }
 
 export type Shown =
@@ -61,6 +63,8 @@ export interface PreviewModel {
   formRequired: Id[];
   /** Answers that fail their own check: question ID and message. */
   invalid: { id: Id; message: string }[];
+  /** The style's text elements, filled in. */
+  pageTexts: Record<string, string>;
 }
 
 /** The sample context every preview starts from: the examples in shared/templates/names.json. */
@@ -430,6 +434,12 @@ export function preview(input: PreviewInput): PreviewModel {
       if (q.valid_when?.trim() && worker.run(scope, q.id, q.valid_when) === false) invalid.push({ id: q.id, message: q.valid_message || "This answer isn't valid." });
     }
   }
+  // The style's text elements read the context and the library alone; the server
+  // checks them when the style is saved, so one that fails here prints empty.
+  const pageTexts: Record<string, string> = {};
+  const counted = worker.errors.length;
+  for (const [key, text] of Object.entries(input.pageTexts ?? {})) pageTexts[key] = worker.text(scope, key, text);
+  worker.errors.splice(counted);
   return {
     blocks,
     hidden: worker.hidden,
@@ -438,5 +448,6 @@ export function preview(input: PreviewInput): PreviewModel {
     formHidden,
     formRequired,
     invalid,
+    pageTexts,
   };
 }

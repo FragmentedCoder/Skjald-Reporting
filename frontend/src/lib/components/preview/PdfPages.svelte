@@ -11,6 +11,8 @@
 
 <script lang="ts">
   import { onMount, tick } from "svelte";
+  import { FONT_STACKS, plainLook, pointsToCqi, textKey, type PageLook } from "#lib/reportStyles/look.js";
+  import { colourOf, TONE_NAMES, type Element, type PageName } from "#lib/reportStyles/resolve.js";
   import type { Paged, Placed } from "#lib/templates/pages.js";
   import type { Grid, Shown } from "#lib/templates/preview.js";
   import RichView from "./RichView.svelte";
@@ -18,21 +20,28 @@
   // The PDF's pages, as A4 sheets that scale with the space they have. The page rules
   // (pages.ts) decide what goes on which page; exact pagination is the renderer's job,
   // so a page whose content runs over is flagged, not split. Drawn in the report's
-  // colours whatever the app's theme. A page's header and footer carry the report
-  // number, the classification and "Page X of Y"; DRAFT runs across every page until
-  // the report is signed.
+  // style (its colours, fonts, margins and page designs) whatever the app's theme: the
+  // cover's design on the cover, the first page's on the first page after it, the other
+  // pages' on the rest, each placing the logos, the report number, the classification
+  // and "Page X of Y" around the text. The art behind the report's first page and behind
+  // the rest comes from the customer's background or the style. DRAFT runs across every
+  // page until the report is signed.
   let {
     paged,
+    look = plainLook(),
     reportNumber = "INC-2026-0142",
     classification = "TLP:AMBER",
     company = "Nordlys IT ApS",
+    language = "en",
     selected = null,
     onselect,
   }: {
     paged: Paged;
+    look?: PageLook;
     reportNumber?: string;
     classification?: string;
     company?: string;
+    language?: "en" | "da";
     selected?: string | null;
     onselect?: (id: string) => void;
   } = $props();
@@ -62,6 +71,89 @@
 
   const total = $derived(paged.pages.length);
   const base = (id: string) => id.split("~")[0];
+
+  // Which page design a sheet carries: the cover's, the first page's (the first sheet
+  // after any cover) or the other pages'.
+  const firstBody = $derived(paged.pages.findIndex((page) => !page.cover));
+  function designOf(index: number): PageName {
+    return paged.pages[index].cover ? "cover" : index === firstBody ? "first" : "other";
+  }
+
+  function pageNumber(index: number): string {
+    return language === "da" ? `Side ${index + 1} af ${total}` : `Page ${index + 1} of ${total}`;
+  }
+
+  function words(e: Element, page: PageName, index: number): string {
+    switch (e.kind) {
+      case "text":
+        return look.texts[textKey(page, e.id)] ?? e.text;
+      case "page_number":
+        return pageNumber(index);
+      case "classification":
+        return classification;
+      case "report_number":
+        return reportNumber;
+      default:
+        return "";
+    }
+  }
+
+  // The style's values as custom properties on the pages, set through the CSSOM so the
+  // strict Content-Security-Policy needs no inline styles.
+  function dress(node: HTMLElement, current: PageLook) {
+    const apply = (l: PageLook) => {
+      const { style } = l;
+      const set = (name: string, value: string) => node.style.setProperty(name, value);
+      set("--r-text", style.colours.text);
+      set("--r-muted", style.colours.muted);
+      set("--r-heading", style.colours.heading);
+      set("--r-accent", style.colours.accent);
+      set("--r-link", style.colours.link);
+      set("--r-line", style.colours.line);
+      set("--r-head", style.colours.table_head);
+      set("--r-head-ink", style.colours.table_head_text);
+      set("--r-classification", style.colours.classification);
+      for (const tone of TONE_NAMES) {
+        set(`--r-${tone}-fill`, style.tones[tone].fill);
+        set(`--r-${tone}-ink`, style.tones[tone].ink);
+      }
+      set("--r-font-heading", FONT_STACKS[style.fonts.heading]);
+      set("--r-font-body", FONT_STACKS[style.fonts.body]);
+      set("--r-size", `${pointsToCqi(style.sizes.body)}cqi`);
+      set("--r-size-landscape", `${pointsToCqi(style.sizes.body, 297)}cqi`);
+      set("--r-title", `${style.sizes.title / style.sizes.body}em`);
+      set("--m-top", String(l.margins.top));
+      set("--m-bottom", String(l.margins.bottom));
+      set("--m-left", String(l.margins.left));
+      set("--m-right", String(l.margins.right));
+    };
+    apply(current);
+    return { update: apply };
+  }
+
+  // An element of a page design: where it sits, in shares of the page, and how it's drawn.
+  function place(node: HTMLElement, e: Element) {
+    const apply = (el: Element) => {
+      const set = (name: string, value: string) => node.style.setProperty(name, value);
+      set("left", `${(el.x / 210) * 100}%`);
+      set("top", `${(el.y / 297) * 100}%`);
+      set("width", `${(el.w / 210) * 100}%`);
+      set("height", `${(el.h / 297) * 100}%`);
+      set("font-family", FONT_STACKS[el.font === "heading" ? look.style.fonts.heading : el.font === "mono" ? "plex-mono" : look.style.fonts.body]);
+      set("font-size", `${pointsToCqi(el.size)}cqi`);
+      set("font-weight", el.weight === "bold" ? "600" : "400");
+      set("color", colourOf(look.style, el.colour));
+      set("text-align", el.align);
+      set("justify-content", { left: "flex-start", center: "center", right: "flex-end" }[el.align]);
+      if (el.kind === "box") {
+        set("background", el.fill ? colourOf(look.style, el.fill) : "transparent");
+        set("border", el.stroke && el.stroke_width ? `${(el.stroke_width / 210) * 100}cqi solid ${colourOf(look.style, el.stroke)}` : "none");
+        set("border-radius", `${(el.radius / 210) * 100}cqi`);
+      }
+    };
+    apply(e);
+    return { update: apply };
+  }
 
   // Clicking a block on a page chooses it: a shortcut for the mouse, beside the
   // outline, which is the way to choose one with the keyboard.
@@ -115,7 +207,6 @@
 {#snippet block(b: Shown, placed: Placed | null)}
   {#if b.kind === "cover"}
     <div class="cover">
-      {#if b.showLogo}<div class="logo" aria-hidden="true">{company}</div>{/if}
       <p class="overline">{reportNumber}</p>
       <h1>{b.title}</h1>
       {#if b.subtitle}<p class="subtitle">{b.subtitle}</p>{/if}
@@ -201,17 +292,40 @@
   </div>
 {/snippet}
 
-<div class="pages" class:choosing={!!onselect} aria-label="The PDF's pages, with the sample answers" use:choose>
+{#snippet design(page: PageName, index: number, logos: boolean)}
+  <div class="design" aria-hidden="true">
+    <!-- Lines are drawn on the page in millimetres, so their widths are exact. -->
+    <svg class="lines" viewBox="0 0 210 297" preserveAspectRatio="none">
+      {#each look.style.pages[page].elements.filter((e) => e.kind === "line" && e.stroke) as e (e.id)}
+        <line x1={e.x} y1={e.y} x2={e.x + e.w} y2={e.y + e.h} stroke={colourOf(look.style, e.stroke ?? "line")} stroke-width={e.stroke_width} />
+      {/each}
+    </svg>
+    {#each look.style.pages[page].elements.filter((e) => e.kind !== "line" && (logos || e.kind !== "logo")) as e (e.id)}
+      <div class="el kind-{e.kind}" use:place={e}>
+        {#if e.kind === "logo"}
+          {#if look.logos[e.logo]}<img src={look.logos[e.logo]} alt="" />{:else}<span class="logo-name">{e.logo === "company" ? company : "Customer logo"}</span>{/if}
+        {:else if e.kind === "image"}
+          {#if e.asset && look.image(e.asset)}<img src={look.image(e.asset)} alt="" />{/if}
+        {:else if e.kind !== "box"}
+          <span>{words(e, page, index)}</span>
+        {/if}
+      </div>
+    {/each}
+  </div>
+{/snippet}
+
+<div class="pages" class:choosing={!!onselect} aria-label="The PDF's pages, with the sample answers" use:choose use:dress={look}>
   {#each paged.pages as page, p (p)}
     <section class="sheet {page.orientation}" class:cover={page.cover} bind:this={sheets[p]} aria-label="Page {p + 1} of {total}">
       <div class="paper">
-        {#if !page.cover}
-          <header class="running"><span>{company}</span><span class="classification">{classification}</span></header>
+        {#if page.orientation === "portrait" && (p === 0 ? look.art.first : look.art.other)}
+          <img class="art" src={p === 0 ? look.art.first : look.art.other} alt="" />
         {/if}
+        {@render design(designOf(p), p, !page.items.some((placed) => placed.block.kind === "cover" && !placed.block.showLogo))}
         <div class="body">
           {#each page.items as placed, i (i)}{@render item(placed.block, placed)}{/each}
         </div>
-        <footer class="running"><span>{reportNumber}</span><span>Page {p + 1} of {total}</span></footer>
+        {#if look.madeWith}<p class="made-with">Made with Skjald</p>{/if}
         <div class="watermark" aria-hidden="true">DRAFT</div>
       </div>
       <p class="why small">
@@ -236,13 +350,13 @@
   .sheet.landscape {
     max-width: 1123px;
   }
-  /* The report's own colours (docs/brand/tokens.json, light), whatever the app's theme. */
+  /* The report's own look (its style, or the Skjald default), whatever the app's theme. */
   .paper {
     --paper: #ffffff;
-    --text-ink: #0f1b2d;
-    --text-soft: #5b6675;
-    --rule: #e5e5e5;
-    --subtle: #efefef;
+    --text-ink: var(--r-text, #0f1b2d);
+    --text-soft: var(--r-muted, #5b6675);
+    --rule: var(--r-line, #e5e5e5);
+    --subtle: var(--r-head, #efefef);
     position: relative;
     container-type: inline-size;
     aspect-ratio: 210 / 297;
@@ -250,52 +364,69 @@
     border: 1px solid var(--border);
     background: var(--paper);
     color: var(--text-ink);
-    font-family: var(--font-sans);
+    font-family: var(--r-font-body, var(--font-sans));
   }
   .landscape .paper {
     aspect-ratio: 297 / 210;
   }
-  .running,
+  .art,
+  .design,
+  .lines {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+  .art {
+    object-fit: fill;
+  }
+  .el {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+  .el img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+  .kind-logo,
+  .kind-image {
+    align-items: flex-start;
+  }
+  .logo-name {
+    font-family: var(--r-font-heading, var(--font-display));
+  }
+  /* The margins, in millimetres, as shares of the page. */
   .body {
     position: absolute;
-    left: 6.05cqi;
-    right: 6.05cqi;
-    /* 15 px body text on an A4 page 794 px wide, scaled with the page. */
-    font-size: 1.889cqi;
-  }
-  .landscape .running,
-  .landscape .body {
-    font-size: 1.336cqi;
-    left: 4.27cqi;
-    right: 4.27cqi;
-  }
-  .running {
-    display: flex;
-    justify-content: space-between;
-    color: var(--text-soft);
-    font-size: 1.3cqi;
-  }
-  .landscape .running {
-    font-size: 0.92cqi;
-  }
-  header.running {
-    top: 3cqi;
-  }
-  footer.running {
-    bottom: 3cqi;
-  }
-  .classification {
-    font-weight: 600;
-    color: #8a5a12;
-  }
-  .body {
-    top: 7cqi;
-    bottom: 7cqi;
+    top: calc(var(--m-top, 22) / 297 * 100%);
+    bottom: calc(var(--m-bottom, 20) / 297 * 100%);
+    left: calc(var(--m-left, 18) / 210 * 100%);
+    right: calc(var(--m-right, 18) / 210 * 100%);
     overflow: hidden;
+    font-size: var(--r-size, 1.764cqi);
     line-height: 1.6;
   }
-  .cover .body {
-    top: 6.05cqi;
+  .landscape .body {
+    top: calc(var(--m-top, 22) / 210 * 100%);
+    bottom: calc(var(--m-bottom, 20) / 210 * 100%);
+    left: calc(var(--m-left, 18) / 297 * 100%);
+    right: calc(var(--m-right, 18) / 297 * 100%);
+    font-size: var(--r-size-landscape, 1.247cqi);
+  }
+  .made-with {
+    position: absolute;
+    bottom: 1.6%;
+    left: 0;
+    right: 0;
+    margin: 0;
+    color: var(--text-soft);
+    font-size: 0.95cqi;
+    text-align: center;
   }
   .watermark {
     position: absolute;
@@ -340,7 +471,7 @@
     font-size: 0.87em;
   }
   .body :global(a) {
-    color: #2b5d8a;
+    color: var(--r-link, #2b5d8a);
   }
   h1,
   h2,
@@ -348,12 +479,13 @@
   .body :global(h3),
   .body :global(h4) {
     margin: 0.8em 0 0.4em;
-    font-family: var(--font-display);
+    color: var(--r-heading, #0f1b2d);
+    font-family: var(--r-font-heading, var(--font-display));
     font-weight: 400;
     line-height: 1.2;
   }
   h1 {
-    font-size: 2.67em;
+    font-size: var(--r-title, 2.86em);
   }
   .section-heading {
     font-size: 1.87em;
@@ -386,15 +518,6 @@
   }
   .cover h1 {
     margin-top: 0.2em;
-  }
-  .logo {
-    position: absolute;
-    top: 0;
-    left: 0;
-    padding: 0.3em 0.6em;
-    border: 1px solid var(--rule);
-    border-radius: 0.3em;
-    font-family: var(--font-display);
   }
   .subtitle {
     color: var(--text-soft);
@@ -460,6 +583,7 @@
   }
   th {
     background: var(--subtle);
+    color: var(--r-head-ink, #0f1b2d);
     font-weight: 600;
   }
   .image {
@@ -491,27 +615,27 @@
     margin: 0 0 1em;
     padding: 0.8em 1em;
     border-radius: 0.4em;
-    background: var(--fill, #dce6ee);
-    color: var(--ink, #234c72);
+    background: var(--fill, var(--r-info-fill, #dce6ee));
+    color: var(--ink, var(--r-info-ink, #234c72));
   }
   .callout :global(p:last-child) {
     margin-bottom: 0;
   }
   .tone-note {
-    --fill: #efefef;
-    --ink: #0f1b2d;
+    --fill: var(--r-note-fill, #efefef);
+    --ink: var(--r-note-ink, #0f1b2d);
   }
   .tone-warning {
-    --fill: #fbefd9;
-    --ink: #8a5a12;
+    --fill: var(--r-warning-fill, #fbefd9);
+    --ink: var(--r-warning-ink, #8a5a12);
   }
   .tone-critical {
-    --fill: #f9e3e0;
-    --ink: #a3352a;
+    --fill: var(--r-critical-fill, #f9e3e0);
+    --ink: var(--r-critical-ink, #a3352a);
   }
   .tone-success {
-    --fill: #e3f1e8;
-    --ink: #2f6b47;
+    --fill: var(--r-success-fill, #e3f1e8);
+    --ink: var(--r-success-ink, #2f6b47);
   }
   .callout-title {
     font-weight: 600;
@@ -529,7 +653,7 @@
     text-align: center;
   }
   .count .n {
-    font-family: var(--font-display);
+    font-family: var(--r-font-heading, var(--font-display));
     font-size: 1.6em;
   }
   .sources .link {

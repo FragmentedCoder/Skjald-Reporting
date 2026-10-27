@@ -8,6 +8,10 @@ export interface Branding {
   primary_colour: string;
   accent_colour: string;
   enforce_colours: boolean;
+  /** Whether reports carry the small "Made with Skjald" line. */
+  made_with_skjald: boolean;
+  /** The time zone reports' dates are written in. */
+  time_zone: string;
 }
 
 const DEFAULTS: Branding = {
@@ -18,6 +22,8 @@ const DEFAULTS: Branding = {
   primary_colour: "fjord",
   accent_colour: "rav",
   enforce_colours: false,
+  made_with_skjald: true,
+  time_zone: "Europe/Copenhagen",
 };
 
 // The site's name, tag line, logo and colours, which an Administrator can change.
