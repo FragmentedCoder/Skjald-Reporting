@@ -17,7 +17,7 @@
   // it, for Administrators only.
   const shared = sharedCustomer();
   const customer = $derived(shared.current);
-  let details = $state({ name: "", cvr: "", address: "", language: "da", retention_months: 12 });
+  let details = $state({ name: "", cvr: "", address: "", language: "da", retention_months: 12, custom: {} as Record<string, unknown> });
   let logoInput = $state<HTMLInputElement>();
   let busy = $state(false);
   let deleteOpen = $state(false);
@@ -32,6 +32,7 @@
       address: customer.address ?? "",
       language: customer.language ?? "da",
       retention_months: customer.retention_months ?? 12,
+      custom: { ...(customer.custom ?? {}) },
     };
   });
 

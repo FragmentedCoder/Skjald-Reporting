@@ -19,7 +19,6 @@
   import { settingsOf } from "#lib/templates/fields.js";
   import { LivePreview } from "#lib/templates/live.svelte.js";
   import { declarations, ITEM } from "#lib/templates/names.js";
-  import { sampleContext } from "#lib/templates/preview.js";
   import { shapeOf } from "#lib/templates/rules.js";
   import { questionsOf, type Block, type BlockKind, type Problem, type TemplateContent } from "#lib/templates/types.js";
   import { toast } from "#lib/toast.svelte.js";
@@ -143,7 +142,7 @@
   $effect(() => {
     const snapshot = $state.snapshot(content) as TemplateContent;
     const assets = Object.fromEntries((draft.template?.assets ?? []).map((a) => [a.sha256, { url: a.url, width: a.width, height: a.height }]));
-    live.update({ content: snapshot, answers: snapshot.sample.answers, context: sampleContext(), assets, library: draft.libraryPreview,
+    live.update({ content: snapshot, answers: snapshot.sample.answers, context: draft.sampleContext, assets, library: draft.libraryPreview,
       timezone: branding.current.time_zone, pageTexts: looks.texts });
   });
   const hidden = $derived(new Map((live.model?.hidden ?? []).map((h) => [h.id, h.reason])));
@@ -192,7 +191,7 @@
       {/if}
       <StylePicker {looks} />
       <PdfPages paged={live.paged} look={looks.look(live.model?.pageTexts)} language={content.settings.language}
-        classification={String(sampleContext().project.classification)} selected={selectedId} onselect={select} />
+        classification={String(draft.sampleContext.project.classification)} selected={selectedId} onselect={select} />
     {:else}
       <p class="muted">Working out the pages…</p>
     {/if}

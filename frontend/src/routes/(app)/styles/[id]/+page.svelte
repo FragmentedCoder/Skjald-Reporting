@@ -11,6 +11,7 @@
   import ColourField from "#lib/components/styles/ColourField.svelte";
   import ElementPanel from "#lib/components/styles/ElementPanel.svelte";
   import PageDesigner from "#lib/components/styles/PageDesigner.svelte";
+  import { customFieldsApi, customNames, sampleCustom, type CustomField } from "#lib/customFields.js";
   import type { CustomerDetail } from "#lib/customers.js";
   import { dateTime } from "#lib/format.js";
   import { backgroundApi, stylesApi, whenConverted, type Style, type StyleSummary } from "#lib/reportStyles/api.js";
@@ -59,6 +60,7 @@
   let customerLogo = $state<string | null>(null);
   let customerArt = $state<CustomerArt | null>(null);
   let showBackground = $state(true);
+  let customFields = $state<CustomField[]>([]);
 
   const snapshotOf = () => JSON.stringify({ name, basedOn, content: $state.snapshot(content) });
   const changed = $derived(style !== null && JSON.stringify({ name, basedOn, content }) !== saved);
@@ -82,6 +84,7 @@
       use(await stylesApi.get(id));
       error = null;
       companyStyles = (await stylesApi.list()).filter((s) => s.customer_id === null);
+      customFields = await customFieldsApi.list().catch(() => []);
       if (style?.customer_id) await loadCustomer(style.customer_id);
     } catch (e) {
       if (!sessionGone(e)) error = e instanceof ApiError ? e.message : "The style could not be loaded.";
@@ -265,8 +268,10 @@
   onDestroy(() => live.close());
   $effect(() => {
     const sample = sampleTemplate as unknown as TemplateContent;
-    live.update({ content: sample, answers: sample.sample.answers, context: sampleContext(), assets: {}, timezone: branding.current.time_zone,
-      pageTexts: pageTexts(resolved) });
+    const fields = $state.snapshot(customFields) as CustomField[];
+    live.update({ content: sample, answers: sample.sample.answers, assets: {}, timezone: branding.current.time_zone,
+      context: sampleContext({ customer: sampleCustom(fields, "customer"), project: sampleCustom(fields, "project") }),
+      library: { names: customNames(fields), values: {}, tables: {} }, pageTexts: pageTexts(resolved) });
   });
   const look = $derived(lookOf(resolved, { image, customerArt: showBackground ? customerArt : null, logos, madeWith: branding.current.made_with_skjald, texts: live.model?.pageTexts }));
   const art = $derived(pageName === "other" ? look.art.other : look.art.first);

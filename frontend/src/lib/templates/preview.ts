@@ -67,8 +67,9 @@ export interface PreviewModel {
   pageTexts: Record<string, string>;
 }
 
-/** The sample context every preview starts from: the examples in shared/templates/names.json. */
-export function sampleContext(): Record<string, Record<string, unknown>> {
+/** The sample context every preview starts from: the examples in shared/templates/names.json,
+ * and custom fields' examples (customFields.ts sampleCustom) as customer.custom and project.custom. */
+export function sampleContext(custom: { customer?: Record<string, unknown>; project?: Record<string, unknown> } = {}): Record<string, Record<string, unknown>> {
   const context: Record<string, Record<string, unknown>> = {};
   for (const group of CONTEXT_GROUPS) {
     for (const n of group.names) {
@@ -76,6 +77,8 @@ export function sampleContext(): Record<string, Record<string, unknown>> {
       (context[root] ??= {})[part] = n.example;
     }
   }
+  context.customer.custom = custom.customer ?? {};
+  context.project.custom = custom.project ?? {};
   return context;
 }
 

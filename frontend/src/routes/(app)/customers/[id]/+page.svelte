@@ -4,6 +4,7 @@
   import CircleCheck from "@lucide/svelte/icons/circle-check";
   import Plus from "@lucide/svelte/icons/plus";
   import { pageTitle } from "#lib/branding.svelte.js";
+  import CustomFieldValues from "#lib/components/CustomFieldValues.svelte";
   import ProjectTable from "#lib/components/ProjectTable.svelte";
   import RoleGroups from "#lib/components/RoleGroups.svelte";
   import { sharedCustomer } from "#lib/context.js";
@@ -118,6 +119,7 @@
         <dd>{customer.active_projects} active, {customer.archived_projects} archived</dd>
         <dt>Added</dt>
         <dd>{dateTime(customer.created_at)}</dd>
+        <CustomFieldValues appliesTo="customer" values={customer.custom} />
       </dl>
       <p class="small muted">
         Everything here is encrypted with this customer's own key.

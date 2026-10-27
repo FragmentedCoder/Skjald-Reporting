@@ -82,7 +82,8 @@ export function catalogue(content: TemplateContent, library: Record<string, stri
     }
   }
   for (const [name, type] of Object.entries(library)) {
-    entries.push({ name, label: labels[name] || name, group: "Library", type, shape: shapeOf(type) });
+    const group = name.startsWith("customer.custom.") ? "Customer: custom fields" : name.startsWith("project.custom.") ? "Project: custom fields" : "Library";
+    entries.push({ name, label: labels[name] || name, group, type, shape: shapeOf(type) });
   }
   return entries;
 }

@@ -1,11 +1,12 @@
 <script lang="ts">
+  import CustomFieldInputs from "#lib/components/CustomFieldInputs.svelte";
   import { LANGUAGES } from "#lib/customers.js";
 
   // A customer's own details, for adding one and for changing them.
   let {
     values = $bindable(),
   }: {
-    values: { name: string; cvr: string; address: string; language: string; retention_months: number };
+    values: { name: string; cvr: string; address: string; language: string; retention_months: number; custom: Record<string, unknown> };
   } = $props();
 
   const uid = $props.id();
@@ -46,6 +47,8 @@
     kept at least 5 years either way. From 1 to 120.
   </span>
 </div>
+
+<CustomFieldInputs appliesTo="customer" bind:values={values.custom} />
 
 <style>
   .cvr,

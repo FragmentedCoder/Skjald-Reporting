@@ -11,6 +11,7 @@
   import LayoutDashboard from "@lucide/svelte/icons/layout-dashboard";
   import LayoutTemplate from "@lucide/svelte/icons/layout-template";
   import LibraryBig from "@lucide/svelte/icons/library-big";
+  import ListPlus from "@lucide/svelte/icons/list-plus";
   import ListChecks from "@lucide/svelte/icons/list-checks";
   import LockKeyhole from "@lucide/svelte/icons/lock-keyhole";
   import LogOut from "@lucide/svelte/icons/log-out";
@@ -373,6 +374,10 @@
             {#if styles}
               <li>{@render link({ href: resolve("/(app)/styles"), label: "Styles", icon: Palette,
                 current: path.startsWith("/styles") })}</li>
+            {/if}
+            {#if builds}
+              <li>{@render link({ href: resolve("/(app)/custom-fields"), label: "Custom fields", icon: ListPlus,
+                current: path.startsWith("/custom-fields") })}</li>
             {/if}
           </ul>
         {/if}

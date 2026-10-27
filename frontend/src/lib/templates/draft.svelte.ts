@@ -6,9 +6,11 @@
 
 import { getContext, setContext } from "svelte";
 import { ApiError } from "#lib/api.js";
+import { customFieldsApi, customLabels, customNames, sampleCustom, type CustomField } from "#lib/customFields.js";
 import { libraryApi, libraryNames, libraryValues, type LibraryEntry } from "#lib/library.js";
 import { templatesApi, type TemplateDetail } from "./api";
 import { check } from "./checks";
+import { sampleContext } from "./preview";
 import type { Problem, TemplateContent } from "./types";
 
 export type SaveState = "saved" | "unsaved" | "saving" | "conflict" | "failed";
@@ -35,6 +37,8 @@ export class Draft {
   loadError = $state<string | null>(null);
   /** The shared library, which templates read as vars.<key>, text.<key> and lookup(). */
   library = $state<LibraryEntry[]>([]);
+  /** Custom fields, which templates read as customer.custom.<key> and project.custom.<key>. */
+  customFields = $state<CustomField[]>([]);
 
   revision = 0;
   #saved = "";
@@ -51,8 +55,9 @@ export class Draft {
     return this.template?.assets.map((a) => a.sha256) ?? [];
   }
 
+  /** The names besides the answers and the built-in context: the library's and custom fields'. */
   get libraryNames(): Record<string, string> {
-    return libraryNames(this.library);
+    return { ...libraryNames(this.library), ...customNames(this.customFields) };
   }
 
   /** The library as plain data, which can be sent to the expression worker. */
@@ -62,7 +67,16 @@ export class Draft {
 
   /** What each library name is, for the rule editors. */
   get libraryLabels(): Record<string, string> {
-    return Object.fromEntries(this.library.map((e) => [e.kind === "variable" ? `vars.${e.key}` : `text.${e.key}`, e.description || e.key]));
+    return {
+      ...Object.fromEntries(this.library.map((e) => [e.kind === "variable" ? `vars.${e.key}` : `text.${e.key}`, e.description || e.key])),
+      ...customLabels(this.customFields),
+    };
+  }
+
+  /** The sample context, custom fields' examples included. */
+  get sampleContext(): Record<string, Record<string, unknown>> {
+    const fields = $state.snapshot(this.customFields) as CustomField[];
+    return sampleContext({ customer: sampleCustom(fields, "customer"), project: sampleCustom(fields, "project") });
   }
 
   /** The library as the preview reads it. */
@@ -73,7 +87,7 @@ export class Draft {
   async load(id: number): Promise<void> {
     clearTimeout(this.#saveTimer);
     try {
-      this.library = await libraryApi.list().catch(() => []);
+      [this.library, this.customFields] = await Promise.all([libraryApi.list().catch(() => []), customFieldsApi.list().catch(() => [])]);
       this.template = await templatesApi.get(id);
       if (this.template.draft) {
         const draft = await templatesApi.draft(id);

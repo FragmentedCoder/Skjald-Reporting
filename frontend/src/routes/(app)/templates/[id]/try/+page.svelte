@@ -10,7 +10,6 @@
   import { useDraft } from "#lib/templates/draft.svelte.js";
   import { fieldType, settingsOf } from "#lib/templates/fields.js";
   import { LivePreview } from "#lib/templates/live.svelte.js";
-  import { sampleContext } from "#lib/templates/preview.js";
   import type { Question, TemplateContent } from "#lib/templates/types.js";
 
   // "Try it": the technician's screen for the draft, one step at a time, with the PDF
@@ -29,7 +28,7 @@
     const snapshot = $state.snapshot(content) as TemplateContent;
     const answers = { ...snapshot.sample.answers, ...($state.snapshot(local) as Record<string, unknown>) };
     const assets = Object.fromEntries((draft.template?.assets ?? []).map((a) => [a.sha256, { url: a.url, width: a.width, height: a.height }]));
-    live.update({ content: snapshot, answers, context: sampleContext(), assets, library: draft.libraryPreview,
+    live.update({ content: snapshot, answers, context: draft.sampleContext, assets, library: draft.libraryPreview,
       timezone: branding.current.time_zone, pageTexts: looks.texts });
   });
 
@@ -151,7 +150,7 @@
     {#if live.paged}
       <StylePicker {looks} />
       <PdfPages paged={live.paged} look={looks.look(live.model?.pageTexts)} language={content.settings.language}
-        classification={String(sampleContext().project.classification)} />
+        classification={String(draft.sampleContext.project.classification)} />
     {:else}
       <p class="muted">Working out the pages…</p>
     {/if}

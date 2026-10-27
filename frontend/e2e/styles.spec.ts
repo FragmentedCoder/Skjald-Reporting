@@ -46,7 +46,7 @@ test("a designer makes a company style and designs its pages", async ({ browser 
   const violations = watchForCspViolations(page);
 
   await menu(page, "Styles").click();
-  await expect(page.getByRole("heading", { name: "Styles" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Styles", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "New style" }).click();
   const dialog = page.getByRole("dialog", { name: "New style" });
   await dialog.getByLabel("Name").fill("Nordlys brand");

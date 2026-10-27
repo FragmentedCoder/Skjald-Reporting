@@ -9,7 +9,6 @@
   import { useDraft } from "#lib/templates/draft.svelte.js";
   import { LivePreview } from "#lib/templates/live.svelte.js";
   import { CONTEXT_GROUPS, declarations } from "#lib/templates/names.js";
-  import { sampleContext } from "#lib/templates/preview.js";
   import type { TemplateContent } from "#lib/templates/types.js";
 
   // The Data tab: every name the template can read, what it is, where it comes from
@@ -19,6 +18,7 @@
   const content = $derived(draft.content as TemplateContent);
   const entries = $derived(catalogue(content, draft.libraryNames, draft.libraryLabels));
   const answers = $derived(entries.filter((e) => e.group === "Answers"));
+  const custom = $derived(entries.filter((e) => e.name.startsWith("customer.custom.") || e.name.startsWith("project.custom.")));
   const names = $derived(JSON.stringify(declarations(content, draft.libraryNames)));
 
   const live = new LivePreview();
@@ -30,10 +30,10 @@
   });
   $effect(() => {
     const snapshot = $state.snapshot(content) as TemplateContent;
-    live.update({ content: snapshot, answers: snapshot.sample.answers, context: sampleContext(), assets: {}, library: draft.libraryPreview });
+    live.update({ content: snapshot, answers: snapshot.sample.answers, context: draft.sampleContext, assets: {}, library: draft.libraryPreview });
   });
 
-  const values = $derived({ ...sampleContext(), ...draft.libraryPreview.values, answers: live.model?.values ?? {} });
+  const values = $derived({ ...draft.sampleContext, ...draft.libraryPreview.values, answers: live.model?.values ?? {} });
 
   function show(value: unknown): string {
     const v = plain(value);
@@ -125,6 +125,23 @@
       </div>
     </section>
   {/each}
+
+  {#if custom.length}
+    <section class="section" aria-labelledby="custom-title">
+      <h2 id="custom-title" class="section-title">Custom fields</h2>
+      <p class="small muted">The company's own details about customers and projects, filled in on their forms and set up under Custom fields. The examples are made up.</p>
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>Name</th><th>What it is</th><th>Kind</th><th>Example</th></tr></thead>
+          <tbody>
+            {#each custom as entry (entry.name)}
+              <tr><td class="mono">{entry.name}</td><td>{entry.label}</td><td>{human(entry.type)}</td><td class="mono sample">{show(lookup(entry.name))}</td></tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  {/if}
 
   <section class="section" aria-labelledby="library-title">
     <h2 id="library-title" class="section-title">Shared library</h2>
