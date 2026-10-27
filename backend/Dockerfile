@@ -8,9 +8,10 @@ RUN CGO_ENABLED=0 go install -trimpath \
 
 FROM python:3.13-slim AS base
 
-# Backups: restic from Debian's signed packages, and rclone from above.
+# Backups: restic from Debian's signed packages, and rclone from above. The renderer's
+# PDF tools (poppler), used only in its own service, which has no network.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends restic ca-certificates \
+ && apt-get install -y --no-install-recommends restic ca-certificates poppler-utils \
  && rm -rf /var/lib/apt/lists/*
 COPY --from=rclone /go/bin/rclone /usr/local/bin/rclone
 
@@ -28,7 +29,8 @@ RUN pip install --no-cache-dir . \
 
 # /backups: where backups go when the target is this server (a volume, or a folder
 # on the host set by SKJALD_BACKUP_DIR). /tls: the TLS settings the app gives Caddy.
-RUN mkdir -p /data /backups /tls && chown skjald:skjald /data /backups /tls
+# /exchange: the folder the worker and the renderer share, in memory.
+RUN mkdir -p /data /backups /tls /exchange && chown skjald:skjald /data /backups /tls /exchange
 
 # Which Skjald this is, shown to people signed in: the release's tag, or for a build
 # from a checkout what git calls that commit. Last, so a new one rebuilds nothing.

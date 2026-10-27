@@ -25,7 +25,7 @@ made = release_compose.release_compose(compose, APP, CADDY)
 local = "localhost:5000/skjald-app@sha256:" + "d" * 64
 check("a registry with a port will do", local in release_compose.release_compose(compose, local, CADDY))
 check("no service is built", "build:" not in made)
-check("the app, worker and tools run the app image", made.count(f"image: {APP}") == 3)
+check("the app, worker, renderer and tools run the app image", made.count(f"image: {APP}") == 4)
 check("Caddy runs the Caddy image", made.count(f"image: {CADDY}") == 1)
 check("the version is the image's own, not a setting", "SKJALD_VERSION" not in made)
 check("the rest is as it was", made.count("SKJALD_ETC") == compose.count("SKJALD_ETC"))

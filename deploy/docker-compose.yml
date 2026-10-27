@@ -68,8 +68,37 @@ services:
       # Backups kept on this server: a volume by default, or a folder on the host
       # (owned by UID 10001) when SKJALD_BACKUP_DIR names one, such as a mounted disk.
       - ${SKJALD_BACKUP_DIR:-skjald_backups}:/backups
+      # Where it hands the renderer files to convert.
+      - render_exchange:/exchange
     depends_on:
       - app
+      - renderer
+
+  # The renderer: turns files from outside (customers' report backgrounds, as PDF)
+  # into pages, and from Phase 3 renders reports. The app's image with no network at
+  # all, nothing to write but the folder it shares with the worker, and its own
+  # limits; it holds no keys and never sees the database.
+  renderer:
+    build:
+      context: ../backend
+      args:
+        # What the build calls itself: set by the installer and the skjald command.
+        SKJALD_VERSION: ${SKJALD_VERSION:-}
+    restart: unless-stopped
+    network_mode: none
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 1g
+    cpus: 1
+    pids_limit: 64
+    command: ["python", "-m", "app.renderer"]
+    volumes:
+      - render_exchange:/exchange
 
   # For the skjald command, never started with the others: what has to write to
   # the master key's folder (rotating the key) or work on the data while the app
@@ -103,3 +132,9 @@ volumes:
   skjald_data:
   skjald_backups:
   skjald_tls:
+  # In memory: customers' files pass through it on their way to the renderer.
+  render_exchange:
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "size=128m,uid=10001,gid=10001,mode=0700"

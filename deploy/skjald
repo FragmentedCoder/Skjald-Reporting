@@ -25,7 +25,7 @@ usage() {
 Usage: skjald <command>
 
   status                  what runs, and every health check
-  logs [service] [-f]     the logs of app, worker and caddy (or one of them)
+  logs [service] [-f]     the logs of app, worker, renderer and caddy (or one of them)
   start | stop | restart  start or stop Skjald
   backup                  back up now, and wait for it
   restore-test            restore the newest backup into a scratch folder and check it
@@ -94,6 +94,10 @@ wait_until_up() {
 	done
 	running worker || {
 		warn "The worker isn't running."
+		return 1
+	}
+	running renderer || {
+		warn "The renderer isn't running."
 		return 1
 	}
 }

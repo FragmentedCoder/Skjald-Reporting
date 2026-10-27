@@ -46,6 +46,9 @@ jobs:
           bunzip2 -c /tmp/restic.bz2 >/tmp/restic
           sudo install -m 0755 /tmp/restic /usr/local/bin/restic
           restic version
+      # The renderer converts PDFs with poppler; one test runs it for real.
+      - name: Install poppler
+        run: sudo apt-get update -q && sudo apt-get install -yq --no-install-recommends poppler-utils
       - name: Lint
         run: ruff check .
       - name: Type check

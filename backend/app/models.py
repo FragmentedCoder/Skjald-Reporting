@@ -4,6 +4,7 @@ import app.audit
 import app.audit_stamps
 import app.auth.mfa
 import app.auth.sessions
+import app.backgrounds
 import app.customers
 import app.images
 import app.jobs

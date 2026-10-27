@@ -24,7 +24,7 @@ def release_compose(text: str, app_ref: str, caddy_ref: str) -> str:
     for ref in (app_ref, caddy_ref):
         if not DIGEST.match(ref):
             raise SystemExit(f"Not an image pinned by digest: {ref}")
-    if text.count(CADDY_BUILD) != 1 or text.count(APP_BUILD) != 3:
+    if text.count(CADDY_BUILD) != 1 or text.count(APP_BUILD) != 4:
         raise SystemExit("The build blocks in docker-compose.yml have changed: update "
                          "deploy/release-compose.py to match.")
     text = text.replace(CADDY_BUILD, f"    image: {caddy_ref}\n")

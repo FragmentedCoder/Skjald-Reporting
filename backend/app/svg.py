@@ -68,6 +68,17 @@ def _value_ok(name: str, value: str) -> bool:
     return all(_LOCAL.match(ref.strip("'\" ")) for ref in _URL.findall(value))
 
 
+def _styles(style: str) -> dict[str, str]:
+    """A style attribute's declarations, such as fill:#000;stroke:none, as attributes."""
+    found = {}
+    for declaration in style.split(";"):
+        name, colon, value = declaration.partition(":")
+        name, value = name.strip().lower(), value.strip()
+        if colon and name in ATTRIBUTES and name != "href" and _value_ok(name, value):
+            found[name] = value
+    return found
+
+
 def _clean(element: ET.Element, depth: int, count: list[int]) -> ET.Element | None:
     tag = element.tag
     if not isinstance(tag, str) or not tag.startswith("{" + SVG + "}"):
@@ -79,6 +90,10 @@ def _clean(element: ET.Element, depth: int, count: list[int]) -> ET.Element | No
     if count[0] > MAX_ELEMENTS or depth > MAX_DEPTH:
         raise SvgRejected("The SVG is too complex to use.")
     clean = ET.Element(local)
+    # Drawing set in a style attribute (as PDF converters write it) is kept as the
+    # plain attributes it stands for; the style attribute itself never is.
+    for name, value in _styles(element.attrib.get("style", "")).items():
+        clean.set(name, value)
     for name, value in element.attrib.items():
         plain = name
         if name.startswith("{" + XLINK + "}"):
@@ -117,9 +132,9 @@ def _size(root: ET.Element) -> tuple[int, int]:
     raise SvgRejected("The SVG needs a viewBox, or a width and height, so it can be sized.")
 
 
-def clean_svg(raw: bytes) -> CleanSvg:
-    if len(raw) > MAX_BYTES:
-        raise SvgRejected("The SVG is larger than 2 MB.")
+def clean_svg(raw: bytes, max_bytes: int = MAX_BYTES) -> CleanSvg:
+    if len(raw) > max_bytes:
+        raise SvgRejected(f"The SVG is larger than {max_bytes // (1024 * 1024)} MB.")
     try:
         root = fromstring(raw, forbid_dtd=True, forbid_entities=True, forbid_external=True)
     except (DefusedXmlException, ET.ParseError, ValueError) as exc:

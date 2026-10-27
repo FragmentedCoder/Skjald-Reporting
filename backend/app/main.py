@@ -7,6 +7,7 @@ from app import (
     account,
     admin,
     audit_routes,
+    background_routes,
     backup_routes,
     branding,
     customer_routes,
@@ -55,3 +56,4 @@ app.include_router(project_routes.router, prefix="/api")
 app.include_router(server_routes.router, prefix="/api")
 app.include_router(template_routes.router, prefix="/api")
 app.include_router(library_routes.router, prefix="/api")
+app.include_router(background_routes.router, prefix="/api")
