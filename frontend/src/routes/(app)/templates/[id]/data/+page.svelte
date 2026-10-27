@@ -4,6 +4,7 @@
   import { Engine, ExpressionError, human, plain } from "#lib/cel/engine.js";
   import { FUNCTIONS } from "#lib/cel/library.js";
   import Where from "#lib/components/builder/Where.svelte";
+  import { entryName } from "#lib/library.js";
   import { catalogue } from "#lib/templates/catalogue.js";
   import { useDraft } from "#lib/templates/draft.svelte.js";
   import { LivePreview } from "#lib/templates/live.svelte.js";
@@ -16,9 +17,9 @@
   // and a box to try an expression on the sample answers.
   const draft = useDraft();
   const content = $derived(draft.content as TemplateContent);
-  const entries = $derived(catalogue(content));
+  const entries = $derived(catalogue(content, draft.libraryNames, draft.libraryLabels));
   const answers = $derived(entries.filter((e) => e.group === "Answers"));
-  const names = $derived(JSON.stringify(declarations(content)));
+  const names = $derived(JSON.stringify(declarations(content, draft.libraryNames)));
 
   const live = new LivePreview();
   // What's typed in the box runs in the expression worker, with its time limit.
@@ -29,10 +30,10 @@
   });
   $effect(() => {
     const snapshot = $state.snapshot(content) as TemplateContent;
-    live.update({ content: snapshot, answers: snapshot.sample.answers, context: sampleContext(), assets: {} });
+    live.update({ content: snapshot, answers: snapshot.sample.answers, context: sampleContext(), assets: {}, library: draft.libraryPreview });
   });
 
-  const values = $derived({ ...sampleContext(), answers: live.model?.values ?? {} });
+  const values = $derived({ ...sampleContext(), ...draft.libraryPreview.values, answers: live.model?.values ?? {} });
 
   function show(value: unknown): string {
     const v = plain(value);
@@ -61,7 +62,8 @@
   let timer: ReturnType<typeof setTimeout> | undefined;
   $effect(() => {
     const expr = trying;
-    const setup = { key: `${names}|${content.settings.language}`, declarations: JSON.parse(names), options: { language: content.settings.language } };
+    const tables = draft.libraryPreview.tables;
+    const setup = { key: `${names}|${content.settings.language}|${JSON.stringify(tables)}`, declarations: JSON.parse(names), options: { language: content.settings.language, tables } };
     const now = $state.snapshot(values) as Record<string, unknown>;
     clearTimeout(timer);
     timer = setTimeout(async () => {
@@ -126,7 +128,25 @@
 
   <section class="section" aria-labelledby="library-title">
     <h2 id="library-title" class="section-title">Shared library</h2>
-    <p class="small muted">Variables as vars.name, text snippets as text.name, and data tables through lookup("table", "key"). Every template and report can use them.</p>
+    <p class="small muted">Shared by every template and report, and changed in the Library. A report uses the current values until it's signed, then keeps those.</p>
+    {#if draft.library.length}
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>Name</th><th>What it is</th><th>Value</th></tr></thead>
+          <tbody>
+            {#each draft.library as entry (entry.id)}
+              <tr>
+                <td class="mono">{entryName(entry)}</td>
+                <td>{entry.description || "—"}</td>
+                <td class="sample">{"value" in entry.value ? entry.value.value : "text" in entry.value ? entry.value.text : `${Object.keys(entry.value.rows).length} rows, columns ${entry.value.columns.join(", ")}`}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    {:else}
+      <p class="small muted">The library is empty.</p>
+    {/if}
   </section>
 
   <section class="section" aria-labelledby="functions-title">

@@ -76,6 +76,14 @@ export class CelClient {
     };
     const setup = pending.setup.key === this.#sentKey ? undefined : pending.setup;
     this.#sentKey = pending.setup.key;
-    worker.postMessage({ id, setup, values: pending.values, jobs: pending.jobs });
+    try {
+      worker.postMessage({ id, setup, values: pending.values, jobs: pending.jobs });
+    } catch (error) {
+      // What can't be sent (live state rather than plain data, say) fails its jobs
+      // rather than leaving the queue waiting.
+      this.#sentKey = null;
+      const message = error instanceof Error ? error.message : String(error);
+      finish(pending.jobs.map(() => ({ ok: false, kind: "runtime", message })));
+    }
   }
 }

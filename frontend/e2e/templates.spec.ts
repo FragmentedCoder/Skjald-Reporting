@@ -176,6 +176,55 @@ test("a designer builds a template's form, with rules, and publishes it", async 
   await context.close();
 });
 
+test("the library: a technician adds entries, an administrator locks one", async ({ browser }) => {
+  const { context, page } = await signedIn(browser, "e2e-librarian");
+  const violations = watchForCspViolations(page);
+  await menu(page, "Library").click();
+  await expect(page.getByRole("heading", { name: "Library" })).toBeVisible();
+  await expect(menu(page, "Templates")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Add a variable" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Name", { exact: true }).fill("support_phone");
+  await dialog.getByLabel(/^What it is/).fill("The service desk");
+  await dialog.getByLabel("Value", { exact: true }).fill("+45 70 20 30 40");
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(toastWith(page, "vars.support_phone is in the library.")).toBeVisible();
+
+  await page.getByRole("button", { name: /^Text snippets/ }).click();
+  await page.getByRole("button", { name: "Add a text snippet" }).click();
+  await dialog.getByLabel("Name", { exact: true }).fill("handover");
+  await dialog.getByLabel("Text", { exact: true }).fill("See {{text.other}}");
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(toastWith(page, "A snippet can use variables")).toBeVisible();
+  await dialog.getByLabel("Text", { exact: true }).fill("Call {{vars.support_phone}} for the full password.");
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("cell", { name: "Call {{vars.support_phone}} for the full password." })).toBeVisible();
+
+  await page.getByRole("button", { name: /^Data tables/ }).click();
+  await page.getByRole("button", { name: "Add a data table" }).click();
+  await dialog.getByLabel("Name", { exact: true }).fill("severity");
+  await dialog.getByRole("button", { name: "Add a row" }).click();
+  await dialog.getByLabel("Row 1: key").fill("high");
+  await dialog.getByLabel("Row 1: Value").fill("Høj");
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("cell", { name: "1 row: Key → Value" })).toBeVisible();
+
+  // An administrator locks the variable; nobody can change it then.
+  const { context: adminContext, page: admin } = await signedIn(browser, "e2e-locksmith");
+  await menu(admin, "Library").click();
+  await admin.getByRole("button", { name: "Actions for vars.support_phone" }).click();
+  await admin.getByRole("menuitem", { name: "Lock" }).click();
+  await expect(admin.getByRole("row", { name: /vars\.support_phone/ }).getByText("Locked")).toBeVisible();
+  await page.reload();
+  await page.getByRole("button", { name: "Actions for vars.support_phone" }).click();
+  await expect(page.getByRole("menuitem", { name: "History" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Change" })).toHaveCount(0);
+  expect(violations).toEqual([]);
+  await adminContext.close();
+  await context.close();
+});
+
 test("a designer lays out the PDF and sees its pages", async ({ browser }) => {
   const { context, page } = await signedIn(browser, "e2e-designer2");
   const violations = watchForCspViolations(page);
@@ -218,6 +267,10 @@ test("a designer lays out the PDF and sees its pages", async ({ browser }) => {
   await panel(page).getByRole("button", { name: "Bold" }).click();
   await page.keyboard.type(" today");
   await expect(editor.locator("strong")).toHaveText("today");
+  await page.keyboard.press("ControlOrMeta+b");
+  await page.keyboard.type(". ");
+  await panel(page).getByRole("button", { name: "Insert a name" }).click();
+  await panel(page).getByLabel("Name to insert").selectOption({ label: "handover" });
 
   // A callout whose tone the answers set; an image uploaded with the template.
   await blocks.getByRole("button", { name: /^Callout/ }).click();
@@ -242,7 +295,7 @@ test("a designer lays out the PDF and sees its pages", async ({ browser }) => {
   await page.getByRole("button", { name: "Pages", exact: true }).click();
   const sheet = page.getByRole("region", { name: "Page 1 of 1" });
   await expect(sheet.getByRole("heading", { name: "1 Summary" })).toBeVisible();
-  await expect(sheet.getByText("Destroyed on site for Fjordvik Logistik A/S today")).toBeVisible();
+  await expect(sheet.getByText("Destroyed on site for Fjordvik Logistik A/S today. Call +45 70 20 30 40 for the full password.")).toBeVisible();
   await expect(sheet.locator("strong", { hasText: "today" })).toBeVisible();
   await expect(sheet.getByText("Table 1. Devices destroyed")).toBeVisible();
   await expect(sheet.locator("aside.callout.tone-critical")).toContainText("Handle with care");
@@ -253,7 +306,7 @@ test("a designer lays out the PDF and sees its pages", async ({ browser }) => {
   // Saved as the server accepts it: the same after a reload.
   await page.reload();
   await page.getByRole("button", { name: "Pages", exact: true }).click();
-  await expect(page.getByRole("region", { name: "Page 1 of 1" }).getByText("Destroyed on site for Fjordvik Logistik A/S today")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Page 1 of 1" }).getByText(/^Destroyed on site for Fjordvik Logistik A\/S today\./)).toBeVisible();
 
   // Try it: the technician's form beside the PDF, which follows the answers.
   await page.getByRole("link", { name: "Try it" }).click();

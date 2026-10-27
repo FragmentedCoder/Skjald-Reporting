@@ -34,10 +34,10 @@
       .map(([kind, t]) => ({ kind, label: t.label, hint: t.hint, icon: t.icon, group })),
   );
 
-  const names = $derived(JSON.stringify(declarations(content)));
+  const names = $derived(JSON.stringify(declarations(content, draft.libraryNames)));
   const engine = $derived(new Engine(JSON.parse(names), { language: content.settings.language }));
   const itemEngine = $derived(new Engine({ ...JSON.parse(names), ...ITEM }, { language: content.settings.language }));
-  const entries = $derived(catalogue(content));
+  const entries = $derived(catalogue(content, draft.libraryNames, draft.libraryLabels));
 
   // Where a block sits: the list holding it, and the section it's repeated with, if any.
   interface Found {
@@ -138,7 +138,7 @@
   $effect(() => {
     const snapshot = $state.snapshot(content) as TemplateContent;
     const assets = Object.fromEntries((draft.template?.assets ?? []).map((a) => [a.sha256, { url: a.url, width: a.width, height: a.height }]));
-    live.update({ content: snapshot, answers: snapshot.sample.answers, context: sampleContext(), assets });
+    live.update({ content: snapshot, answers: snapshot.sample.answers, context: sampleContext(), assets, library: draft.libraryPreview });
   });
   const hidden = $derived(new Map((live.model?.hidden ?? []).map((h) => [h.id, h.reason])));
 

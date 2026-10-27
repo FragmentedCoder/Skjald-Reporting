@@ -28,10 +28,10 @@
   );
 
   // The names expressions can read; the engine is made again only when they change.
-  const names = $derived(JSON.stringify(declarations(content)));
+  const names = $derived(JSON.stringify(declarations(content, draft.libraryNames)));
   const engine = $derived(new Engine(JSON.parse(names), { language: content.settings.language }));
   // The names rules can use, labelled for the rule editors.
-  const entries = $derived(catalogue(content));
+  const entries = $derived(catalogue(content, draft.libraryNames, draft.libraryLabels));
 
   const selection = $derived(draft.selection);
   const where = $derived.by(() => {

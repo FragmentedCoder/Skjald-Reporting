@@ -24,7 +24,7 @@
     const snapshot = $state.snapshot(content) as TemplateContent;
     const answers = { ...snapshot.sample.answers, ...($state.snapshot(local) as Record<string, unknown>) };
     const assets = Object.fromEntries((draft.template?.assets ?? []).map((a) => [a.sha256, { url: a.url, width: a.width, height: a.height }]));
-    live.update({ content: snapshot, answers, context: sampleContext(), assets });
+    live.update({ content: snapshot, answers, context: sampleContext(), assets, library: draft.libraryPreview });
   });
 
   const model = $derived(live.model);

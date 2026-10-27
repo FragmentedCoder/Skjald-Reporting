@@ -56,7 +56,7 @@ function columnType(column: RawColumn): string {
   return "string";
 }
 
-export function catalogue(content: TemplateContent, library: Record<string, string> = {}): NameEntry[] {
+export function catalogue(content: TemplateContent, library: Record<string, string> = {}, labels: Record<string, string> = {}): NameEntry[] {
   const entries: NameEntry[] = [];
   const seen = new Set<string>();
   for (const q of questionsOf(content)) {
@@ -82,7 +82,7 @@ export function catalogue(content: TemplateContent, library: Record<string, stri
     }
   }
   for (const [name, type] of Object.entries(library)) {
-    entries.push({ name, label: name, group: "Library", type, shape: shapeOf(type) });
+    entries.push({ name, label: labels[name] || name, group: "Library", type, shape: shapeOf(type) });
   }
   return entries;
 }

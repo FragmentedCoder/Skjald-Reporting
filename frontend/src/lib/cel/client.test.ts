@@ -25,6 +25,22 @@ class FakeWorker implements WorkerLike {
 }
 
 describe("the expression client", () => {
+  it("fails a batch that can't be sent, and carries on", async () => {
+    let calls = 0;
+    const client = new CelClient(() => {
+      const worker = new FakeWorker();
+      const post = worker.postMessage.bind(worker);
+      worker.postMessage = (request) => {
+        if (calls++ === 0) throw new DOMException("could not be cloned", "DataCloneError");
+        post(request);
+      };
+      return worker;
+    });
+    const [failed] = await client.run(SETUP, {}, [{ kind: "check", expr: "answers.cvss" }]);
+    expect(failed).toMatchObject({ ok: false, kind: "runtime" });
+    expect(await client.run(SETUP, {}, [{ kind: "check", expr: "answers.cvss" }])).toEqual([{ ok: true, value: "double" }]);
+  });
+
   it("runs a batch and sends the names only when they change", async () => {
     const workers: FakeWorker[] = [];
     const client = new CelClient(() => {

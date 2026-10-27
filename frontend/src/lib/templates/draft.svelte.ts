@@ -6,6 +6,7 @@
 
 import { getContext, setContext } from "svelte";
 import { ApiError } from "#lib/api.js";
+import { libraryApi, libraryNames, libraryValues, type LibraryEntry } from "#lib/library.js";
 import { templatesApi, type TemplateDetail } from "./api";
 import { check } from "./checks";
 import type { Problem, TemplateContent } from "./types";
@@ -32,6 +33,8 @@ export class Draft {
   problems = $state<Problem[]>([]);
   selection = $state<Selection | null>(null);
   loadError = $state<string | null>(null);
+  /** The shared library, which templates read as vars.<key>, text.<key> and lookup(). */
+  library = $state<LibraryEntry[]>([]);
 
   revision = 0;
   #saved = "";
@@ -48,9 +51,29 @@ export class Draft {
     return this.template?.assets.map((a) => a.sha256) ?? [];
   }
 
+  get libraryNames(): Record<string, string> {
+    return libraryNames(this.library);
+  }
+
+  /** The library as plain data, which can be sent to the expression worker. */
+  get #plainLibrary(): LibraryEntry[] {
+    return $state.snapshot(this.library) as LibraryEntry[];
+  }
+
+  /** What each library name is, for the rule editors. */
+  get libraryLabels(): Record<string, string> {
+    return Object.fromEntries(this.library.map((e) => [e.kind === "variable" ? `vars.${e.key}` : `text.${e.key}`, e.description || e.key]));
+  }
+
+  /** The library as the preview reads it. */
+  get libraryPreview() {
+    return { names: this.libraryNames, ...libraryValues(this.#plainLibrary) };
+  }
+
   async load(id: number): Promise<void> {
     clearTimeout(this.#saveTimer);
     try {
+      this.library = await libraryApi.list().catch(() => []);
       this.template = await templatesApi.get(id);
       if (this.template.draft) {
         const draft = await templatesApi.draft(id);
@@ -76,7 +99,7 @@ export class Draft {
     this.#saved = this.#seen = JSON.stringify(content);
     this.saveState = "saved";
     this.saveMessage = null;
-    this.problems = check(content, { assets: this.assets });
+    this.problems = check(content, { assets: this.assets, library: this.libraryNames });
   }
 
   /** Called with the content's JSON whenever it may have changed. */
@@ -85,7 +108,7 @@ export class Draft {
     this.#seen = text;
     clearTimeout(this.#checkTimer);
     this.#checkTimer = setTimeout(() => {
-      if (this.content) this.problems = check($state.snapshot(this.content) as TemplateContent, { assets: this.assets });
+      if (this.content) this.problems = check($state.snapshot(this.content) as TemplateContent, { assets: this.assets, library: this.libraryNames });
     }, CHECK_AFTER_MS);
     if (this.readonly || this.saveState === "conflict") return;
     if (text !== this.#saved) {
