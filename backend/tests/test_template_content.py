@@ -17,6 +17,7 @@ from app.templates.changes import changes
 from app.templates.checks import check
 from app.templates.content import TemplateContent, starter_content
 from app.templates.names import CONTEXT, declarations
+from app.templates.secrets import printed
 from app.templates.text import RichTextError, check_doc, doc_text, interpolations
 
 SHARED = Path(__file__).resolve().parents[2] / "shared" / "templates"
@@ -164,3 +165,12 @@ def test_changes_by_id() -> None:
     assert found.settings_changed == ["prefix"]
     assert found.any
     assert not changes(old, old).any
+
+
+SECRETS = json.loads((SHARED / "secrets.json").read_text())
+
+
+@pytest.mark.parametrize("case", SECRETS["cases"], ids=lambda c: c["printed"] or "empty")
+def test_secrets_print_partly(case: dict[str, str]) -> None:
+    assert printed(case["secret"]) == case["printed"]
+    assert printed(case["secret"], "omit") == ""
