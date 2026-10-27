@@ -1,0 +1,656 @@
+{
+  "about": "The page rules the builder's preview and the PDF renderer share: blocks as printed (hidden ones already left out, repeated sections already repeated) and the pages they fall onto. frontend/src/lib/templates/pages.test.ts runs them now; the renderer runs them from Phase 3. Long content flowing onto further pages isn't part of these: that depends on how long it is.",
+  "cases": [
+    {
+      "name": "A section set to start a new page begins one after other content",
+      "blocks": [
+        {
+          "kind": "section",
+          "id": "a",
+          "title": "a",
+          "newPage": false,
+          "landscape": false,
+          "numbered": true,
+          "blocks": [
+            {
+              "kind": "text",
+              "id": "t1"
+            }
+          ]
+        },
+        {
+          "kind": "section",
+          "id": "b",
+          "title": "b",
+          "newPage": true,
+          "landscape": false,
+          "numbered": true,
+          "blocks": [
+            {
+              "kind": "text",
+              "id": "t2"
+            }
+          ]
+        }
+      ],
+      "pages": [
+        {
+          "orientation": "portrait",
+          "cover": false,
+          "ids": [
+            "a",
+            "t1"
+          ]
+        },
+        {
+          "orientation": "portrait",
+          "cover": false,
+          "ids": [
+            "b",
+            "t2"
+          ]
+        }
+      ],
+      "numbers": {
+        "a": "1",
+        "b": "2"
+      }
+    },
+    {
+      "name": "The first section starting a new page leaves no empty page before it",
+      "blocks": [
+        {
+          "kind": "section",
+          "id": "a",
+          "title": "a",
+          "newPage": true,
+          "landscape": false,
+          "numbered": true,
+          "blocks": [
+            {
+              "kind": "text",
+              "id": "t1"
+            }
+          ]
+        }
+      ],
+      "pages": [
+        {
+          "orientation": "portrait",
+          "cover": false,
+          "ids": [
+            "a",
+            "t1"
+          ]
+        }
+      ],
+      "numbers": {
+        "a": "1"
+      }
+    },
+    {
+      "name": "A section that doesn't start a new page continues the page",
+      "blocks": [
+        {
+          "kind": "text",
+          "id": "t1"
+        },
+        {
+          "kind": "section",
+          "id": "a",
+          "title": "a",
+          "newPage": false,
+          "landscape": false,
+          "numbered": true,
+          "blocks": [
+            {
+              "kind": "text",
+              "id": "t2"
+            }
+          ]
+        }
+      ],
+      "pages": [
+        {
+          "orientation": "portrait",
+          "cover": false,
+          "ids": [
+            "t1",
+            "a",
+            "t2"
+          ]
+        }
+      ],
+      "numbers": {
+        "a": "1"
+      }
+    },
+    {
+      "name": "The cover gets a page of its own",
+      "blocks": [
+        {
+          "kind": "cover",
+          "id": "c"
+        },
+        {
+          "kind": "section",
+          "id": "a",
+          "title": "a",
+          "newPage": false,
+          "landscape": false,
+          "numbered": true,
+          "blocks": [
+            {
+              "kind": "text",
+              "id": "t1"
+            }
+          ]
+        }
+      ],
+      "pages": [
+        {
+          "orientation": "portrait",
+          "cover": true,
+          "ids": [
+            "c"
+          ]
+        },
+        {
+          "orientation": "portrait",
+          "cover": false,
+          "ids": [
+            "a",
+            "t1"
+          ]
+        }
+      ],
+      "numbers": {
+        "a": "1"
+      }
+    },
+    {
+      "name": "A page break forces a new page",
+      "blocks": [
+        {
+          "kind": "text",
+          "id": "t1"
+        },
+        {
+          "kind": "page_break",
+          "id": "pb"
+        },
+        {
+          "kind": "text",
+          "id": "t2"
+        }
+      ],
+      "pages": [
+        {
+          "orientation": "portrait",
+          "cover": false,
+          "ids": [
+            "t1"
+          ]
+        },
+        {
+          "orientation": "portrait",
+          "cover": false,
+          "ids": [
+            "t2"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "A page break at the end leaves no empty page",
+      "blocks": [
+        {
+          "kind": "text",
+          "id": "t1"
+        },
+        {
+          "kind": "page_break",
+          "id": "pb"
+        }
+      ],
+      "pages": [
+        {
+          "orientation": "portrait",
+          "cover": false,
+          "ids": [
+            "t1"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Two page breaks in a row make one break",
+      "blocks": [
+        {
+          "kind": "text",
+          "id": "t1"
+        },
+        {
+          "kind": "page_break",
+          "id": "pb1"
+        },
+        {
+          "kind": "page_break",
+          "id": "pb2"
+        },
+        {
+          "kind": "text",
+          "id": "t2"
+        }
+      ],
+      "pages": [
+        {
+          "orientation": "portrait",
+          "cover": false,
+          "ids": [
+            "t1"
+          ]
+        },
+        {
+          "orientation": "portrait",
+          "cover": false,
+          "ids": [
+            "t2"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "A page break before a section that starts a new page makes one break",
+      "blocks": [
+        {
+          "kind": "text",
+          "id": "t1"
+        },
+        {
+          "kind": "page_break",
+          "id": "pb"
+        },
+        {
+          "kind": "section",
+          "id": "a",
+          "title": "a",
+          "newPage": true,
+          "landscape": false,
+          "numbered": true,
+          "blocks": [
+            {
+              "kind": "text",
+              "id": "t2"
+            }
+          ]
+        }
+      ],
+      "pages": [
+        {
+          "orientation": "portrait",
+          "cover": false,
+          "ids": [
+            "t1"
+          ]
+        },
+        {
+          "orientation": "portrait",
+          "cover": false,
+          "ids": [
+            "a",
+            "t2"
+          ]
+        }
+      ],
+      "numbers": {
+        "a": "1"
+      }
+    },
+    {
+      "name": "A landscape section gets landscape pages, and portrait comes back after it",
+      "blocks": [
+        {
+          "kind": "text",
+          "id": "t1"
+        },
+        {
+          "kind": "section",
+          "id": "l",
+          "title": "l",
+          "newPage": false,
+          "landscape": true,
+          "numbered": true,
+          "blocks": [
+            {
+              "kind": "table",
+              "id": "tb"
+            }
+          ]
+        },
+        {
+          "kind": "text",
+          "id": "t2"
+        }
+      ],
+      "pages": [
+        {
+          "orientation": "portrait",
+          "cover": false,
+          "ids": [
+            "t1"
+          ]
+        },
+        {
+          "orientation": "landscape",
+          "cover": false,
+          "ids": [
+            "l",
+            "tb"
+          ]
+        },
+        {
+          "orientation": "portrait",
+          "cover": false,
+          "ids": [
+            "t2"
+          ]
+        }
+      ],
+      "numbers": {
+        "l": "1"
+      },
+      "captions": {
+        "tb": "Table 1"
+      }
+    },
+    {
+      "name": "A landscape section first turns the first page",
+      "blocks": [
+        {
+          "kind": "section",
+          "id": "l",
+          "title": "l",
+          "newPage": false,
+          "landscape": true,
+          "numbered": true,
+          "blocks": [
+            {
+              "kind": "text",
+              "id": "t1"
+            }
+          ]
+        }
+      ],
+      "pages": [
+        {
+          "orientation": "landscape",
+          "cover": false,
+          "ids": [
+            "l",
+            "t1"
+          ]
+        }
+      ],
+      "numbers": {
+        "l": "1"
+      }
+    },
+    {
+      "name": "Sections inside sections are numbered 1.1, 1.2; unnumbered ones take no number",
+      "blocks": [
+        {
+          "kind": "section",
+          "id": "a",
+          "title": "a",
+          "newPage": false,
+          "landscape": false,
+          "numbered": true,
+          "blocks": [
+            {
+              "kind": "section",
+              "id": "a1",
+              "title": "a1",
+              "newPage": false,
+              "landscape": false,
+              "numbered": true,
+              "blocks": [
+                {
+                  "kind": "text",
+                  "id": "t1"
+                }
+              ]
+            },
+            {
+              "kind": "section",
+              "id": "a2",
+              "title": "a2",
+              "newPage": false,
+              "landscape": false,
+              "numbered": false,
+              "blocks": [
+                {
+                  "kind": "text",
+                  "id": "t2"
+                }
+              ]
+            },
+            {
+              "kind": "section",
+              "id": "a3",
+              "title": "a3",
+              "newPage": false,
+              "landscape": false,
+              "numbered": true,
+              "blocks": [
+                {
+                  "kind": "text",
+                  "id": "t3"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "section",
+          "id": "b",
+          "title": "b",
+          "newPage": false,
+          "landscape": false,
+          "numbered": true,
+          "blocks": [
+            {
+              "kind": "text",
+              "id": "t4"
+            }
+          ]
+        }
+      ],
+      "pages": [
+        {
+          "orientation": "portrait",
+          "cover": false,
+          "ids": [
+            "a",
+            "a1",
+            "t1",
+            "a2",
+            "t2",
+            "a3",
+            "t3",
+            "b",
+            "t4"
+          ]
+        }
+      ],
+      "numbers": {
+        "a": "1",
+        "a1": "1.1",
+        "a3": "1.2",
+        "b": "2"
+      }
+    },
+    {
+      "name": "Tables and figures are counted in reading order",
+      "blocks": [
+        {
+          "kind": "section",
+          "id": "a",
+          "title": "a",
+          "newPage": false,
+          "landscape": false,
+          "numbered": true,
+          "blocks": [
+            {
+              "kind": "table",
+              "id": "tb1"
+            },
+            {
+              "kind": "image",
+              "id": "im1"
+            }
+          ]
+        },
+        {
+          "kind": "table",
+          "id": "tb2"
+        },
+        {
+          "kind": "gallery",
+          "id": "g1"
+        }
+      ],
+      "pages": [
+        {
+          "orientation": "portrait",
+          "cover": false,
+          "ids": [
+            "a",
+            "tb1",
+            "im1",
+            "tb2",
+            "g1"
+          ]
+        }
+      ],
+      "numbers": {
+        "a": "1"
+      },
+      "captions": {
+        "tb1": "Table 1",
+        "im1": "Figure 1",
+        "tb2": "Table 2",
+        "g1": "Figure 2"
+      }
+    },
+    {
+      "name": "The contents list each section with the page it starts on",
+      "blocks": [
+        {
+          "kind": "cover",
+          "id": "c"
+        },
+        {
+          "kind": "toc",
+          "id": "toc"
+        },
+        {
+          "kind": "section",
+          "id": "a",
+          "title": "a",
+          "newPage": true,
+          "landscape": false,
+          "numbered": true,
+          "blocks": [
+            {
+              "kind": "text",
+              "id": "t1"
+            }
+          ]
+        },
+        {
+          "kind": "section",
+          "id": "b",
+          "title": "b",
+          "newPage": true,
+          "landscape": false,
+          "numbered": true,
+          "blocks": [
+            {
+              "kind": "section",
+              "id": "b1",
+              "title": "b1",
+              "newPage": false,
+              "landscape": false,
+              "numbered": true,
+              "blocks": [
+                {
+                  "kind": "text",
+                  "id": "t2"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "pages": [
+        {
+          "orientation": "portrait",
+          "cover": true,
+          "ids": [
+            "c"
+          ]
+        },
+        {
+          "orientation": "portrait",
+          "cover": false,
+          "ids": [
+            "toc"
+          ]
+        },
+        {
+          "orientation": "portrait",
+          "cover": false,
+          "ids": [
+            "a",
+            "t1"
+          ]
+        },
+        {
+          "orientation": "portrait",
+          "cover": false,
+          "ids": [
+            "b",
+            "b1",
+            "t2"
+          ]
+        }
+      ],
+      "numbers": {
+        "a": "1",
+        "b": "2",
+        "b1": "2.1"
+      },
+      "contents": [
+        {
+          "number": "1",
+          "title": "a",
+          "depth": 0,
+          "page": 3
+        },
+        {
+          "number": "2",
+          "title": "b",
+          "depth": 0,
+          "page": 4
+        },
+        {
+          "number": "2.1",
+          "title": "b1",
+          "depth": 1,
+          "page": 4
+        }
+      ]
+    }
+  ]
+}
