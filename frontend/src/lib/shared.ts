@@ -3,3 +3,4 @@
 // copies shared/ beside the frontend (deploy/caddy.Dockerfile).
 
 export { default as celFunctions } from "../../../shared/cel/functions.json";
+export { default as contextNames } from "../../../shared/templates/names.json";
