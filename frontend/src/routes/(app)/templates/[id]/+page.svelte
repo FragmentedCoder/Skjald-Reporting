@@ -60,7 +60,7 @@
   }
 
   function addStep() {
-    const step = newStep(content.form.length + 1);
+    const step = newStep();
     content.form.push(step);
     select("step", step.id);
   }
@@ -266,13 +266,13 @@
 <style>
   .workspace {
     display: grid;
-    grid-template-columns: 240px minmax(0, 1fr) minmax(300px, 380px);
+    grid-template-columns: 210px minmax(0, 1fr) minmax(290px, 360px);
     gap: var(--space-4);
     align-items: start;
     margin-top: var(--space-4);
   }
   .workspace.readonly {
-    grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+    grid-template-columns: minmax(0, 1fr) minmax(290px, 360px);
   }
   .intro p {
     margin: var(--space-1) 0 var(--space-3);

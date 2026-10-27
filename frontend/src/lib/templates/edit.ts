@@ -59,8 +59,8 @@ export function newQuestion(type: string, content: TemplateContent): Question {
   };
 }
 
-export function newStep(number: number): Step {
-  return { id: newId("s"), title: `Step ${number}`, help: "", visible_when: null, questions: [] };
+export function newStep(): Step {
+  return { id: newId("s"), title: "New step", help: "", visible_when: null, questions: [] };
 }
 
 // Every expression in a template

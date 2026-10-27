@@ -279,6 +279,6 @@ class TemplateContent(Strict):
 def starter_content() -> TemplateContent:
     """What a new template starts with: one step and one section."""
     return TemplateContent.model_validate({
-        "form": [{"id": "s_start", "title": "Step 1", "questions": []}],
+        "form": [{"id": "s_start", "title": "Details", "questions": []}],
         "layout": [{"id": "b_start", "kind": "section", "title": "Summary", "new_page": False}],
     })

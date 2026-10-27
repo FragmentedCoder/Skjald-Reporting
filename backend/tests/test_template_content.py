@@ -54,7 +54,7 @@ def test_context_names_follow_the_shared_list() -> None:
 
 def test_a_new_template_starts_with_a_step_and_a_section() -> None:
     starter = starter_content()
-    assert [s.title for s in starter.form] == ["Step 1"]
+    assert [s.title for s in starter.form] == ["Details"]
     assert [b.kind for b in starter.layout] == ["section"]
     assert check(starter) == []
 

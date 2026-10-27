@@ -77,7 +77,7 @@ def test_a_new_template_has_a_starter_draft(client, designer, template, session)
     assert template["draft"]["revision"] == 1
     assert template["draft"]["saved_by"] == "Dagny"
     draft = client.get(f"{TEMPLATES}/{template['id']}/draft", headers=headers).json()
-    assert draft["content"]["form"][0]["title"] == "Step 1"
+    assert draft["content"]["form"][0]["title"] == "Details"
     assert draft["problems"] == []
     [created] = entries(session, "template.created")
     assert created.target_id == str(template["id"])
