@@ -75,6 +75,14 @@ export interface Changes {
 
 const base = (id: number) => `/templates/${id}`;
 
+export interface ImportOut {
+  template: TemplateDetail;
+  library_added: string[];
+  library_kept: string[];
+  style_added: string | null;
+  style_kept: string | null;
+}
+
 export const templatesApi = {
   list: () => api<TemplateSummary[]>("GET", "/templates"),
   create: (name: string, description: string) => api<TemplateDetail>("POST", "/templates", { name, description }),
@@ -83,7 +91,10 @@ export const templatesApi = {
   retire: (id: number) => api<TemplateDetail>("POST", `${base(id)}/retire`),
   restore: (id: number) => api<TemplateDetail>("POST", `${base(id)}/restore`),
   remove: (id: number) => api<void>("DELETE", base(id)),
-  copy: (id: number, name: string) => api<TemplateDetail>("POST", `${base(id)}/copy`, { name }),
+  copy: (id: number, name: string, language: "da" | "en" | null = null) => api<TemplateDetail>("POST", `${base(id)}/copy`, { name, language }),
+  /** Where a version (the newest by default, or the draft before any) downloads as a .skjald file. */
+  exportUrl: (id: number, version?: number) => `/api${base(id)}/export${version ? `?version=${version}` : ""}`,
+  importFile: (file: File) => api<ImportOut>("POST", "/templates/import", file),
   draft: (id: number) => api<DraftOut>("GET", `${base(id)}/draft`),
   startDraft: (id: number, fromVersion?: number) =>
     api<DraftOut>("POST", `${base(id)}/draft`, fromVersion === undefined ? {} : { from_version: fromVersion }),

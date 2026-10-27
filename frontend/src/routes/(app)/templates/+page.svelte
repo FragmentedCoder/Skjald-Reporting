@@ -4,6 +4,9 @@
   import Archive from "@lucide/svelte/icons/archive";
   import ArchiveRestore from "@lucide/svelte/icons/archive-restore";
   import Copy from "@lucide/svelte/icons/copy";
+  import Download from "@lucide/svelte/icons/download";
+  import Languages from "@lucide/svelte/icons/languages";
+  import Upload from "@lucide/svelte/icons/upload";
   import Plus from "@lucide/svelte/icons/plus";
   import X from "@lucide/svelte/icons/x";
   import { onMount } from "svelte";
@@ -28,6 +31,8 @@
   let copying = $state<TemplateSummary | null>(null);
   let copyOpen = $state(false);
   let copyName = $state("");
+  // For a translation: the copy's report language; null for a plain copy.
+  let copyLanguage = $state<"da" | "en" | null>(null);
   let deleting = $state<TemplateSummary | null>(null);
   let deleteOpen = $state(false);
 
@@ -59,14 +64,42 @@
     if (!copying) return;
     busy = true;
     try {
-      const created = await templatesApi.copy(copying.id, copyName.trim());
+      const created = await templatesApi.copy(copying.id, copyName.trim(), copyLanguage);
       copyOpen = false;
-      toast(`“${created.name}” is a new template, as a draft.`, "ok");
-      await load();
+      if (copyLanguage) {
+        toast(`“${created.name}” is a new template: change its text on the Strings tab.`, "ok");
+        await goto(resolve("/(app)/templates/[id]/strings", { id: String(created.id) }));
+      } else {
+        toast(`“${created.name}” is a new template, as a draft.`, "ok");
+        await load();
+      }
     } catch (e) {
       if (!sessionGone(e)) toast(e instanceof ApiError ? e.message : "The template could not be copied.", "critical");
     } finally {
       busy = false;
+    }
+  }
+
+  // A .skjald file from another install (or this one): a new template, as a draft.
+  let importing = $state(false);
+  async function importFile(event: Event & { currentTarget: HTMLInputElement }) {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (!file) return;
+    importing = true;
+    try {
+      const done = await templatesApi.importFile(file);
+      const extra = [
+        done.library_added.length ? `added to the library: ${done.library_added.join(", ")}` : "",
+        done.library_kept.length ? `already in the library, left as they were: ${done.library_kept.join(", ")}` : "",
+        done.style_added ? `added the style ${done.style_added}` : "",
+      ].filter(Boolean);
+      toast(`“${done.template.name}” is imported as a draft${extra.length ? `; ${extra.join("; ")}` : ""}.`, "ok");
+      await goto(resolve("/(app)/templates/[id]", { id: String(done.template.id) }));
+    } catch (e) {
+      if (!sessionGone(e)) toast(e instanceof ApiError ? e.message : "The file couldn't be imported.", "critical");
+    } finally {
+      importing = false;
     }
   }
 
@@ -82,7 +115,9 @@
 
   function menu(t: TemplateSummary): MenuItem[] {
     const items: MenuItem[] = [
-      { label: "Copy", icon: Copy, run: () => { copying = t; copyName = `${t.name} (copy)`; copyOpen = true; } },
+      { label: "Copy", icon: Copy, run: () => { copying = t; copyName = `${t.name} (copy)`; copyLanguage = null; copyOpen = true; } },
+      { label: "Copy for translation", icon: Languages, run: () => { copying = t; copyName = `${t.name} (translation)`; copyLanguage = "da"; copyOpen = true; } },
+      { label: "Export", icon: Download, run: () => { window.location.assign(templatesApi.exportUrl(t.id)); } },
     ];
     if (t.retired) items.push({ label: "Bring back", icon: ArchiveRestore, run: () => act(() => templatesApi.restore(t.id), `“${t.name}” can be used again.`) });
     else if (t.latest_version !== null) items.push({ label: "Retire", icon: Archive, run: () => act(() => templatesApi.retire(t.id), `“${t.name}” is retired: no new reports use it.`) });
@@ -104,10 +139,16 @@
         Reports use published versions, which never change.
       </p>
     </div>
-    <button class="button button-primary" type="button" onclick={() => { adding = true; name = ""; description = ""; }}>
-      <Plus size={18} aria-hidden="true" />
-      New template
-    </button>
+    <div class="button-row">
+      <label class="button button-secondary" class:disabled={importing}>
+        <Upload size={18} aria-hidden="true" /> {importing ? "Importing…" : "Import"}
+        <input type="file" class="visually-hidden" accept=".skjald,application/zip" disabled={importing} onchange={importFile} />
+      </label>
+      <button class="button button-primary" type="button" onclick={() => { adding = true; name = ""; description = ""; }}>
+        <Plus size={18} aria-hidden="true" />
+        New template
+      </button>
+    </div>
   </div>
 
   {#if error}<p class="alert alert-critical" role="alert">{error}</p>{/if}
@@ -176,13 +217,23 @@
   {/snippet}
 </Dialog>
 
-<Dialog bind:open={copyOpen} title="Copy template">
+<Dialog bind:open={copyOpen} title={copyLanguage ? "Copy for translation" : "Copy template"}>
   <form id="copy-template" class="stack" onsubmit={copy}>
-    <p class="small muted">The copy starts as a draft of its own, from {copying?.draft ? "the draft" : "the newest version"}, images included. Copy a template to translate it.</p>
+    <p class="small muted">The copy starts as a draft of its own, from {copying?.draft ? "the draft" : "the newest version"}, images included.{copyLanguage ? " Its text is changed on the Strings tab, where every piece of it is on one page." : ""}</p>
     <div class="field">
       <label for="copy-name">Name of the copy</label>
       <input id="copy-name" class="input" bind:value={copyName} required maxlength="200" />
     </div>
+    {#if copyLanguage}
+      <div class="field">
+        <label for="copy-language">Report language</label>
+        <select id="copy-language" class="input short" bind:value={copyLanguage}>
+          <option value="da">Danish</option>
+          <option value="en">English</option>
+        </select>
+        <span class="hint">Dates and numbers in the PDF follow it.</span>
+      </div>
+    {/if}
   </form>
   {#snippet actions()}
     <button class="button button-secondary" type="button" onclick={() => (copyOpen = false)}>Cancel</button>
@@ -203,6 +254,13 @@
 </Dialog>
 
 <style>
+  .short {
+    max-width: 12rem;
+  }
+  .disabled {
+    opacity: 0.6;
+    pointer-events: none;
+  }
   .description {
     display: block;
   }
