@@ -10,4 +10,5 @@ import app.jobs
 import app.policy
 import app.projects
 import app.roles
+import app.templates.models
 import app.users  # noqa: F401
