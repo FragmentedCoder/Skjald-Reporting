@@ -1,0 +1,97 @@
+{
+  "about": "The names every template can read besides its own answers and the shared library, for the builder's Data tab and for checking expressions. The examples are the sample values 'Try it' uses; everything is fictional. The server keeps the names and types in backend/app/templates/names.py, held to this file by a test.",
+  "groups": [
+    {
+      "name": "company",
+      "label": "Company",
+      "source": "Admin, Branding: the company name for reports",
+      "names": [
+        {"name": "company.name", "type": "string", "description": "The company name printed on reports.", "example": "Nordlys IT ApS"}
+      ]
+    },
+    {
+      "name": "customer",
+      "label": "Customer",
+      "source": "The report's customer",
+      "names": [
+        {"name": "customer.name", "type": "string", "description": "The customer's name.", "example": "Fjordvik Logistik A/S"},
+        {"name": "customer.cvr", "type": "string", "description": "The customer's CVR number, or empty.", "example": "31415926"},
+        {"name": "customer.address", "type": "string", "description": "The customer's address.", "example": "Havnegade 12, 6700 Esbjerg"},
+        {"name": "customer.language", "type": "string", "description": "The customer's report language: da or en.", "example": "da"}
+      ]
+    },
+    {
+      "name": "site",
+      "label": "Site",
+      "source": "The site the report is about, from the project's sites",
+      "names": [
+        {"name": "site.name", "type": "string", "description": "The site's name.", "example": "Terminal 3"},
+        {"name": "site.address", "type": "string", "description": "The site's address.", "example": "Kajvej 4, 6700 Esbjerg"}
+      ]
+    },
+    {
+      "name": "contact",
+      "label": "Customer contact",
+      "source": "The project's customer contact",
+      "names": [
+        {"name": "contact.name", "type": "string", "description": "The contact's name.", "example": "Mette Lund"},
+        {"name": "contact.role", "type": "string", "description": "The contact's role at the customer.", "example": "IT manager"},
+        {"name": "contact.email", "type": "string", "description": "The contact's work email.", "example": "mette.lund@fjordvik.example"},
+        {"name": "contact.phone", "type": "string", "description": "The contact's work phone.", "example": "+45 76 10 20 30"}
+      ]
+    },
+    {
+      "name": "project",
+      "label": "Project",
+      "source": "The report's project",
+      "names": [
+        {"name": "project.name", "type": "string", "description": "The project's name.", "example": "Portal brute force, October"},
+        {"name": "project.number", "type": "string", "description": "The project's number.", "example": "P-2026-10-007"},
+        {"name": "project.start_date", "type": "timestamp", "description": "The day the project starts, at midnight in the company's time zone.", "example": "2026-10-20T22:00:00Z"},
+        {"name": "project.end_date", "type": "timestamp", "description": "The day the project ends, at midnight in the company's time zone.", "example": "2026-10-30T23:00:00Z"},
+        {"name": "project.classification", "type": "string", "description": "The project's Traffic Light Protocol label.", "example": "TLP:AMBER"}
+      ]
+    },
+    {
+      "name": "report",
+      "label": "Report",
+      "source": "The report itself",
+      "names": [
+        {"name": "report.title", "type": "string", "description": "The report's title: the template's name unless the technician changes it.", "example": "Security incident report"},
+        {"name": "report.number", "type": "string", "description": "The report's number.", "example": "INC-2026-0142"},
+        {"name": "report.revision", "type": "int", "description": "The revision: 1, then 2 for the first correction, and so on.", "example": 1},
+        {"name": "report.date", "type": "timestamp", "description": "When the report was signed, or today while it's a draft.", "example": "2026-10-24T09:30:00Z"}
+      ]
+    },
+    {
+      "name": "author",
+      "label": "Author",
+      "source": "The technician writing the report, from their profile",
+      "names": [
+        {"name": "author.display_name", "type": "string", "description": "The name shown in Skjald.", "example": "Freja Holm"},
+        {"name": "author.first_name", "type": "string", "description": "First name.", "example": "Freja"},
+        {"name": "author.middle_name", "type": "string", "description": "Middle name, or empty.", "example": ""},
+        {"name": "author.last_name", "type": "string", "description": "Last name.", "example": "Holm"},
+        {"name": "author.job_title", "type": "string", "description": "Job title.", "example": "Security consultant"},
+        {"name": "author.department", "type": "string", "description": "Department.", "example": "Incident response"},
+        {"name": "author.email", "type": "string", "description": "Work email.", "example": "freja.holm@nordlys.example"},
+        {"name": "author.phone", "type": "string", "description": "Work phone.", "example": "+45 70 20 30 41"}
+      ]
+    },
+    {
+      "name": "reviewer",
+      "label": "Reviewer",
+      "source": "The project's reviewer, from their profile; empty when there's none",
+      "names": [
+        {"name": "reviewer.display_name", "type": "string", "description": "The name shown in Skjald.", "example": "Anders Berg"},
+        {"name": "reviewer.first_name", "type": "string", "description": "First name.", "example": "Anders"},
+        {"name": "reviewer.middle_name", "type": "string", "description": "Middle name, or empty.", "example": ""},
+        {"name": "reviewer.last_name", "type": "string", "description": "Last name.", "example": "Berg"},
+        {"name": "reviewer.job_title", "type": "string", "description": "Job title.", "example": "Senior consultant"},
+        {"name": "reviewer.department", "type": "string", "description": "Department.", "example": "Incident response"},
+        {"name": "reviewer.email", "type": "string", "description": "Work email.", "example": "anders.berg@nordlys.example"},
+        {"name": "reviewer.phone", "type": "string", "description": "Work phone.", "example": "+45 70 20 30 42"}
+      ]
+    }
+  ]
+}

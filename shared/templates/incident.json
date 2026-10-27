@@ -1,0 +1,125 @@
+{
+  "schema": 1,
+  "settings": {
+    "prefix": "INC",
+    "language": "en",
+    "signing": "technician_reviewer",
+    "review": "mandatory",
+    "delivery": ["download", "email", "protected_pdf"],
+    "styles": ["company", "customer"],
+    "customer_background": true
+  },
+  "form": [
+    {
+      "id": "s_incident",
+      "title": "The incident",
+      "help": "What happened and when. The summary goes on the first page of the report.",
+      "visible_when": null,
+      "questions": [
+        {"id": "q_summary", "key": "summary", "type": "rich_text", "label": "Summary of the incident", "help": "Two or three sentences the customer can read on the first page.", "required": true, "settings": {}},
+        {"id": "q_detected", "key": "detected", "type": "datetime", "label": "Detected at", "required": true, "settings": {"mode": "datetime"}},
+        {"id": "q_cvss", "key": "cvss", "type": "number", "label": "Highest CVSS score", "help": "From 0.0 to 10.0. Sets the severity.", "required": true, "settings": {"min": 0, "max": 10, "decimals": 1}},
+        {"id": "q_severity", "key": "severity", "type": "calculated", "label": "Severity", "value": "answers.cvss >= 9.0 ? \"Critical\" : answers.cvss >= 7.0 ? \"High\" : answers.cvss >= 4.0 ? \"Medium\" : \"Low\"", "settings": {"result": "text"}},
+        {"id": "q_deadline", "key": "deadline", "type": "calculated", "label": "Incident notification due", "help": "NIS2: 72 hours after the incident was detected.", "value": "add_hours(answers.detected, 72)", "settings": {"result": "date"}}
+      ]
+    },
+    {
+      "id": "s_attack",
+      "title": "The attack",
+      "help": "Where the attack came from. Add one row per address.",
+      "questions": [
+        {"id": "q_found", "key": "attack_found", "type": "yes_no", "label": "Was the attacking address found?", "required": true, "settings": {}},
+        {"id": "q_attackers", "key": "attackers", "type": "repeating", "label": "Attacking addresses", "help": "One row per address.", "visible_when": "answers.attack_found", "required_when": "answers.attack_found", "settings": {
+          "columns": [
+            {"key": "ip", "label": "Address", "type": "ip", "required": true},
+            {"key": "attempts", "label": "Sign-in attempts", "type": "number", "settings": {"whole": true, "min": 0}},
+            {"key": "status", "label": "Status", "type": "dropdown", "settings": {"options": [{"value": "blocked", "label": "Blocked"}, {"value": "monitored", "label": "Monitored"}]}}
+          ]
+        }},
+        {"id": "q_evidence", "key": "evidence", "type": "photo", "label": "Screenshot of the evidence", "help": "For example the firewall graph. Location data is removed from photos.", "settings": {}}
+      ]
+    },
+    {
+      "id": "s_actions",
+      "title": "Actions and handover",
+      "help": "What you did, and anything the customer must receive.",
+      "questions": [
+        {"id": "q_actions", "key": "actions", "type": "rich_text", "label": "Actions taken", "required": true, "settings": {}},
+        {"id": "q_credentials", "key": "credentials", "type": "secret", "label": "New portal admin password", "help": "Printed partly in the PDF. Give the customer the full password by phone.", "settings": {"pdf": "partial"}},
+        {"id": "q_sources", "key": "sources", "type": "repeating", "label": "Sources you used", "help": "Advisories, vendor articles or logs the customer can look up.", "settings": {
+          "columns": [
+            {"key": "title", "label": "Title", "type": "text", "required": true},
+            {"key": "link", "label": "Link or reference", "type": "text"}
+          ]
+        }}
+      ]
+    }
+  ],
+  "layout": [
+    {"id": "b_cover", "kind": "cover", "title": "{{report.title}}", "subtitle": "{{customer.name}}", "facts": [
+      {"label": "Report", "value": "{{report.number}}"},
+      {"label": "Detected", "value": "{{format_date(answers.detected, \"d MMMM yyyy, HH:mm\")}}"},
+      {"label": "Severity", "value": "{{answers.severity}}"}
+    ]},
+    {"id": "b_summary", "kind": "section", "title": "Summary", "new_page": false, "blocks": [
+      {"id": "b_sumtext", "kind": "answer", "question": "q_summary", "show_label": false},
+      {"id": "b_callout", "kind": "callout", "tone": "warning", "tone_rule": "answers.cvss >= 9.0 ? \"critical\" : \"warning\"", "title": "{{answers.severity}} severity", "content": {"type": "doc", "content": [
+        {"type": "paragraph", "content": [
+          {"type": "text", "text": "Highest CVSS score "},
+          {"type": "variable", "attrs": {"expr": "format_number(answers.cvss, 1)"}},
+          {"type": "text", "text": ". The incident notification is due by "},
+          {"type": "variable", "attrs": {"expr": "format_date(answers.deadline, \"d MMMM yyyy, HH:mm\")"}},
+          {"type": "text", "text": "."}
+        ]}
+      ]}}
+    ]},
+    {"id": "b_attack", "kind": "section", "title": "Attacking addresses", "visible_when": "answers.attack_found", "intro": {"type": "doc", "content": [
+      {"type": "paragraph", "content": [{"type": "text", "text": "Addresses that attacked the customer's portal, and what was done about each one."}]}
+    ]}, "blocks": [
+      {"id": "b_table", "kind": "table", "question": "q_attackers", "caption": "Attacking addresses and sign-in attempts", "columns": ["ip", "attempts", "status"], "empty_text": "No addresses were recorded."},
+      {"id": "b_evidence", "kind": "image", "source": "question", "question": "q_evidence", "caption": "Sign-in attempts per 10 minutes, from the firewall", "visible_when": "answers.evidence.filled"}
+    ]},
+    {"id": "b_actions", "kind": "section", "title": "Actions taken", "blocks": [
+      {"id": "b_acttext", "kind": "answer", "question": "q_actions", "show_label": false},
+      {"id": "b_credhead", "kind": "heading", "text": "New credentials", "visible_when": "answers.credentials.filled"},
+      {"id": "b_credtext", "kind": "text", "visible_when": "answers.credentials.filled", "content": {"type": "doc", "content": [
+        {"type": "paragraph", "content": [
+          {"type": "text", "text": "The portal admin password was changed to "},
+          {"type": "variable", "attrs": {"expr": "answers.credentials.printed"}},
+          {"type": "text", "text": ". The full password was given to "},
+          {"type": "variable", "attrs": {"expr": "contact.name"}},
+          {"type": "text", "text": " by phone."}
+        ]}
+      ]}}
+    ]},
+    {"id": "b_sources", "kind": "section", "title": "Sources", "new_page": false, "blocks": [
+      {"id": "b_srclist", "kind": "sources", "intro": "Background for the findings in this report.", "question": "q_sources", "items": [
+        {"title": "NIS2 Directive (EU) 2022/2555, article 23: reporting obligations", "link": "https://eur-lex.europa.eu/eli/dir/2022/2555/oj"}
+      ]}
+    ]},
+    {"id": "b_signoff", "kind": "section", "title": "Sign-off", "blocks": [
+      {"id": "b_signers", "kind": "signatures", "signers": [
+        {"role": "technician", "label": "Technician", "style": "handwritten"},
+        {"role": "reviewer", "label": "Reviewer", "style": "handwritten"}
+      ]}
+    ]}
+  ],
+  "sample": {
+    "answers": {
+      "q_summary": {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "A brute-force attack on the customer portal was stopped at the firewall. No accounts were taken over."}]}]},
+      "q_detected": "2026-10-21T01:14:00Z",
+      "q_cvss": 9.1,
+      "q_found": true,
+      "q_attackers": [
+        {"ip": "198.51.100.23", "attempts": 1204, "status": "blocked"},
+        {"ip": "203.0.113.77", "attempts": 611, "status": "blocked"},
+        {"ip": "2001:db8::5", "attempts": 27, "status": "monitored"}
+      ],
+      "q_actions": {"type": "doc", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Blocked the addresses at the firewall and turned on rate limiting for the portal's sign-in page."}]}]},
+      "q_credentials": "Hunter2-portal-admin",
+      "q_sources": [
+        {"title": "Vendor advisory on portal rate limiting", "link": "https://vendor.example/advisories/2026-10"}
+      ]
+    }
+  }
+}
