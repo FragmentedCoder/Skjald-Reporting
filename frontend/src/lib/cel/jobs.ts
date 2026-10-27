@@ -2,6 +2,7 @@
 // the page's thread; this part is plain so it can be tested without a Worker). The
 // engine is made once per set of declared names and kept while they stay the same.
 
+import { preview, type PreviewInput } from "#lib/templates/preview.js";
 import { Engine, ExpressionError, type EngineOptions, type Kind } from "./engine";
 
 export interface Setup {
@@ -14,7 +15,9 @@ export interface Setup {
 export type Job =
   | { kind: "check"; expr: string }
   | { kind: "evaluate"; expr: string }
-  | { kind: "references"; expr: string };
+  | { kind: "references"; expr: string }
+  /** Everything a template prints for some answers (templates/preview.ts). */
+  | { kind: "preview"; input: PreviewInput };
 
 export type Result = { ok: true; value: unknown } | { ok: false; kind: Kind; message: string };
 
@@ -43,6 +46,13 @@ export class JobRunner {
     }
     const engine = this.#engine;
     const results = request.jobs.map((job): Result => {
+      if (job.kind === "preview") {
+        try {
+          return { ok: true, value: preview(job.input) };
+        } catch (error) {
+          return { ok: false, kind: "runtime", message: error instanceof Error ? error.message : String(error) };
+        }
+      }
       if (!engine) return { ok: false, kind: "runtime", message: "The expression worker has no names to work with yet." };
       try {
         if (job.kind === "check") return { ok: true, value: engine.check(job.expr) };

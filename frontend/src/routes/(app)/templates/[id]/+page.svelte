@@ -11,6 +11,7 @@
   import Where from "#lib/components/builder/Where.svelte";
   import { useDraft } from "#lib/templates/draft.svelte.js";
   import { newQuestion, newStep, renameKey, usage } from "#lib/templates/edit.js";
+  import { fieldIcon } from "#lib/templates/fieldIcons.js";
   import { FIELD_GROUPS, FIELD_TYPES, fieldType } from "#lib/templates/fields.js";
   import { catalogue } from "#lib/templates/catalogue.js";
   import { declarations } from "#lib/templates/names.js";
@@ -23,7 +24,7 @@
   const content = $derived(draft.content as TemplateContent);
 
   const palette: PaletteEntry[] = FIELD_GROUPS.flatMap((group) =>
-    Object.entries(FIELD_TYPES).filter(([, t]) => t.group === group).map(([kind, t]) => ({ kind, label: t.label, hint: t.hint, icon: t.icon, group })),
+    Object.entries(FIELD_TYPES).filter(([, t]) => t.group === group).map(([kind, t]) => ({ kind, label: t.label, hint: t.hint, icon: fieldIcon(kind), group })),
   );
 
   // The names expressions can read; the engine is made again only when they change.
@@ -202,12 +203,13 @@
               <li class="question shadow"><span class="label">{(q as unknown as Dragged).label}</span></li>
             {:else}
               {@const type = fieldType(q.type)}
+              {@const Icon = fieldIcon(q.type)}
               {@const flagged = draft.problemsFor(q.id).length}
               <li class="question" class:selected={selection?.id === q.id} class:heading={q.type === "heading"} data-question={q.id}>
                 <button class="pick" type="button" onclick={() => select("question", q.id)}
                   aria-label="{q.label}, {type.label}, edit" aria-describedby="meta-{q.id}">
                   <span class="pick-in">
-                    <span class="icon" aria-hidden="true"><type.icon size={16} aria-hidden="true" /></span>
+                    <span class="icon" aria-hidden="true"><Icon size={16} aria-hidden="true" /></span>
                     <span class="body">
                       <span class="label">{q.label}{q.required ? " *" : ""}</span>
                       <span class="meta small" id="meta-{q.id}">

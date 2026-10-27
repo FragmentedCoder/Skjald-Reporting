@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  import type { Icon } from "#lib/templates/fields.js";
+  import type { Icon } from "#lib/templates/fieldIcons.js";
 
   export interface PaletteEntry {
     kind: string;

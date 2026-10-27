@@ -11,7 +11,7 @@ class FakeWorker implements WorkerLike {
   terminated = false;
   readonly #runner = new JobRunner();
 
-  constructor(private readonly hang = (request: Request) => request.jobs.some((j) => j.expr === "hang")) {}
+  constructor(private readonly hang = (request: Request) => request.jobs.some((j) => "expr" in j && j.expr === "hang")) {}
 
   postMessage(request: Request): void {
     this.sent.push(request);

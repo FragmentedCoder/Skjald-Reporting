@@ -5,6 +5,7 @@
   import type { Engine } from "#lib/cel/engine.js";
   import { RESERVED } from "#lib/templates/checks.js";
   import { KEY_PATTERN, usage } from "#lib/templates/edit.js";
+  import { fieldIcon } from "#lib/templates/fieldIcons.js";
   import { fieldType } from "#lib/templates/fields.js";
   import { questionNames } from "#lib/templates/names.js";
   import { questionsOf, type Problem, type Question, type TemplateContent } from "#lib/templates/types.js";
@@ -40,6 +41,7 @@
   } = $props();
 
   const type = $derived(fieldType(question.type));
+  const Icon = $derived(fieldIcon(question.type));
   const id = $derived(`q-${question.id}`);
   const used = $derived(usage(content, question));
   const own = $derived(question.key ? questionNames(question)[`answers.${question.key}`] ?? null : null);
@@ -60,7 +62,7 @@
 </script>
 
 <div class="panel-head">
-  <span class="type"><type.icon size={16} aria-hidden="true" /> {type.label}</span>
+  <span class="type"><Icon size={16} aria-hidden="true" /> {type.label}</span>
   <span class="head-actions">
     <button class="mini" type="button" aria-label="Move up" title="Move up" disabled={first} onclick={() => onmove(-1)}><ArrowUp size={16} aria-hidden="true" /></button>
     <button class="mini" type="button" aria-label="Move down" title="Move down" disabled={last} onclick={() => onmove(1)}><ArrowDown size={16} aria-hidden="true" /></button>
