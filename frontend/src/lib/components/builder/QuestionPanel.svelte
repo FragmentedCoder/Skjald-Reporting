@@ -8,7 +8,8 @@
   import { fieldType } from "#lib/templates/fields.js";
   import { questionNames } from "#lib/templates/names.js";
   import { questionsOf, type Problem, type Question, type TemplateContent } from "#lib/templates/types.js";
-  import ExpressionField from "./ExpressionField.svelte";
+  import type { NameEntry } from "#lib/templates/catalogue.js";
+  import RuleField from "./RuleField.svelte";
   import TypeSettings from "./TypeSettings.svelte";
   import Where from "./Where.svelte";
 
@@ -18,6 +19,7 @@
     question,
     content,
     engine,
+    entries,
     problems,
     first,
     last,
@@ -28,6 +30,7 @@
     question: Question;
     content: TemplateContent;
     engine: Engine;
+    entries: NameEntry[];
     problems: Problem[];
     first: boolean;
     last: boolean;
@@ -107,21 +110,23 @@
   <section class="group" aria-labelledby="{id}-rules">
     <div class="group-head"><h3 id="{id}-rules">Rules</h3><Where form /></div>
     {#if question.type === "calculated"}
-      <ExpressionField id="{id}-value" label="Worked out as" bind:value={question.value} {engine} expects={own}
-        problem={problem("value")} rows={3} placeholder='answers.cvss >= 9.0 ? "Critical" : "Lower"'
-        hint="An expression over other answers, the customer, the project or the library." />
+      <RuleField id="{id}-value" label="Worked out as" bind:value={question.value} kind="value" expects={own} {engine}
+        entries={entries.filter((e) => e.name !== `answers.${question.key}`)} problem={problem("value")} optional={false} />
     {/if}
-    <ExpressionField id="{id}-visible" label="Show only when" bind:value={question.visible_when} {engine} expects="bool"
-      problem={problem("visible_when")} placeholder="answers.attack_found" hint="Always shown when empty." />
+    <RuleField id="{id}-visible" label="Show only when" bind:value={question.visible_when} kind="condition" {engine} {entries}
+      problem={problem("visible_when")} hint="Always shown." />
     {#if question.type !== "calculated"}
-      <ExpressionField id="{id}-required" label="Required only when" bind:value={question.required_when} {engine} expects="bool"
-        problem={problem("required_when")} hint="Empty: required or not, as set above." />
-      {#if own}
-        <ExpressionField id="{id}-default" label="Starts as" bind:value={question.default} {engine} expects={own}
-          problem={problem("default")} placeholder="customer.name" hint="A default from the customer, the project or a lookup table." />
+      <RuleField id="{id}-required" label="Required only when" bind:value={question.required_when} kind="condition" {engine} {entries}
+        problem={problem("required_when")} hint="Required or not, as set above." />
+      {#if own && ["string", "double", "int", "bool", "timestamp"].includes(own)}
+        <RuleField id="{id}-default" label="Starts as" bind:value={question.default} kind="value" expects={own} {engine} {entries}
+          problem={problem("default")} hint="Starts empty." />
+        {#if question.default}
+          <button class="link-button small clear" type="button" onclick={() => (question.default = null)}>Start empty instead</button>
+        {/if}
       {/if}
-      <ExpressionField id="{id}-valid" label="Valid only when" bind:value={question.valid_when} {engine} expects="bool"
-        problem={problem("valid_when")} placeholder="answers.ended >= answers.started" hint="A check of the answer, beyond its type's own." />
+      <RuleField id="{id}-valid" label="Valid only when" bind:value={question.valid_when} kind="condition" {engine} {entries}
+        problem={problem("valid_when")} hint="No check beyond the answer's type." />
       {#if question.valid_when}
         <div class="field">
           <label for="{id}-valid-message">Message when it isn't</label>
@@ -217,6 +222,10 @@
   }
   .error {
     color: var(--critical-text);
+  }
+  .clear {
+    justify-self: start;
+    margin-top: calc(-1 * var(--space-2));
   }
   p {
     margin: 0;

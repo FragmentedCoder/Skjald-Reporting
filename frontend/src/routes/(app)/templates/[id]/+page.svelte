@@ -12,6 +12,7 @@
   import { useDraft } from "#lib/templates/draft.svelte.js";
   import { newQuestion, newStep, renameKey, usage } from "#lib/templates/edit.js";
   import { FIELD_GROUPS, FIELD_TYPES, fieldType } from "#lib/templates/fields.js";
+  import { catalogue } from "#lib/templates/catalogue.js";
   import { declarations } from "#lib/templates/names.js";
   import type { Problem, Question, Step, TemplateContent } from "#lib/templates/types.js";
 
@@ -21,13 +22,15 @@
   const draft = useDraft();
   const content = $derived(draft.content as TemplateContent);
 
-  const entries: PaletteEntry[] = FIELD_GROUPS.flatMap((group) =>
+  const palette: PaletteEntry[] = FIELD_GROUPS.flatMap((group) =>
     Object.entries(FIELD_TYPES).filter(([, t]) => t.group === group).map(([kind, t]) => ({ kind, label: t.label, hint: t.hint, icon: t.icon, group })),
   );
 
   // The names expressions can read; the engine is made again only when they change.
   const names = $derived(JSON.stringify(declarations(content)));
   const engine = $derived(new Engine(JSON.parse(names), { language: content.settings.language }));
+  // The names rules can use, labelled for the rule editors.
+  const entries = $derived(catalogue(content));
 
   const selection = $derived(draft.selection);
   const where = $derived.by(() => {
@@ -169,7 +172,7 @@
 
 <div class="workspace" class:readonly={draft.readonly}>
   {#if !draft.readonly}
-    <Palette {entries} type="questions" title="Field types" onadd={add} />
+    <Palette entries={palette} type="questions" title="Field types" onadd={add} />
   {/if}
 
   <section class="canvas" aria-labelledby="form-title">
@@ -237,11 +240,11 @@
     <fieldset class="unstyled" disabled={draft.readonly}>
       {#if where?.question}
         {@const q = where.question}
-        <QuestionPanel question={q} {content} {engine} problems={draft.problemsFor(q.id)}
+        <QuestionPanel question={q} {content} {engine} {entries} problems={draft.problemsFor(q.id)}
           first={where.stepIndex === 0 && where.index === 0} last={lastQuestion(where.stepIndex, where.index)}
           onrename={(key) => rename(q, key)} onremove={() => removeQuestion(where.step, q)} onmove={moveQuestion} />
       {:else if where}
-        <StepPanel step={where.step} number={where.stepIndex + 1} {engine} problems={draft.problemsFor(where.step.id)}
+        <StepPanel step={where.step} number={where.stepIndex + 1} {engine} {entries} problems={draft.problemsFor(where.step.id)}
           first={where.stepIndex === 0} last={where.stepIndex === content.form.length - 1} only={content.form.length === 1}
           onremove={removeStep} onmove={moveStep} />
       {:else}

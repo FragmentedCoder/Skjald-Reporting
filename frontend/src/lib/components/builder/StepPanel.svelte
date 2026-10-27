@@ -4,14 +4,16 @@
   import X from "@lucide/svelte/icons/x";
   import type { Engine } from "#lib/cel/engine.js";
   import type { Problem, Step } from "#lib/templates/types.js";
-  import ExpressionField from "./ExpressionField.svelte";
+  import type { NameEntry } from "#lib/templates/catalogue.js";
+  import RuleField from "./RuleField.svelte";
   import Where from "./Where.svelte";
 
   // A step of the technician's form: its title, what it explains, and when it shows.
-  let { step, number, engine, problems, first, last, only, onremove, onmove }: {
+  let { step, number, engine, entries, problems, first, last, only, onremove, onmove }: {
     step: Step;
     number: number;
     engine: Engine;
+    entries: NameEntry[];
     problems: Problem[];
     first: boolean;
     last: boolean;
@@ -43,8 +45,8 @@
     <textarea id="{id}-help" class="input" rows="3" bind:value={step.help} maxlength="2000"></textarea>
     <span class="hint">Shown at the top of the step. Never printed.</span>
   </div>
-  <ExpressionField id="{id}-visible" label="Show only when" bind:value={step.visible_when} {engine} expects="bool"
-    problem={problems.find((p) => p.field === "visible_when")?.message ?? null} hint="Always shown when empty." />
+  <RuleField id="{id}-visible" label="Show only when" bind:value={step.visible_when} kind="condition" {engine} {entries}
+    problem={problems.find((p) => p.field === "visible_when")?.message ?? null} hint="Always shown." />
 </section>
 
 <style>

@@ -84,28 +84,49 @@ test("a designer builds a template's form, with rules, and publishes it", async 
   await panel(page).getByLabel("Question", { exact: true }).fill("Was the attacking address found?");
   await rename(page, "attack_found");
 
-  // A rule written by hand is checked as it's typed.
+  // A rule built visually is stored as CEL.
   await addField(page, "Repeating group");
   await panel(page).getByLabel("Question", { exact: true }).fill("Attacking addresses");
-  const showWhen = panel(page).getByLabel("Show only when", { exact: true });
-  await showWhen.fill("answers.attack_found >= 9");
-  await expect(panel(page).getByText(">= doesn't work with yes or no and a whole number.")).toBeVisible();
+  const showWhen = panel(page).getByRole("group", { name: "Show only when" });
+  await showWhen.getByRole("button", { name: "Add a condition" }).click();
+  await showWhen.getByLabel("Show only when 1: what to check").selectOption({ label: "Was the attacking address found?" });
+  await expect(showWhen.getByLabel("Show only when 1: how")).toHaveValue("yes");
+  await expect(showWhen.getByText("answers.attack_found", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Attacking addresses, Repeating group, edit/ })).toContainText("shown when a rule says so");
+
+  // One written by hand is checked as it's typed, and stays text when the visual editor couldn't have written it.
+  await showWhen.getByRole("button", { name: "Edit as text" }).click();
+  const text = showWhen.getByRole("textbox");
+  await text.fill("answers.attack_found >= 9");
+  await expect(showWhen.getByText(">= doesn't work with yes or no and a whole number.")).toBeVisible();
   await expect(page.getByRole("link", { name: "1 problem" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Publish" })).toBeDisabled();
-  await showWhen.fill("answers.attack_found");
-  await expect(panel(page).getByText("Gives yes or no.")).toBeVisible();
+  await text.fill("answers.attack_found && answers.cvss * 2.0 > 1.0");
+  await expect(showWhen.getByText("Written by hand, so it's edited as text.")).toBeVisible();
+  await text.fill("answers.attack_found");
+  await showWhen.getByRole("button", { name: "Edit visually" }).click();
+  await expect(showWhen.getByLabel("Show only when 1: how")).toHaveValue("yes");
   await expect(page.getByText("No problems", { exact: true })).toBeVisible();
 
-  // A calculated value reads another answer; renaming that answer changes it too.
+  // A calculated value built as IF / ELSE reads another answer; renaming that answer changes it too.
   await addField(page, "Calculated value");
   await panel(page).getByLabel("Question", { exact: true }).fill("Severity");
   await rename(page, "severity");
-  await panel(page).getByLabel("Worked out as", { exact: true }).fill('answers.cvss >= 9.0 ? "Critical" : "Lower"');
-  await expect(panel(page).getByText("Gives text.")).toBeVisible();
+  const worked = panel(page).getByRole("group", { name: "Worked out as" });
+  await worked.getByLabel("Worked out as: how it's worked out").selectOption({ label: "By conditions (IF / ELSE)" });
+  await worked.getByLabel("Worked out as, if 1: what to check").selectOption({ label: "Highest CVSS score" });
+  await worked.getByLabel("Worked out as, if 1: how").selectOption({ label: "is at least" });
+  await worked.getByLabel("Worked out as, if 1: value").fill("9");
+  await worked.getByLabel("Worked out as, if: then").fill("Critical");
+  await worked.getByLabel("Worked out as: otherwise").fill("Lower");
+  await expect(worked.getByText('answers.cvss >= 9.0 ? "Critical" : "Lower"', { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Highest CVSS score, Number, edit" }).click();
   await rename(page, "cvss_score");
   await page.getByRole("button", { name: /^Severity, Calculated value, edit/ }).click();
-  await expect(panel(page).getByLabel("Worked out as", { exact: true })).toHaveValue('answers.cvss_score >= 9.0 ? "Critical" : "Lower"');
+  await expect(worked.getByText('answers.cvss_score >= 9.0 ? "Critical" : "Lower"', { exact: true })).toBeVisible();
+  await expect(worked.getByLabel("Worked out as, if: then")).toHaveValue("Critical");
+  await worked.scrollIntoViewIfNeeded();
+  await panel(page).screenshot({ path: "e2e-results/screens/templates-rules.png" });
 
   // Dragging from the palette drops a new question where it lands; the keyboard moves one.
   await drag(page, palette(page).getByRole("button", { name: /^Short text/ }),
