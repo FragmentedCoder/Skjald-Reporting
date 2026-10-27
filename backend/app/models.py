@@ -7,6 +7,7 @@ import app.auth.sessions
 import app.customers
 import app.images
 import app.jobs
+import app.library.models
 import app.policy
 import app.projects
 import app.roles

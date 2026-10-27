@@ -25,6 +25,8 @@ from sqlalchemy.orm import Session
 from app import audit, clock
 from app.auth.dependencies import DB, client_ip, require
 from app.auth.sessions import UserSession
+from app.library.routes import current_entries
+from app.library.values import library_names
 from app.roles import Capability
 from app.templates.assets import AssetRejected, clean_asset
 from app.templates.changes import Changes, changes
@@ -224,7 +226,8 @@ def _asset_out(asset: TemplateAsset) -> AssetOut:
 def _problems(db: Session, template_id: int, content: TemplateContent) -> list[Problem]:
     assets = set(db.scalars(select(TemplateAsset.sha256)
                             .where(TemplateAsset.template_id == template_id)))
-    return check(content, assets=assets)
+    library = library_names(entry for entry, _ in current_entries(db))
+    return check(content, assets=assets, library=library)
 
 
 def _problems_out(problems: list[Problem]) -> list[ProblemOut]:
