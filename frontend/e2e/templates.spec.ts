@@ -334,6 +334,105 @@ test("a designer lays out the PDF and sees its pages", async ({ browser }) => {
   await context.close();
 });
 
+/** Presses on from and moves to (x, y) in small steps, holding there before dropping, as someone deciding where. */
+async function dragTo(page: Page, from: Locator, x: number, y: number, hold = 200) {
+  await from.scrollIntoViewIfNeeded();
+  const a = await from.boundingBox();
+  if (!a) throw new Error("Nothing to drag.");
+  const [sx, sy] = [a.x + a.width / 2, a.y + a.height / 2];
+  await page.mouse.move(sx, sy);
+  await page.mouse.down();
+  for (let i = 1; i <= 25; i++) await page.mouse.move(sx + ((x - sx) * i) / 25, sy + ((y - sy) * i) / 25);
+  await page.waitForTimeout(hold);
+  await page.mouse.up();
+}
+
+test("a designer drags blocks in the outline and on the pages", async ({ browser }) => {
+  const { context, page } = await signedIn(browser, "e2e-dragger");
+  const violations = watchForCspViolations(page);
+  const crashes: string[] = [];
+  page.on("pageerror", (error) => crashes.push(error.message));
+  await menu(page, "Templates").click();
+  await page.getByRole("button", { name: "New template" }).click();
+  await page.getByRole("dialog").getByLabel("Name").fill("Server room handover");
+  await page.getByRole("dialog").getByRole("button", { name: "Create" }).click();
+  await expect(page.getByRole("heading", { name: "Server room handover" })).toBeVisible();
+
+  // A question dragged in and held over the form a while: nothing half-dragged is saved.
+  const steps = page.getByRole("list", { name: "Questions in step 1" });
+  const s = await steps.boundingBox();
+  await dragTo(page, palette(page).getByRole("button", { name: /^Short text/ }), s!.x + s!.width / 2, s!.y + 20, 2500);
+  await expect(steps.getByRole("button", { name: /^New short text question, Short text, edit/ })).toBeVisible();
+  await saved(page);
+  await expect(page.getByText(/isn't valid/)).toHaveCount(0);
+
+  await page.getByRole("link", { name: "Layout" }).click();
+  const blocks = page.getByRole("region", { name: "Blocks" });
+  const outline = page.getByRole("list", { name: "Blocks in the PDF" });
+  await expect(page.getByRole("button", { name: "Section: Summary, edit" })).toBeVisible();
+
+  // A section dropped below the last block goes at the end of the PDF, on a new page.
+  const summary = outline.locator(":scope > li").first();
+  const card = await summary.boundingBox();
+  const below = await outline.boundingBox();
+  await dragTo(page, blocks.getByRole("button", { name: /^Section/ }), card!.x + card!.width / 2, below!.y + below!.height + 16, 1500);
+  await expect(outline.locator(":scope > li")).toHaveCount(2);
+  await expect(outline.locator(":scope > li").nth(1)).toContainText("Section · new page");
+  await saved(page);
+
+  // A section dragged onto its own inside isn't lost into itself.
+  const own = await summary.boundingBox();
+  await dragTo(page, summary.getByRole("button", { name: "Section: Summary, edit" }), own!.x + own!.width / 2, own!.y + own!.height - 12, 800);
+  await expect(outline.locator(":scope > li").filter({ has: page.getByRole("button", { name: "Section: Summary, edit" }) })).toHaveCount(1);
+  await expect(outline.locator(":scope > li")).toHaveCount(2);
+
+  // Typing {{ in a title suggests names; Enter takes one.
+  await page.getByRole("button", { name: "Section: New section, edit" }).click();
+  const title = panel(page).getByLabel("Title", { exact: true });
+  await title.fill("Findings for ");
+  await title.press("End");
+  await title.pressSequentially("{{cust");
+  await expect(panel(page).getByRole("listbox", { name: "Names" }).getByRole("option").first()).toContainText("customer.name");
+  await title.press("Enter");
+  await expect(title).toHaveValue("Findings for {{customer.name}}");
+
+  // Clicking Section with a block inside a section selected adds one beside that section.
+  await page.getByRole("button", { name: "Section: Summary, edit" }).click();
+  await blocks.getByRole("button", { name: /^Signatures/ }).click();
+  await blocks.getByRole("button", { name: /^Section/ }).click();
+  await expect(outline.locator(":scope > li")).toHaveCount(3);
+  await expect(outline.locator(":scope > li").filter({ hasText: "New section" })).toContainText("Section · new page");
+  await expect(page.getByRole("list", { name: "Blocks in “Summary”" }).getByRole("button", { name: /^Section/ })).toHaveCount(0);
+
+  // A clicked cover goes first. On the pages it sits right under the style picker, and
+  // the signatures look as in the design.
+  await blocks.getByRole("button", { name: /^Cover/ }).click();
+  await expect(outline.locator(":scope > li").first()).toContainText("Cover");
+  await page.getByRole("button", { name: "Pages", exact: true }).click();
+  const first = page.getByRole("region", { name: /^Page 1 of / });
+  await expect(first.getByRole("heading", { name: "Security incident report" })).toBeVisible();
+  const picker = await page.getByLabel("Preview in").boundingBox();
+  const sheet = await first.boundingBox();
+  expect(sheet!.y - (picker!.y + picker!.height)).toBeLessThan(40);
+  const signed = page.getByRole("region", { name: /^Page 2 of / });
+  await expect(signed.getByText("Freja Holm", { exact: true })).toBeVisible();
+  await expect(signed.getByText("Sample signatures. In the PDF each one is a digital signature that can be checked.")).toBeVisible();
+
+  // A block from the palette dropped on a page goes where it lands.
+  const findings = page.getByRole("heading", { name: /^\d Findings for Fjordvik Logistik A\/S$/ });
+  await findings.scrollIntoViewIfNeeded();
+  const h = await findings.boundingBox();
+  await dragTo(page, blocks.getByRole("button", { name: /^Callout/ }), h!.x + h!.width / 2, h!.y + h!.height + 12, 600);
+  await page.getByRole("button", { name: "Blocks", exact: true }).click();
+  await expect(page.getByRole("list", { name: "Blocks in “Findings for {{customer.name}}”" }).getByRole("button", { name: /^Callout/ })).toBeVisible();
+  await saved(page);
+  await shot(page, "dragged");
+
+  expect(crashes).toEqual([]);
+  expect(violations).toEqual([]);
+  await context.close();
+});
+
 test("technicians don't see the builder, and the API refuses them", async ({ browser }) => {
   const { context, page } = await signedIn(browser, "e2e-fitter");
   await expect(page.getByRole("navigation", { name: "Main" })).toBeVisible();
