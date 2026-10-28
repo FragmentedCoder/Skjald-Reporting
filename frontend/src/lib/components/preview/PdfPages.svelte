@@ -316,7 +316,7 @@
 
 <div class="pages" class:choosing={!!onselect} aria-label="The PDF's pages, with the sample answers" use:choose use:dress={look}>
   {#each paged.pages as page, p (p)}
-    <section class="sheet {page.orientation}" class:cover={page.cover} bind:this={sheets[p]} aria-label="Page {p + 1} of {total}">
+    <section class="sheet {page.orientation}" class:cover-sheet={page.cover} bind:this={sheets[p]} aria-label="Page {p + 1} of {total}">
       <div class="paper">
         {#if page.orientation === "portrait" && (p === 0 ? look.art.first : look.art.other)}
           <img class="art" src={p === 0 ? look.art.first : look.art.other} alt="" />
