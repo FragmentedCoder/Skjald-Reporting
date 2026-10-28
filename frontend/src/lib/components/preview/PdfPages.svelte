@@ -400,22 +400,26 @@
   .logo-name {
     font-family: var(--r-font-heading, var(--font-display));
   }
-  /* The margins, in millimetres, as shares of the page. */
+  /* The margins, in millimetres, as shares of the page; the body reaches --room past
+     them, padded back by as much, so a chosen block's outline isn't cut off where the
+     text area ends (overflow is clipped at the padding's edge). */
   .body {
+    --room: 0.6em;
     position: absolute;
-    top: calc(var(--m-top, 22) / 297 * 100%);
-    bottom: calc(var(--m-bottom, 20) / 297 * 100%);
-    left: calc(var(--m-left, 18) / 210 * 100%);
-    right: calc(var(--m-right, 18) / 210 * 100%);
+    top: calc(var(--m-top, 22) / 297 * 100% - var(--room));
+    bottom: calc(var(--m-bottom, 20) / 297 * 100% - var(--room));
+    left: calc(var(--m-left, 18) / 210 * 100% - var(--room));
+    right: calc(var(--m-right, 18) / 210 * 100% - var(--room));
+    padding: var(--room);
     overflow: hidden;
     font-size: var(--r-size, 1.764cqi);
     line-height: 1.6;
   }
   .landscape .body {
-    top: calc(var(--m-top, 22) / 210 * 100%);
-    bottom: calc(var(--m-bottom, 20) / 210 * 100%);
-    left: calc(var(--m-left, 18) / 297 * 100%);
-    right: calc(var(--m-right, 18) / 297 * 100%);
+    top: calc(var(--m-top, 22) / 210 * 100% - var(--room));
+    bottom: calc(var(--m-bottom, 20) / 210 * 100% - var(--room));
+    left: calc(var(--m-left, 18) / 297 * 100% - var(--room));
+    right: calc(var(--m-right, 18) / 297 * 100% - var(--room));
     font-size: var(--r-size-landscape, 1.247cqi);
   }
   .made-with {
