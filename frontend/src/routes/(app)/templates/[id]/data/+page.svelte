@@ -90,6 +90,8 @@
     <p class="result" class:error={!tried.ok} role="status">{tried.text}</p>
   </section>
 
+  <!-- The names, in two columns where the window is wide enough. -->
+  <div class="reference">
   <section class="section" aria-labelledby="answers-title">
     <h2 id="answers-title" class="section-title">Answers <Where form /></h2>
     <p class="small muted">What the technician fills in, by each question's variable name. Calculated values are worked out from the others.</p>
@@ -166,6 +168,8 @@
     {/if}
   </section>
 
+  </div>
+
   <section class="section" aria-labelledby="functions-title">
     <h2 id="functions-title" class="section-title">Functions</h2>
     <p class="small muted">What expressions can call. Each example is worked out here, by the same engine the form uses.</p>
@@ -193,8 +197,15 @@
   .data {
     display: grid;
     gap: var(--space-2);
-    max-width: 1100px;
     margin-top: var(--space-4);
+  }
+  .reference {
+    columns: 2 560px;
+    column-gap: var(--space-2);
+  }
+  .reference > .section {
+    margin: 0 0 var(--space-2);
+    break-inside: avoid;
   }
   .section-title {
     display: flex;

@@ -83,10 +83,12 @@
 </fieldset>
 
 <style>
+  /* Two columns of settings where the window is wide enough. */
   .settings {
     display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 520px), 1fr));
     gap: var(--space-2);
-    max-width: 760px;
+    align-items: start;
     margin: var(--space-4) 0 0;
     padding: 0;
     border: 0;

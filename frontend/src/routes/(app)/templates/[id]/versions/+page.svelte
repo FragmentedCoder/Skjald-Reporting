@@ -89,7 +89,6 @@
 
 <style>
   .versions {
-    max-width: 960px;
     margin-top: var(--space-4);
   }
   .draft-line {

@@ -117,10 +117,16 @@
 </div>
 
 <style>
+  /* Element by element, in two columns where the window is wide enough. */
   .strings {
     display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 560px), 1fr));
     gap: var(--space-4);
-    max-width: 760px;
+    align-items: start;
+  }
+  .strings > p {
+    grid-column: 1 / -1;
+    max-width: 960px;
   }
   .label {
     font-weight: 500;
