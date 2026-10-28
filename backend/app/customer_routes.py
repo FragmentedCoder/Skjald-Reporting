@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from app import audit, clock
 from app.auth.dependencies import DB, FullSession, client_ip, require, require_step_up
 from app.auth.sessions import UserSession
+from app.custom_fields import merge_values, shown_values
 from app.customers import (
     Customer,
     CustomerAssignment,
@@ -99,6 +100,8 @@ class CustomerIn(BaseModel):
     language: Literal["da", "en"] = "da"
     # Months raw data is kept after a project is archived.
     retention_months: int = Field(default=12, ge=1, le=120)
+    # Custom fields' values by key (app/custom_fields.py); None or "" clears one.
+    custom: dict[str, Any] = Field(default_factory=dict, max_length=100)
 
     _check_cvr = field_validator("cvr")(_cvr)
 
@@ -109,6 +112,8 @@ class CustomerUpdate(BaseModel):
     address: str | None = Field(default=None, max_length=1000)
     language: Literal["da", "en"] | None = None
     retention_months: int | None = Field(default=None, ge=1, le=120)
+    # Only the custom fields given change.
+    custom: dict[str, Any] | None = Field(default=None, max_length=100)
 
     _check_cvr = field_validator("cvr")(_cvr)
 
@@ -144,6 +149,7 @@ class CustomerDetail(CustomerSummary):
     language: str | None = None
     retention_months: int | None = None
     created_at: datetime | None = None
+    custom: dict[str, Any] | None = None
     sites: list[SiteOut] | None = None
     contacts: list[ContactOut] | None = None
     assigned: list[Assigned] | None = None
@@ -287,9 +293,11 @@ def _detail(db: Session, record: UserSession, keyring: Keyring, customer: Custom
     assigned = [Assigned(**person.model_dump(), assigned_as=held[person.id].capacities())
                 for person in _people(db, list(held))]
     manage = may_manage(roles)
+    details = keyring.details(customer)
     return CustomerDetail(
         **summary,
-        address=keyring.details(customer)["address"],
+        address=details["address"],
+        custom=shown_values(db, "customer", details.get("custom")),
         language=customer.language,
         retention_months=customer.retention_months,
         created_at=customer.created_at,
@@ -339,8 +347,10 @@ def create_customer(body: CustomerIn, request: Request, admin: Manager, db: DB) 
     db.add(customer)
     db.flush()  # the key is bound to the customer's ID
     keyring = Keyring()
+    custom = merge_values(db, "customer", None, body.custom)
     customer.sealed = keyring.give_new_key(customer).seal("customer", customer.id, {
         "name": body.name.strip(), "cvr": body.cvr, "address": body.address.strip(),
+        "custom": custom,
     })
     _log(db, request, admin, "customer.created", customer.id)
     db.commit()
@@ -365,9 +375,12 @@ def update_customer(customer_id: int, body: CustomerUpdate, request: Request, ad
         "name": body.name.strip() if body.name is not None else details["name"],
         "cvr": body.cvr if "cvr" in body.model_fields_set else details["cvr"],
         "address": body.address.strip() if body.address is not None else details["address"],
+        "custom": (merge_values(db, "customer", details.get("custom"), body.custom)
+                   if body.custom is not None else details.get("custom", {})),
     }
-    if wanted != details:
-        changed += sorted(name for name in wanted if wanted[name] != details[name])
+    before = {"custom": {}, **details}
+    if wanted != before:
+        changed += sorted(name for name in wanted if wanted[name] != before[name])
         customer.sealed = keyring.sealer(customer).seal("customer", customer.id, wanted)
     for field in ("language", "retention_months"):
         value = getattr(body, field)

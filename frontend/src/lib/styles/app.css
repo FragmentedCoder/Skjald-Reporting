@@ -9,6 +9,9 @@
 @import "@fontsource/ibm-plex-sans/latin-ext-600.css";
 @import "@fontsource/ibm-plex-mono/latin-500.css";
 @import "@fontsource/ibm-plex-mono/latin-ext-500.css";
+/* Only for the sample signatures in report previews: downloaded when one is shown. */
+@import "@fontsource/mr-dafoe/latin-400.css";
+@import "@fontsource/mr-dafoe/latin-ext-400.css";
 @import "./tokens.css";
 
 *,
@@ -178,7 +181,7 @@ a {
   flex-direction: column;
   gap: var(--space-6);
   width: 100%;
-  max-width: 1080px;
+  max-width: 1440px;
   margin: 0 auto;
   padding: var(--space-8) var(--space-6);
 }

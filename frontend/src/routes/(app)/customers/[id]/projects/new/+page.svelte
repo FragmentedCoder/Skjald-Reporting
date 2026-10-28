@@ -17,6 +17,7 @@
     name: "", start_date: "", end_date: "", responsible_id: "", reviewer_id: "", contact_id: "",
     site_ids: [],
     classification: DEFAULT_CLASSIFICATION,
+    custom: {},
   });
   let error = $state<string | null>(null);
   let busy = $state(false);

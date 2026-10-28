@@ -45,6 +45,8 @@ export interface CustomerDetail extends CustomerSummary {
   language: "da" | "en" | null;
   retention_months: number | null;
   created_at: string | null;
+  /** Custom fields' values by key, with full sight. */
+  custom: Record<string, unknown> | null;
   sites: Site[] | null;
   contacts: Contact[] | null;
   assigned: Assigned[] | null;
@@ -82,6 +84,8 @@ export interface Member extends Named {
 }
 
 export interface ProjectDetail extends ProjectSummary {
+  /** Custom fields' values by key. */
+  custom: Record<string, unknown>;
   contact: Named | null;
   sites: Named[];
   team: Member[];

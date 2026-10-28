@@ -24,8 +24,14 @@
 	}
 
 	handle /api/* {
-		# The API takes small bodies only; the largest is a 2 MB picture.
-		request_body {
+		# The API takes small bodies, the largest a 4 MB picture, except for report
+		# backgrounds and style artwork (A4 PDFs of up to 10 MB) and template files.
+		@uploads path /api/customers/*/background /api/styles/*/assets /api/templates/import
+		request_body @uploads {
+			max_size 12MB
+		}
+		@others not path /api/customers/*/background /api/styles/*/assets /api/templates/import
+		request_body @others {
 			max_size 5MB
 		}
 		# The admin panel's allowlist (Admin -> Security), here as well as in the app:

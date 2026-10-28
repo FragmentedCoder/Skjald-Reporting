@@ -9,6 +9,9 @@
   import HeartPulse from "@lucide/svelte/icons/heart-pulse";
   import House from "@lucide/svelte/icons/house";
   import LayoutDashboard from "@lucide/svelte/icons/layout-dashboard";
+  import LayoutTemplate from "@lucide/svelte/icons/layout-template";
+  import LibraryBig from "@lucide/svelte/icons/library-big";
+  import ListPlus from "@lucide/svelte/icons/list-plus";
   import ListChecks from "@lucide/svelte/icons/list-checks";
   import LockKeyhole from "@lucide/svelte/icons/lock-keyhole";
   import LogOut from "@lucide/svelte/icons/log-out";
@@ -88,6 +91,9 @@
   const customer = $derived(openCustomer());
   const full = $derived(customer?.visibility === "full");
   const showAdmin = $derived(can(current, "administer") || can(current, "read_audit_log"));
+  const builds = $derived(can(current, "build_templates"));
+  const shares = $derived(can(current, "edit_library"));
+  const styles = $derived(can(current, "edit_styles"));
   const sees = $derived(current.user.roles.length > 0);
   let menuOpen = $state(false);
   let nav = $state<HTMLElement>();
@@ -353,6 +359,27 @@
               <p class="small muted hint">Choose a customer to see its projects, contacts and people.</p>
             {/if}
           </div>
+        {/if}
+
+        {#if builds || shares || styles}
+          <ul class="items divided">
+            {#if builds}
+              <li>{@render link({ href: resolve("/(app)/templates"), label: "Templates", icon: LayoutTemplate,
+                current: path.startsWith("/templates") })}</li>
+            {/if}
+            {#if shares}
+              <li>{@render link({ href: resolve("/(app)/library"), label: "Library", icon: LibraryBig,
+                current: path.startsWith("/library") })}</li>
+            {/if}
+            {#if styles}
+              <li>{@render link({ href: resolve("/(app)/styles"), label: "Styles", icon: Palette,
+                current: path.startsWith("/styles") })}</li>
+            {/if}
+            {#if builds}
+              <li>{@render link({ href: resolve("/(app)/custom-fields"), label: "Custom fields", icon: ListPlus,
+                current: path.startsWith("/custom-fields") })}</li>
+            {/if}
+          </ul>
         {/if}
 
         {#if showAdmin}

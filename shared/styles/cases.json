@@ -1,0 +1,56 @@
+{
+  "about": "How styles stack: each case's layers (a company style, then a customer style) go on the Skjald default (default.json); expect lists what the result must hold, as paths into it. Both the server (app/styles/content.py) and the browser (src/lib/styles/resolve.ts) run these.",
+  "cases": [
+    {
+      "name": "no layers gives the Skjald default",
+      "layers": [],
+      "expect": {"colours.text": "#0F1B2D", "fonts.heading": "marcellus", "margins.top": 22, "artwork.first": null, "pages.first.elements.length": 4}
+    },
+    {
+      "name": "colours stack one by one",
+      "layers": [{"colours": {"heading": "#1D3A5F", "accent": "#B5652B"}}, {"colours": {"heading": "#4A1D5F"}}],
+      "expect": {"colours.heading": "#4A1D5F", "colours.accent": "#B5652B", "colours.text": "#0F1B2D"}
+    },
+    {
+      "name": "a tone is replaced as a pair",
+      "layers": [{"tones": {"critical": {"fill": "#FDE8E8", "ink": "#8B1E1E"}}}],
+      "expect": {"tones.critical.fill": "#FDE8E8", "tones.critical.ink": "#8B1E1E", "tones.info.fill": "#DCE6EE"}
+    },
+    {
+      "name": "fonts, sizes and margins stack key by key",
+      "layers": [{"fonts": {"body": "plex-mono"}, "sizes": {"body": 11}, "margins": {"top": 40}}, {"margins": {"left": 25}}],
+      "expect": {"fonts.body": "plex-mono", "fonts.heading": "marcellus", "sizes.body": 11, "sizes.title": 30, "margins.top": 40, "margins.left": 25, "margins.bottom": 20}
+    },
+    {
+      "name": "a page design replaces the one below as a whole",
+      "layers": [{"pages": {"other": {"elements": [{"id": "e_onlyline", "kind": "line", "x": 18, "y": 15, "w": 174, "h": 0, "stroke": null}]}}}],
+      "expect": {"pages.other.elements.length": 1, "pages.other.elements.0.kind": "line", "pages.other.elements.0.stroke": null, "pages.other.elements.0.stroke_width": 0.3, "pages.first.elements.length": 4}
+    },
+    {
+      "name": "an empty page design clears the one below",
+      "layers": [{"pages": {"cover": {"elements": [{"id": "e_tagline", "kind": "text", "x": 18, "y": 270, "w": 174, "h": 8, "text": "{{ company.name }}"}]}}}, {"pages": {"cover": {"elements": []}}}],
+      "expect": {"pages.cover.elements.length": 0}
+    },
+    {
+      "name": "artwork replaces the layer below's, and a layer can clear it",
+      "layers": [
+        {"artwork": {"first": "1111111111111111111111111111111111111111111111111111111111111111", "other": "2222222222222222222222222222222222222222222222222222222222222222"}},
+        {"artwork": {"first": null, "other": null}}
+      ],
+      "expect": {"artwork.first": null, "artwork.other": null}
+    },
+    {
+      "name": "a layer without artwork keeps the one below",
+      "layers": [
+        {"artwork": {"first": "1111111111111111111111111111111111111111111111111111111111111111", "other": "1111111111111111111111111111111111111111111111111111111111111111"}},
+        {"colours": {"text": "#000000"}}
+      ],
+      "expect": {"artwork.first": "1111111111111111111111111111111111111111111111111111111111111111", "colours.text": "#000000"}
+    },
+    {
+      "name": "element settings left out take their defaults",
+      "layers": [{"pages": {"first": {"elements": [{"id": "e_plain", "kind": "text", "x": 18, "y": 8, "w": 60, "h": 6, "text": "Fortroligt"}]}}}],
+      "expect": {"pages.first.elements.0.font": "body", "pages.first.elements.0.size": 9, "pages.first.elements.0.colour": "text", "pages.first.elements.0.weight": "regular", "pages.first.elements.0.align": "left", "pages.first.elements.0.fill": null, "pages.first.elements.0.stroke": "line", "pages.first.elements.0.radius": 0, "pages.first.elements.0.logo": "company", "pages.first.elements.0.asset": null}
+    }
+  ]
+}

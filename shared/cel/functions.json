@@ -1,0 +1,307 @@
+{
+  "about": "Every function a template expression may call, for both engines: cel-expr-python on the server and cel-js in the browser. 'where' says who provides an overload: 'skjald' (Skjald implements it on both sides), 'engine' (both engines have it built in) or 'browser' (the server's engine has it, Skjald adds it in the browser). The validator refuses any other function. Each side has a test holding its own declarations to this file, and the examples run on both engines with the cases in cases.json.",
+  "banned": {
+    "matches": "matches() isn't allowed in templates: use re_match(), which uses the same safe regular expressions on the server and in the browser."
+  },
+  "functions": [
+    {
+      "name": "xor",
+      "group": "Logic",
+      "summary": "True when exactly one of the two is true.",
+      "overloads": [{"id": "xor_bool_bool", "signature": "xor(bool, bool): bool", "where": "skjald"}],
+      "examples": [{"expr": "xor(true, false)", "result": true}, {"expr": "xor(true, true)", "result": false}]
+    },
+    {
+      "name": "switch",
+      "group": "Logic",
+      "summary": "The value for the first argument from a map of cases, or the last argument when no case matches.",
+      "overloads": [
+        {"id": "switch_string_string", "signature": "switch(string, map<string, string>, string): string", "where": "skjald"},
+        {"id": "switch_int_string", "signature": "switch(int, map<int, string>, string): string", "where": "skjald"},
+        {"id": "switch_string_double", "signature": "switch(string, map<string, double>, double): double", "where": "skjald"},
+        {"id": "switch_string_int", "signature": "switch(string, map<string, int>, int): int", "where": "skjald"}
+      ],
+      "examples": [
+        {"expr": "switch(\"da\", {\"da\": \"Danish\", \"en\": \"English\"}, \"Other\")", "result": "Danish"},
+        {"expr": "switch(3, {1: \"Low\", 3: \"High\"}, \"Unknown\")", "result": "High"}
+      ]
+    },
+    {
+      "name": "re_match",
+      "group": "Text",
+      "summary": "Whether the text contains a match for the regular expression (RE2 syntax).",
+      "overloads": [{"id": "re_match_string_string", "signature": "re_match(string, string): bool", "where": "skjald"}],
+      "examples": [{"expr": "re_match(\"198.51.100.23\", \"^198\\\\.51\\\\.\")", "result": true}]
+    },
+    {
+      "name": "re_replace",
+      "group": "Text",
+      "summary": "Replaces every match of the regular expression (RE2 syntax). In the replacement, $1 or ${name} is a captured group and $$ is a dollar sign.",
+      "overloads": [{"id": "re_replace_string_string_string", "signature": "re_replace(string, string, string): string", "where": "skjald"}],
+      "examples": [
+        {"expr": "re_replace(\"pw=Hunter2 user=a.berg\", \"pw=\\\\S+\", \"pw=****\")", "result": "pw=**** user=a.berg"},
+        {"expr": "re_replace(\"Berg, Anna\", \"(\\\\w+), (\\\\w+)\", \"$2 $1\")", "result": "Anna Berg"}
+      ]
+    },
+    {
+      "name": "replace",
+      "group": "Text",
+      "summary": "Replaces every occurrence of some text with other text.",
+      "overloads": [{"id": "string_replace_string_string", "signature": "string.replace(string, string): string", "where": "browser"}],
+      "examples": [{"expr": "\"Fjordvik Logistik A/S\".replace(\"Fjordvik\", \"Kunden\")", "result": "Kunden Logistik A/S"}]
+    },
+    {
+      "name": "size",
+      "group": "Text",
+      "summary": "The number of characters in text, or of items in a list or map.",
+      "overloads": [
+        {"id": "string_size", "signature": "string.size(): int", "where": "engine"},
+        {"id": "list_size", "signature": "list<dyn>.size(): int", "where": "engine"},
+        {"id": "size_string", "signature": "size(string): int", "where": "engine"}
+      ],
+      "examples": [{"expr": "\"Æblegrød\".size()", "result": 8}]
+    },
+    {
+      "name": "contains",
+      "group": "Text",
+      "summary": "Whether the text contains other text.",
+      "overloads": [{"id": "string_contains", "signature": "string.contains(string): bool", "where": "engine"}],
+      "examples": [{"expr": "\"2001:db8::5\".contains(\":\")", "result": true}]
+    },
+    {
+      "name": "startsWith",
+      "group": "Text",
+      "summary": "Whether the text starts with other text.",
+      "overloads": [{"id": "string_starts_with", "signature": "string.startsWith(string): bool", "where": "engine"}],
+      "examples": [{"expr": "\"203.0.113.77\".startsWith(\"203.\")", "result": true}]
+    },
+    {
+      "name": "endsWith",
+      "group": "Text",
+      "summary": "Whether the text ends with other text.",
+      "overloads": [{"id": "string_ends_with", "signature": "string.endsWith(string): bool", "where": "engine"}],
+      "examples": [{"expr": "\"fjordvik.example\".endsWith(\".example\")", "result": true}]
+    },
+    {
+      "name": "upperAscii",
+      "group": "Text",
+      "summary": "The text in capitals (the letters A to Z only).",
+      "overloads": [{"id": "string_upper_ascii", "signature": "string.upperAscii(): string", "where": "engine"}],
+      "examples": [{"expr": "\"critical\".upperAscii()", "result": "CRITICAL"}]
+    },
+    {
+      "name": "lowerAscii",
+      "group": "Text",
+      "summary": "The text in small letters (the letters A to Z only).",
+      "overloads": [{"id": "string_lower_ascii", "signature": "string.lowerAscii(): string", "where": "engine"}],
+      "examples": [{"expr": "\"HIGH\".lowerAscii()", "result": "high"}]
+    },
+    {
+      "name": "trim",
+      "group": "Text",
+      "summary": "The text without spaces at either end.",
+      "overloads": [{"id": "string_trim", "signature": "string.trim(): string", "where": "engine"}],
+      "examples": [{"expr": "\"  SN-4471  \".trim()", "result": "SN-4471"}]
+    },
+    {
+      "name": "split",
+      "group": "Text",
+      "summary": "The pieces of the text between each separator.",
+      "overloads": [{"id": "string_split_string", "signature": "string.split(string): list<string>", "where": "engine"}],
+      "examples": [{"expr": "\"a,b,c\".split(\",\").size()", "result": 3}]
+    },
+    {
+      "name": "join",
+      "group": "Lists",
+      "summary": "The items of a list of text, with a separator between them.",
+      "overloads": [{"id": "list_join_string", "signature": "list<string>.join(string): string", "where": "engine"}],
+      "examples": [{"expr": "[\"Anna\", \"Freja\"].join(\" and \")", "result": "Anna and Freja"}]
+    },
+    {
+      "name": "substring",
+      "group": "Text",
+      "summary": "Part of the text, from one position up to (not including) another, counting from 0.",
+      "overloads": [{"id": "string_substring_int_int", "signature": "string.substring(int, int): string", "where": "engine"}],
+      "examples": [{"expr": "\"INC-2026-0142\".substring(0, 3)", "result": "INC"}]
+    },
+    {
+      "name": "indexOf",
+      "group": "Text",
+      "summary": "Where other text first appears in the text, counting from 0, or -1 when it doesn't.",
+      "overloads": [{"id": "string_index_of_string", "signature": "string.indexOf(string): int", "where": "engine"}],
+      "examples": [{"expr": "\"INC-2026-0142\".indexOf(\"-\")", "result": 3}]
+    },
+    {
+      "name": "int",
+      "group": "Numbers",
+      "summary": "A whole number from text or a decimal (decimals are cut, not rounded).",
+      "overloads": [
+        {"id": "int_string", "signature": "int(string): int", "where": "engine"},
+        {"id": "int_double", "signature": "int(double): int", "where": "engine"}
+      ],
+      "examples": [{"expr": "int(\"42\") + int(7.9)", "result": 49}]
+    },
+    {
+      "name": "double",
+      "group": "Numbers",
+      "summary": "A decimal number from text or a whole number.",
+      "overloads": [
+        {"id": "double_string", "signature": "double(string): double", "where": "engine"},
+        {"id": "double_int", "signature": "double(int): double", "where": "engine"}
+      ],
+      "examples": [{"expr": "double(3) / 2.0", "result": 1.5}]
+    },
+    {
+      "name": "string",
+      "group": "Text",
+      "summary": "A value as text.",
+      "overloads": [
+        {"id": "string_int", "signature": "string(int): string", "where": "engine"},
+        {"id": "string_double", "signature": "string(double): string", "where": "engine"},
+        {"id": "string_bool", "signature": "string(bool): string", "where": "engine"}
+      ],
+      "examples": [{"expr": "string(1842) + \" attempts\"", "result": "1842 attempts"}]
+    },
+    {
+      "name": "format_number",
+      "group": "Numbers",
+      "summary": "A number as text with a set number of decimals, written the way the report's language writes numbers (1.234,5 in Danish, 1,234.5 in English). Halves round away from zero.",
+      "overloads": [
+        {"id": "format_number_double_int", "signature": "format_number(double, int): string", "where": "skjald"},
+        {"id": "format_number_int_int", "signature": "format_number(int, int): string", "where": "skjald"}
+      ],
+      "examples": [{"expr": "format_number(1234.25, 1)", "result": "1,234.3"}]
+    },
+    {
+      "name": "sum",
+      "group": "Lists",
+      "summary": "The total of a list of numbers: a whole number if every item is one, otherwise a decimal.",
+      "overloads": [{"id": "sum_list", "signature": "sum(list<dyn>): dyn", "where": "skjald"}],
+      "examples": [{"expr": "sum([1204, 611, 27])", "result": 1842}]
+    },
+    {
+      "name": "has",
+      "group": "Lists",
+      "summary": "Whether a row of a repeating group has a value for a column.",
+      "overloads": [{"id": "has_macro", "signature": "has(dyn): bool", "where": "engine"}],
+      "examples": [{"expr": "[{\"ip\": \"198.51.100.23\"}].exists(r, has(r.ip))", "result": true}]
+    },
+    {
+      "name": "exists",
+      "group": "Lists",
+      "summary": "Whether any item in a list meets a condition.",
+      "overloads": [{"id": "exists_macro", "signature": "list<dyn>.exists(name, bool): bool", "where": "engine"}],
+      "examples": [{"expr": "[1204, 611, 27].exists(n, n > 1000)", "result": true}]
+    },
+    {
+      "name": "all",
+      "group": "Lists",
+      "summary": "Whether every item in a list meets a condition.",
+      "overloads": [{"id": "all_macro", "signature": "list<dyn>.all(name, bool): bool", "where": "engine"}],
+      "examples": [{"expr": "[1204, 611, 27].all(n, n > 0)", "result": true}]
+    },
+    {
+      "name": "exists_one",
+      "group": "Lists",
+      "summary": "Whether exactly one item in a list meets a condition.",
+      "overloads": [{"id": "exists_one_macro", "signature": "list<dyn>.exists_one(name, bool): bool", "where": "engine"}],
+      "examples": [{"expr": "[1204, 611, 27].exists_one(n, n > 1000)", "result": true}]
+    },
+    {
+      "name": "filter",
+      "group": "Lists",
+      "summary": "The items in a list that meet a condition; .size() counts them.",
+      "overloads": [{"id": "filter_macro", "signature": "list<dyn>.filter(name, bool): list<dyn>", "where": "engine"}],
+      "examples": [{"expr": "[1204, 611, 27].filter(n, n > 100).size()", "result": 2}]
+    },
+    {
+      "name": "map",
+      "group": "Lists",
+      "summary": "A new list with something worked out for each item, such as one column of a repeating group.",
+      "overloads": [{"id": "map_macro", "signature": "list<dyn>.map(name, dyn): list<dyn>", "where": "engine"}],
+      "examples": [{"expr": "sum([2, 3].map(n, n * 10))", "result": 50}]
+    },
+    {
+      "name": "lookup",
+      "group": "Library",
+      "summary": "A value from one of the shared library's data tables: the first value column, or the named one. Empty when the table or key doesn't exist.",
+      "overloads": [
+        {"id": "lookup_string_string", "signature": "lookup(string, string): string", "where": "skjald"},
+        {"id": "lookup_string_string_string", "signature": "lookup(string, string, string): string", "where": "skjald"}
+      ],
+      "examples": []
+    },
+    {
+      "name": "timestamp",
+      "group": "Dates",
+      "summary": "A point in time from text in RFC 3339 form, such as 2026-10-21T03:20:00Z. For a local date and time, use date().",
+      "overloads": [{"id": "timestamp_string", "signature": "timestamp(string): timestamp", "where": "engine"}],
+      "examples": [{"expr": "timestamp(\"2026-10-21T01:14:00Z\") < timestamp(\"2026-10-24T02:00:00Z\")", "result": true}]
+    },
+    {
+      "name": "duration",
+      "group": "Dates",
+      "summary": "A length of time, such as \"72h\" or \"90m\", to add to or subtract from a point in time.",
+      "overloads": [{"id": "duration_string", "signature": "duration(string): duration", "where": "engine"}],
+      "examples": [{"expr": "timestamp(\"2026-10-21T01:14:00Z\") + duration(\"72h\") == timestamp(\"2026-10-24T01:14:00Z\")", "result": true}]
+    },
+    {
+      "name": "date",
+      "group": "Dates",
+      "summary": "A point in time from a date (2026-10-21) or a date and time (2026-10-21T14:30), read in the company's time zone unless it names one.",
+      "overloads": [{"id": "date_string", "signature": "date(string): timestamp", "where": "skjald"}],
+      "examples": [{"expr": "format_date(date(\"2026-10-21T14:30\"), \"d MMMM yyyy, HH:mm\")", "result": "21 October 2026, 14:30"}]
+    },
+    {
+      "name": "add_hours",
+      "group": "Dates",
+      "summary": "A point in time a number of hours later (or earlier, for a negative number).",
+      "overloads": [{"id": "add_hours_timestamp_int", "signature": "add_hours(timestamp, int): timestamp", "where": "skjald"}],
+      "examples": [{"expr": "format_date(add_hours(date(\"2026-10-21T14:30\"), 72), \"d MMM yyyy HH:mm\")", "result": "24 Oct 2026 14:30"}]
+    },
+    {
+      "name": "add_days",
+      "group": "Dates",
+      "summary": "The same time of day a number of calendar days later (or earlier), in the company's time zone.",
+      "overloads": [{"id": "add_days_timestamp_int", "signature": "add_days(timestamp, int): timestamp", "where": "skjald"}],
+      "examples": [{"expr": "format_date(add_days(date(\"2026-10-21\"), 30), \"yyyy-MM-dd\")", "result": "2026-11-20"}]
+    },
+    {
+      "name": "hours_between",
+      "group": "Dates",
+      "summary": "The hours from the first point in time to the second, as a decimal; negative if the second comes first.",
+      "overloads": [{"id": "hours_between_timestamp_timestamp", "signature": "hours_between(timestamp, timestamp): double", "where": "skjald"}],
+      "examples": [{"expr": "hours_between(date(\"2026-10-21T14:30\"), date(\"2026-10-22T02:00\"))", "result": 11.5}]
+    },
+    {
+      "name": "days_between",
+      "group": "Dates",
+      "summary": "The calendar days from the first date to the second, in the company's time zone; negative if the second comes first.",
+      "overloads": [{"id": "days_between_timestamp_timestamp", "signature": "days_between(timestamp, timestamp): int", "where": "skjald"}],
+      "examples": [{"expr": "days_between(date(\"2026-10-21T23:50\"), date(\"2026-10-22T00:10\"))", "result": 1}]
+    },
+    {
+      "name": "format_date",
+      "group": "Dates",
+      "summary": "A point in time as text in the company's time zone and the report's language. yyyy year, MMMM month name, MMM short month name, MM month (01–12), M month, dd day (01–31), d day, EEEE weekday, HH hour (00–23), mm minutes, ss seconds; text in 'single quotes' is kept as written.",
+      "overloads": [{"id": "format_date_timestamp_string", "signature": "format_date(timestamp, string): string", "where": "skjald"}],
+      "examples": [{"expr": "format_date(timestamp(\"2026-10-21T01:14:00Z\"), \"EEEE d MMMM yyyy 'at' HH:mm\")", "result": "Wednesday 21 October 2026 at 03:14"}]
+    }
+  ],
+  "locales": {
+    "en": {
+      "months": ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
+      "short_months": ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+      "weekdays": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+      "decimal": ".",
+      "group": ","
+    },
+    "da": {
+      "months": ["januar", "februar", "marts", "april", "maj", "juni", "juli", "august", "september", "oktober", "november", "december"],
+      "short_months": ["jan.", "feb.", "mar.", "apr.", "maj", "jun.", "jul.", "aug.", "sep.", "okt.", "nov.", "dec."],
+      "weekdays": ["mandag", "tirsdag", "onsdag", "torsdag", "fredag", "lørdag", "søndag"],
+      "decimal": ",",
+      "group": "."
+    }
+  }
+}

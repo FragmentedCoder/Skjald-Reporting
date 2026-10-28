@@ -1,0 +1,1557 @@
+{
+  "about": "Small templates and the problems both validators must find in them, in this order: backend/tests/test_template_checks.py and frontend/src/lib/templates/checks.test.ts. 'answers' lists the names each one declares besides the report's context. The sample template beside this file, incident.json, has none.",
+  "cases": [
+    {
+      "name": "Variable names: missing, reserved, used twice",
+      "content": {
+        "schema": 1,
+        "settings": {
+          "prefix": "REP",
+          "language": "en",
+          "signing": "technician",
+          "review": "optional",
+          "delivery": [
+            "download"
+          ],
+          "styles": [
+            "company",
+            "customer"
+          ],
+          "customer_background": true
+        },
+        "form": [
+          {
+            "id": "s_main1",
+            "title": "Step",
+            "help": "",
+            "visible_when": null,
+            "questions": [
+              {
+                "id": "q_title",
+                "key": "title",
+                "type": "text",
+                "label": "Title",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "max_length": 500,
+                  "pattern": null,
+                  "pattern_message": "",
+                  "placeholder": ""
+                }
+              },
+              {
+                "id": "q_nokey",
+                "key": null,
+                "type": "text",
+                "label": "Heading",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "max_length": 500,
+                  "pattern": null,
+                  "pattern_message": "",
+                  "placeholder": ""
+                }
+              },
+              {
+                "id": "q_inkey",
+                "key": "in",
+                "type": "yes_no",
+                "label": "Reserved",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "yes_label": "Yes",
+                  "no_label": "No"
+                }
+              },
+              {
+                "id": "q_again",
+                "key": "title",
+                "type": "number",
+                "label": "Again",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "whole": false,
+                  "min": null,
+                  "max": null,
+                  "decimals": 1,
+                  "unit": ""
+                }
+              },
+              {
+                "id": "q_head1",
+                "key": null,
+                "type": "heading",
+                "label": "Heading",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {}
+              }
+            ]
+          }
+        ],
+        "layout": [],
+        "sample": {
+          "answers": {}
+        }
+      },
+      "answers": {
+        "answers.in": "bool",
+        "answers.title": "string"
+      },
+      "problems": [
+        {
+          "element": "q_nokey",
+          "field": "key",
+          "message": "Give the question a variable name."
+        },
+        {
+          "element": "q_inkey",
+          "field": "key",
+          "message": "in is a reserved word in expressions: choose another variable name."
+        },
+        {
+          "element": "q_again",
+          "field": "key",
+          "message": "Another question already uses the variable name title."
+        }
+      ]
+    },
+    {
+      "name": "Expressions on questions",
+      "content": {
+        "schema": 1,
+        "settings": {
+          "prefix": "REP",
+          "language": "en",
+          "signing": "technician",
+          "review": "optional",
+          "delivery": [
+            "download"
+          ],
+          "styles": [
+            "company",
+            "customer"
+          ],
+          "customer_background": true
+        },
+        "form": [
+          {
+            "id": "s_main1",
+            "title": "Step",
+            "help": "",
+            "visible_when": null,
+            "questions": [
+              {
+                "id": "q_cvss",
+                "key": "cvss",
+                "type": "number",
+                "label": "Cvss",
+                "help": "",
+                "required": false,
+                "required_when": "answers.cvss",
+                "visible_when": "answers.nope > 1.0",
+                "default": null,
+                "valid_when": "answers.cvss.matches(\"9\")",
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "whole": false,
+                  "min": null,
+                  "max": null,
+                  "decimals": 1,
+                  "unit": ""
+                }
+              },
+              {
+                "id": "q_secret",
+                "key": "pw",
+                "type": "secret",
+                "label": "Pw",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": "\"x\"",
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "pdf": "partial"
+                }
+              },
+              {
+                "id": "q_when",
+                "key": "when",
+                "type": "datetime",
+                "label": "When",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": "project.start_date",
+                "valid_when": "  ",
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "mode": "datetime"
+                }
+              },
+              {
+                "id": "q_count",
+                "key": "count",
+                "type": "number",
+                "label": "Count",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": "2.5",
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "whole": true,
+                  "min": null,
+                  "max": null,
+                  "decimals": 1,
+                  "unit": ""
+                }
+              },
+              {
+                "id": "q_calc1",
+                "key": "calc_empty",
+                "type": "calculated",
+                "label": "Calc empty",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "result": "text",
+                  "show_in_form": true
+                }
+              },
+              {
+                "id": "q_calc2",
+                "key": "calc_type",
+                "type": "calculated",
+                "label": "Calc type",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": "answers.count * 2",
+                "settings": {
+                  "result": "number",
+                  "show_in_form": true
+                }
+              },
+              {
+                "id": "q_text1",
+                "key": "text",
+                "type": "text",
+                "label": "Text",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": "\"x\"",
+                "settings": {
+                  "max_length": 500,
+                  "pattern": null,
+                  "pattern_message": "",
+                  "placeholder": ""
+                }
+              }
+            ]
+          },
+          {
+            "id": "s_main2",
+            "title": "Step",
+            "help": "",
+            "visible_when": "answers.cvss >= 9",
+            "questions": []
+          }
+        ],
+        "layout": [],
+        "sample": {
+          "answers": {}
+        }
+      },
+      "answers": {
+        "answers.calc_empty": "string",
+        "answers.calc_type": "double",
+        "answers.count": "int",
+        "answers.cvss": "double",
+        "answers.pw.filled": "bool",
+        "answers.pw.printed": "string",
+        "answers.text": "string",
+        "answers.when": "timestamp"
+      },
+      "problems": [
+        {
+          "element": "q_cvss",
+          "field": "required_when",
+          "message": "This should give yes or no, but gives a decimal number."
+        },
+        {
+          "element": "q_cvss",
+          "field": "visible_when",
+          "message": "answers.nope isn't a name this template has."
+        },
+        {
+          "element": "q_cvss",
+          "field": "valid_when",
+          "message": "matches() isn't allowed in templates: use re_match(), which uses the same safe regular expressions on the server and in the browser."
+        },
+        {
+          "element": "q_secret",
+          "field": "default",
+          "message": "This kind of question can't have a default."
+        },
+        {
+          "element": "q_when",
+          "field": "valid_when",
+          "message": "Write the expression, or remove the rule."
+        },
+        {
+          "element": "q_count",
+          "field": "default",
+          "message": "This should give a whole number, but gives a decimal number."
+        },
+        {
+          "element": "q_calc1",
+          "field": "value",
+          "message": "Write the expression that works out this value."
+        },
+        {
+          "element": "q_calc2",
+          "field": "value",
+          "message": "This should give a decimal number, but gives a whole number."
+        },
+        {
+          "element": "q_text1",
+          "field": "value",
+          "message": "Only calculated values have an expression."
+        },
+        {
+          "element": "s_main2",
+          "field": "visible_when",
+          "message": "A whole number can't be compared with a decimal: write 9.0 rather than 9, or convert one side with double() or int()."
+        }
+      ]
+    },
+    {
+      "name": "Calculated values that depend on themselves",
+      "content": {
+        "schema": 1,
+        "settings": {
+          "prefix": "REP",
+          "language": "en",
+          "signing": "technician",
+          "review": "optional",
+          "delivery": [
+            "download"
+          ],
+          "styles": [
+            "company",
+            "customer"
+          ],
+          "customer_background": true
+        },
+        "form": [
+          {
+            "id": "s_main1",
+            "title": "Step",
+            "help": "",
+            "visible_when": null,
+            "questions": [
+              {
+                "id": "q_calca",
+                "key": "a",
+                "type": "calculated",
+                "label": "A",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": "answers.b + \"!\"",
+                "settings": {
+                  "result": "text",
+                  "show_in_form": true
+                }
+              },
+              {
+                "id": "q_calcb",
+                "key": "b",
+                "type": "calculated",
+                "label": "B",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": "answers.a",
+                "settings": {
+                  "result": "text",
+                  "show_in_form": true
+                }
+              },
+              {
+                "id": "q_calcc",
+                "key": "c",
+                "type": "calculated",
+                "label": "C",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": "answers.c + answers.a",
+                "settings": {
+                  "result": "text",
+                  "show_in_form": true
+                }
+              },
+              {
+                "id": "q_calcd",
+                "key": "d",
+                "type": "calculated",
+                "label": "D",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": "answers.a + answers.b",
+                "settings": {
+                  "result": "text",
+                  "show_in_form": true
+                }
+              }
+            ]
+          }
+        ],
+        "layout": [],
+        "sample": {
+          "answers": {}
+        }
+      },
+      "answers": {
+        "answers.a": "string",
+        "answers.b": "string",
+        "answers.c": "string",
+        "answers.d": "string"
+      },
+      "problems": [
+        {
+          "element": "q_calca",
+          "field": "value",
+          "message": "This value depends on itself: a → b → a."
+        },
+        {
+          "element": "q_calcb",
+          "field": "value",
+          "message": "This value depends on itself: b → a → b."
+        },
+        {
+          "element": "q_calcc",
+          "field": "value",
+          "message": "This value depends on itself: c → c."
+        }
+      ]
+    },
+    {
+      "name": "Question settings",
+      "content": {
+        "schema": 1,
+        "settings": {
+          "prefix": "REP",
+          "language": "en",
+          "signing": "technician",
+          "review": "optional",
+          "delivery": [
+            "download"
+          ],
+          "styles": [
+            "company",
+            "customer"
+          ],
+          "customer_background": true
+        },
+        "form": [
+          {
+            "id": "s_main1",
+            "title": "Step",
+            "help": "",
+            "visible_when": null,
+            "questions": [
+              {
+                "id": "q_pattern",
+                "key": "pattern",
+                "type": "text",
+                "label": "Pattern",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "max_length": 500,
+                  "pattern": "a(?=b)",
+                  "pattern_message": "",
+                  "placeholder": ""
+                }
+              },
+              {
+                "id": "q_serial",
+                "key": "serial",
+                "type": "serial",
+                "label": "Serial",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "pattern": "^[A-Z]{2}-[0-9]+$",
+                  "pattern_message": ""
+                }
+              },
+              {
+                "id": "q_range",
+                "key": "range",
+                "type": "number",
+                "label": "Range",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "whole": false,
+                  "min": 10.0,
+                  "max": 1.0,
+                  "decimals": 1,
+                  "unit": ""
+                }
+              },
+              {
+                "id": "q_multi",
+                "key": "multi",
+                "type": "multi_select",
+                "label": "Multi",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "options": [
+                    {
+                      "value": "a",
+                      "label": "A"
+                    }
+                  ],
+                  "min_selected": 3,
+                  "max_selected": 2
+                }
+              },
+              {
+                "id": "q_rows",
+                "key": "rows",
+                "type": "repeating",
+                "label": "Rows",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "columns": [
+                    {
+                      "key": "ip",
+                      "label": "IP",
+                      "type": "ip",
+                      "required": false,
+                      "settings": {
+                        "versions": "any",
+                        "cidr": "no"
+                      }
+                    },
+                    {
+                      "key": "ip",
+                      "label": "IP again",
+                      "type": "text",
+                      "required": false,
+                      "settings": {
+                        "max_length": 500,
+                        "pattern": null,
+                        "pattern_message": "",
+                        "placeholder": ""
+                      }
+                    }
+                  ],
+                  "min_rows": 5,
+                  "max_rows": 2
+                }
+              },
+              {
+                "id": "q_grid",
+                "key": "grid",
+                "type": "table",
+                "label": "Grid",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "rows": [
+                    {
+                      "key": "r1",
+                      "label": "One"
+                    },
+                    {
+                      "key": "r1",
+                      "label": "Two"
+                    }
+                  ],
+                  "columns": [
+                    {
+                      "key": "ok",
+                      "label": "OK",
+                      "type": "yes_no",
+                      "required": false,
+                      "settings": {
+                        "yes_label": "Yes",
+                        "no_label": "No"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ],
+        "layout": [],
+        "sample": {
+          "answers": {}
+        }
+      },
+      "answers": {
+        "answers.grid": "list<map<string, dyn>>",
+        "answers.multi": "list<string>",
+        "answers.pattern": "string",
+        "answers.range": "double",
+        "answers.rows": "list<map<string, dyn>>",
+        "answers.serial": "string"
+      },
+      "problems": [
+        {
+          "element": "q_pattern",
+          "field": "settings.pattern",
+          "message": "This pattern isn't a regular expression Skjald can use (RE2 syntax)."
+        },
+        {
+          "element": "q_range",
+          "field": "settings.min",
+          "message": "The smallest value is larger than the largest."
+        },
+        {
+          "element": "q_multi",
+          "field": "settings.min_selected",
+          "message": "The fewest choices are more than the most."
+        },
+        {
+          "element": "q_rows",
+          "field": "settings.columns",
+          "message": "Two columns use the variable name ip."
+        },
+        {
+          "element": "q_rows",
+          "field": "settings.min_rows",
+          "message": "The fewest rows are more than the most."
+        },
+        {
+          "element": "q_grid",
+          "field": "settings.rows",
+          "message": "Two rows use the variable name r1."
+        }
+      ]
+    },
+    {
+      "name": "Blocks that print questions",
+      "content": {
+        "schema": 1,
+        "settings": {
+          "prefix": "REP",
+          "language": "en",
+          "signing": "technician",
+          "review": "optional",
+          "delivery": [
+            "download"
+          ],
+          "styles": [
+            "company",
+            "customer"
+          ],
+          "customer_background": true
+        },
+        "form": [
+          {
+            "id": "s_main1",
+            "title": "Step",
+            "help": "",
+            "visible_when": null,
+            "questions": [
+              {
+                "id": "q_title",
+                "key": "title",
+                "type": "text",
+                "label": "Title",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "max_length": 500,
+                  "pattern": null,
+                  "pattern_message": "",
+                  "placeholder": ""
+                }
+              },
+              {
+                "id": "q_rows",
+                "key": "rows",
+                "type": "repeating",
+                "label": "Rows",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "columns": [
+                    {
+                      "key": "ip",
+                      "label": "IP",
+                      "type": "ip",
+                      "required": false,
+                      "settings": {
+                        "versions": "any",
+                        "cidr": "no"
+                      }
+                    },
+                    {
+                      "key": "level",
+                      "label": "Severity",
+                      "type": "text",
+                      "required": false,
+                      "settings": {
+                        "max_length": 500,
+                        "pattern": null,
+                        "pattern_message": "",
+                        "placeholder": ""
+                      }
+                    }
+                  ],
+                  "min_rows": 0,
+                  "max_rows": 100
+                }
+              },
+              {
+                "id": "q_photo",
+                "key": "photo",
+                "type": "photo",
+                "label": "Photo",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "multiple": false,
+                  "max_photos": 10
+                }
+              },
+              {
+                "id": "q_photos",
+                "key": "photos",
+                "type": "photo",
+                "label": "Photos",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "multiple": true,
+                  "max_photos": 10
+                }
+              },
+              {
+                "id": "q_head1",
+                "key": null,
+                "type": "heading",
+                "label": "Heading",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {}
+              }
+            ]
+          }
+        ],
+        "layout": [
+          {
+            "id": "b_ans1",
+            "visible_when": null,
+            "kind": "answer",
+            "question": null,
+            "show_label": true
+          },
+          {
+            "id": "b_ans2",
+            "visible_when": null,
+            "kind": "answer",
+            "question": "q_gone",
+            "show_label": true
+          },
+          {
+            "id": "b_ans3",
+            "visible_when": null,
+            "kind": "answer",
+            "question": "q_head1",
+            "show_label": true
+          },
+          {
+            "id": "b_tab1",
+            "visible_when": null,
+            "kind": "table",
+            "question": null,
+            "caption": "",
+            "columns": null,
+            "empty_text": "No rows."
+          },
+          {
+            "id": "b_tab2",
+            "visible_when": null,
+            "kind": "table",
+            "question": "q_title",
+            "caption": "",
+            "columns": null,
+            "empty_text": "No rows."
+          },
+          {
+            "id": "b_tab3",
+            "visible_when": null,
+            "kind": "table",
+            "question": "q_rows",
+            "caption": "",
+            "columns": [
+              "ip",
+              "port"
+            ],
+            "empty_text": "No rows."
+          },
+          {
+            "id": "b_img1",
+            "visible_when": null,
+            "kind": "image",
+            "source": "template",
+            "asset": null,
+            "question": null,
+            "caption": "",
+            "width": "full"
+          },
+          {
+            "id": "b_img2",
+            "visible_when": null,
+            "kind": "image",
+            "source": "template",
+            "asset": "0000000000000000000000000000000000000000000000000000000000000000",
+            "question": null,
+            "caption": "",
+            "width": "full"
+          },
+          {
+            "id": "b_img3",
+            "visible_when": null,
+            "kind": "image",
+            "source": "template",
+            "asset": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "question": null,
+            "caption": "",
+            "width": "full"
+          },
+          {
+            "id": "b_img4",
+            "visible_when": null,
+            "kind": "image",
+            "source": "question",
+            "asset": null,
+            "question": null,
+            "caption": "",
+            "width": "full"
+          },
+          {
+            "id": "b_img5",
+            "visible_when": null,
+            "kind": "image",
+            "source": "question",
+            "asset": null,
+            "question": "q_title",
+            "caption": "",
+            "width": "full"
+          },
+          {
+            "id": "b_gal1",
+            "visible_when": null,
+            "kind": "gallery",
+            "question": "q_photo",
+            "caption": "",
+            "per_row": 2
+          },
+          {
+            "id": "b_gal2",
+            "visible_when": null,
+            "kind": "gallery",
+            "question": "q_photos",
+            "caption": "",
+            "per_row": 2
+          },
+          {
+            "id": "b_sev1",
+            "visible_when": null,
+            "kind": "severity_summary",
+            "question": "q_rows",
+            "column": null,
+            "levels": [
+              "Critical",
+              "High",
+              "Medium",
+              "Low"
+            ],
+            "caption": ""
+          },
+          {
+            "id": "b_sev2",
+            "visible_when": null,
+            "kind": "severity_summary",
+            "question": "q_rows",
+            "column": "risk",
+            "levels": [
+              "Critical",
+              "High",
+              "Medium",
+              "Low"
+            ],
+            "caption": ""
+          },
+          {
+            "id": "b_sev3",
+            "visible_when": null,
+            "kind": "severity_summary",
+            "question": "q_rows",
+            "column": "level",
+            "levels": [
+              "Critical",
+              "High",
+              "Medium",
+              "Low"
+            ],
+            "caption": ""
+          },
+          {
+            "id": "b_src1",
+            "visible_when": null,
+            "kind": "sources",
+            "intro": "",
+            "items": [],
+            "question": "q_photo"
+          }
+        ],
+        "sample": {
+          "answers": {}
+        }
+      },
+      "assets": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "answers": {
+        "answers.photo.count": "int",
+        "answers.photo.filled": "bool",
+        "answers.photos.count": "int",
+        "answers.photos.filled": "bool",
+        "answers.rows": "list<map<string, dyn>>",
+        "answers.title": "string"
+      },
+      "problems": [
+        {
+          "element": "b_ans1",
+          "field": "question",
+          "message": "Choose the question to print."
+        },
+        {
+          "element": "b_ans2",
+          "field": "question",
+          "message": "The question this block prints was removed."
+        },
+        {
+          "element": "b_ans3",
+          "field": "question",
+          "message": "Headings have no answer to print."
+        },
+        {
+          "element": "b_tab1",
+          "field": "question",
+          "message": "Choose the repeating group or table to print."
+        },
+        {
+          "element": "b_tab2",
+          "field": "question",
+          "message": "“Title” isn't a repeating group or table."
+        },
+        {
+          "element": "b_tab3",
+          "field": "columns",
+          "message": "“Rows” has no column port."
+        },
+        {
+          "element": "b_img1",
+          "field": "asset",
+          "message": "Choose an image."
+        },
+        {
+          "element": "b_img2",
+          "field": "asset",
+          "message": "The image file is missing: upload it again."
+        },
+        {
+          "element": "b_img4",
+          "field": "question",
+          "message": "Choose the photo question."
+        },
+        {
+          "element": "b_img5",
+          "field": "question",
+          "message": "“Title” isn't a photo question."
+        },
+        {
+          "element": "b_gal1",
+          "field": "question",
+          "message": "“Photo” takes one photo: let it take several to show a gallery."
+        },
+        {
+          "element": "b_sev1",
+          "field": "column",
+          "message": "Choose the column that holds each row's severity."
+        },
+        {
+          "element": "b_sev2",
+          "field": "column",
+          "message": "“Rows” has no column risk."
+        },
+        {
+          "element": "b_src1",
+          "field": "question",
+          "message": "“Photo” isn't a repeating group or table."
+        }
+      ]
+    },
+    {
+      "name": "Text, rules and repeated sections in the layout",
+      "content": {
+        "schema": 1,
+        "settings": {
+          "prefix": "REP",
+          "language": "en",
+          "signing": "technician",
+          "review": "optional",
+          "delivery": [
+            "download"
+          ],
+          "styles": [
+            "company",
+            "customer"
+          ],
+          "customer_background": true
+        },
+        "form": [
+          {
+            "id": "s_main1",
+            "title": "Step",
+            "help": "",
+            "visible_when": null,
+            "questions": [
+              {
+                "id": "q_rows",
+                "key": "rows",
+                "type": "repeating",
+                "label": "Rows",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "columns": [
+                    {
+                      "key": "ip",
+                      "label": "IP",
+                      "type": "ip",
+                      "required": false,
+                      "settings": {
+                        "versions": "any",
+                        "cidr": "no"
+                      }
+                    }
+                  ],
+                  "min_rows": 0,
+                  "max_rows": 100
+                }
+              },
+              {
+                "id": "q_tags",
+                "key": "tags",
+                "type": "multi_select",
+                "label": "Tags",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "options": [
+                    {
+                      "value": "a",
+                      "label": "A"
+                    }
+                  ],
+                  "min_selected": null,
+                  "max_selected": null
+                }
+              }
+            ]
+          }
+        ],
+        "layout": [
+          {
+            "id": "b_cover",
+            "visible_when": null,
+            "kind": "cover",
+            "title": "{{report.title",
+            "subtitle": "{{ }}",
+            "facts": [
+              {
+                "label": "Tags",
+                "value": "{{answers.tags}}"
+              },
+              {
+                "label": "First",
+                "value": "{{answers.tags.size() > 0 ? answers.tags[0] : \"none\"}}"
+              }
+            ],
+            "show_logo": true
+          },
+          {
+            "id": "b_sect1",
+            "visible_when": null,
+            "kind": "section",
+            "title": "Per address: {{item.ip}}",
+            "intro": null,
+            "new_page": true,
+            "numbered": true,
+            "landscape": false,
+            "repeat_for": "answers.rows",
+            "blocks": [
+              {
+                "id": "b_head1",
+                "visible_when": null,
+                "kind": "heading",
+                "text": "{{item.ip}} ({{format_number(double(item.attempts), 0)}})"
+              },
+              {
+                "id": "b_cols1",
+                "visible_when": null,
+                "kind": "columns",
+                "columns": [
+                  [
+                    {
+                      "id": "b_text1",
+                      "visible_when": null,
+                      "kind": "text",
+                      "content": {
+                        "type": "doc",
+                        "content": [
+                          {
+                            "type": "paragraph",
+                            "content": [
+                              {
+                                "type": "text",
+                                "text": "Seen "
+                              },
+                              {
+                                "type": "variable",
+                                "attrs": {
+                                  "expr": "item.ip"
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  ],
+                  []
+                ]
+              }
+            ]
+          },
+          {
+            "id": "b_sect2",
+            "visible_when": null,
+            "kind": "section",
+            "title": "Outside",
+            "intro": {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "variable",
+                      "attrs": {
+                        "expr": "item.ip"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "text": " {{customer.name}} and {{answers.nope}}"
+                    }
+                  ]
+                }
+              ]
+            },
+            "new_page": true,
+            "numbered": true,
+            "landscape": false,
+            "repeat_for": "answers.rows.size()",
+            "blocks": []
+          },
+          {
+            "id": "b_call1",
+            "visible_when": null,
+            "kind": "callout",
+            "tone": "custom",
+            "tone_rule": "answers.rows.size() > 2",
+            "colour": null,
+            "title": "",
+            "content": {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "x"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "id": "b_call2",
+            "visible_when": "",
+            "kind": "callout",
+            "tone": "info",
+            "tone_rule": null,
+            "colour": null,
+            "title": "",
+            "content": {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "variable",
+                      "attrs": {
+                        "expr": "answers.rows"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "id": "b_sign1",
+            "visible_when": null,
+            "kind": "signatures",
+            "signers": [
+              {
+                "role": "technician",
+                "label": "{{author.display_name}}",
+                "style": "handwritten"
+              },
+              {
+                "role": "company",
+                "label": "{{author}}",
+                "style": "handwritten"
+              }
+            ],
+            "layout": "row",
+            "show_date": true
+          },
+          {
+            "id": "b_head2",
+            "visible_when": null,
+            "kind": "heading",
+            "text": "Last seen {{item.ip}}"
+          },
+          {
+            "id": "b_sect1",
+            "visible_when": null,
+            "kind": "page_break"
+          }
+        ],
+        "sample": {
+          "answers": {}
+        }
+      },
+      "answers": {
+        "answers.rows": "list<map<string, dyn>>",
+        "answers.tags": "list<string>"
+      },
+      "problems": [
+        {
+          "element": "b_cover",
+          "field": "title",
+          "message": "A {{ has no closing }}."
+        },
+        {
+          "element": "b_cover",
+          "field": "subtitle",
+          "message": "Write an expression between {{ and }}."
+        },
+        {
+          "element": "b_cover",
+          "field": "facts.0.value",
+          "message": "This gives a list or a map, which can't be printed as it is: pick one item, or join a list of text with .join(\", \")."
+        },
+        {
+          "element": "b_sect2",
+          "field": "intro",
+          "message": "answers.nope isn't a name this template has."
+        },
+        {
+          "element": "b_sect2",
+          "field": "repeat_for",
+          "message": "This should give a list, but gives a whole number."
+        },
+        {
+          "element": "b_call1",
+          "field": "tone_rule",
+          "message": "This should give text, but gives yes or no."
+        },
+        {
+          "element": "b_call1",
+          "field": "colour",
+          "message": "Choose the custom colour."
+        },
+        {
+          "element": "b_call2",
+          "field": "visible_when",
+          "message": "Write the expression, or remove the rule."
+        },
+        {
+          "element": "b_call2",
+          "field": "content",
+          "message": "This gives a list or a map, which can't be printed as it is: pick one item, or join a list of text with .join(\", \")."
+        },
+        {
+          "element": "b_sign1",
+          "field": "signers.1.label",
+          "message": "author on its own isn't a value: use one name inside it, such as author.department."
+        },
+        {
+          "element": "b_head2",
+          "field": "text",
+          "message": "item is only there inside a section repeated for each item."
+        },
+        {
+          "element": "b_sect1",
+          "field": "id",
+          "message": "Another element already uses the ID b_sect1."
+        }
+      ]
+    },
+    {
+      "name": "Library names",
+      "content": {
+        "schema": 1,
+        "settings": {
+          "prefix": "REP",
+          "language": "en",
+          "signing": "technician",
+          "review": "optional",
+          "delivery": [
+            "download"
+          ],
+          "styles": [
+            "company",
+            "customer"
+          ],
+          "customer_background": true
+        },
+        "form": [
+          {
+            "id": "s_main1",
+            "title": "Step",
+            "help": "",
+            "visible_when": null,
+            "questions": []
+          }
+        ],
+        "layout": [
+          {
+            "id": "b_text1",
+            "visible_when": null,
+            "kind": "text",
+            "content": {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Call {{vars.support_phone}}. {{text.handover}} {{vars.unknown}}"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ],
+        "sample": {
+          "answers": {}
+        }
+      },
+      "library": {
+        "vars.support_phone": "string",
+        "text.handover": "string"
+      },
+      "answers": {
+        "text.handover": "string",
+        "vars.support_phone": "string"
+      },
+      "problems": [
+        {
+          "element": "b_text1",
+          "field": "content",
+          "message": "vars.unknown isn't a name this template has."
+        }
+      ]
+    }
+  ]
+}

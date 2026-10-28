@@ -1,0 +1,754 @@
+{
+ "about": "Answers to typed questions, and whether each is valid: the form in the browser (frontend/src/lib/templates/answers.ts) and the server (backend/app/templates/answers.py) give the same verdict and the same words. CVSS vectors also give their score (the base score for 3.1, the vector's own score for 4.0) and severity. An empty answer isn't checked here: that's whether the question is required.",
+ "cases": [
+  {
+   "type": "ip",
+   "settings": {},
+   "value": "198.51.100.23",
+   "message": null
+  },
+  {
+   "type": "ip",
+   "settings": {},
+   "value": "0.0.0.0",
+   "message": null
+  },
+  {
+   "type": "ip",
+   "settings": {},
+   "value": "255.255.255.255",
+   "message": null
+  },
+  {
+   "type": "ip",
+   "settings": {},
+   "value": "2001:db8::5",
+   "message": null
+  },
+  {
+   "type": "ip",
+   "settings": {},
+   "value": "::",
+   "message": null
+  },
+  {
+   "type": "ip",
+   "settings": {},
+   "value": "::1",
+   "message": null
+  },
+  {
+   "type": "ip",
+   "settings": {},
+   "value": "fe80::1",
+   "message": null
+  },
+  {
+   "type": "ip",
+   "settings": {},
+   "value": "2001:0db8:0000:0000:0000:ff00:0042:8329",
+   "message": null
+  },
+  {
+   "type": "ip",
+   "settings": {},
+   "value": "::ffff:198.51.100.23",
+   "message": null
+  },
+  {
+   "type": "ip",
+   "settings": {},
+   "value": "1:2:3:4:5:6:7:8",
+   "message": null
+  },
+  {
+   "type": "ip",
+   "settings": {},
+   "value": "1::8",
+   "message": null
+  },
+  {
+   "type": "ip",
+   "settings": {},
+   "value": "1:2:3:4:5:6::",
+   "message": null
+  },
+  {
+   "type": "ip",
+   "settings": {},
+   "value": "256.1.1.1",
+   "message": "Enter an IP address, such as 198.51.100.23 or 2001:db8::5."
+  },
+  {
+   "type": "ip",
+   "settings": {},
+   "value": "198.51.100",
+   "message": "Enter an IP address, such as 198.51.100.23 or 2001:db8::5."
+  },
+  {
+   "type": "ip",
+   "settings": {},
+   "value": "198.51.100.023",
+   "message": "Enter an IP address, such as 198.51.100.23 or 2001:db8::5."
+  },
+  {
+   "type": "ip",
+   "settings": {},
+   "value": "198.51.100.23.4",
+   "message": "Enter an IP address, such as 198.51.100.23 or 2001:db8::5."
+  },
+  {
+   "type": "ip",
+   "settings": {},
+   "value": "1:2:3:4:5:6:7:8:9",
+   "message": "Enter an IP address, such as 198.51.100.23 or 2001:db8::5."
+  },
+  {
+   "type": "ip",
+   "settings": {},
+   "value": "1::2::3",
+   "message": "Enter an IP address, such as 198.51.100.23 or 2001:db8::5."
+  },
+  {
+   "type": "ip",
+   "settings": {},
+   "value": "12345::1",
+   "message": "Enter an IP address, such as 198.51.100.23 or 2001:db8::5."
+  },
+  {
+   "type": "ip",
+   "settings": {},
+   "value": "fe80::1%eth0",
+   "message": "Enter an IP address, such as 198.51.100.23 or 2001:db8::5."
+  },
+  {
+   "type": "ip",
+   "settings": {},
+   "value": "g::1",
+   "message": "Enter an IP address, such as 198.51.100.23 or 2001:db8::5."
+  },
+  {
+   "type": "ip",
+   "settings": {},
+   "value": " 198.51.100.23",
+   "message": "Enter an IP address, such as 198.51.100.23 or 2001:db8::5."
+  },
+  {
+   "type": "ip",
+   "settings": {},
+   "value": "1:2:3:4:5:6:7",
+   "message": "Enter an IP address, such as 198.51.100.23 or 2001:db8::5."
+  },
+  {
+   "type": "ip",
+   "settings": {},
+   "value": ":::1",
+   "message": "Enter an IP address, such as 198.51.100.23 or 2001:db8::5."
+  },
+  {
+   "type": "ip",
+   "settings": {},
+   "value": "::ffff:256.1.1.1",
+   "message": "Enter an IP address, such as 198.51.100.23 or 2001:db8::5."
+  },
+  {
+   "type": "ip",
+   "settings": {
+    "cidr": "allowed"
+   },
+   "value": "198.51.100.0/24",
+   "message": null
+  },
+  {
+   "type": "ip",
+   "settings": {
+    "cidr": "allowed"
+   },
+   "value": "198.51.100.23",
+   "message": null
+  },
+  {
+   "type": "ip",
+   "settings": {
+    "cidr": "required"
+   },
+   "value": "2001:db8::/32",
+   "message": null
+  },
+  {
+   "type": "ip",
+   "settings": {
+    "cidr": "required"
+   },
+   "value": "10.0.0.5/0",
+   "message": null
+  },
+  {
+   "type": "ip",
+   "settings": {},
+   "value": "198.51.100.0/24",
+   "message": "Enter the address without a prefix such as /24."
+  },
+  {
+   "type": "ip",
+   "settings": {
+    "cidr": "required"
+   },
+   "value": "198.51.100.0",
+   "message": "Add the prefix length, such as /24."
+  },
+  {
+   "type": "ip",
+   "settings": {
+    "cidr": "allowed"
+   },
+   "value": "198.51.100.0/33",
+   "message": "Enter an IP address, such as 198.51.100.23 or 2001:db8::5."
+  },
+  {
+   "type": "ip",
+   "settings": {
+    "cidr": "allowed"
+   },
+   "value": "2001:db8::/129",
+   "message": "Enter an IP address, such as 198.51.100.23 or 2001:db8::5."
+  },
+  {
+   "type": "ip",
+   "settings": {
+    "cidr": "allowed"
+   },
+   "value": "10.0.0.0/024",
+   "message": "Enter an IP address, such as 198.51.100.23 or 2001:db8::5."
+  },
+  {
+   "type": "ip",
+   "settings": {
+    "versions": "v4"
+   },
+   "value": "198.51.100.23",
+   "message": null
+  },
+  {
+   "type": "ip",
+   "settings": {
+    "versions": "v4"
+   },
+   "value": "2001:db8::5",
+   "message": "Enter an IPv4 address, such as 198.51.100.23."
+  },
+  {
+   "type": "ip",
+   "settings": {
+    "versions": "v6"
+   },
+   "value": "2001:db8::5",
+   "message": null
+  },
+  {
+   "type": "ip",
+   "settings": {
+    "versions": "v6"
+   },
+   "value": "198.51.100.23",
+   "message": "Enter an IPv6 address, such as 2001:db8::5."
+  },
+  {
+   "type": "hostname",
+   "settings": {},
+   "value": "srv-01",
+   "message": null
+  },
+  {
+   "type": "hostname",
+   "settings": {},
+   "value": "srv-01.fjordvik.example",
+   "message": null
+  },
+  {
+   "type": "hostname",
+   "settings": {},
+   "value": "A.B.C",
+   "message": null
+  },
+  {
+   "type": "hostname",
+   "settings": {},
+   "value": "xn--blgrd-gra.example",
+   "message": null
+  },
+  {
+   "type": "hostname",
+   "settings": {},
+   "value": "1.2.3.4.in-addr.arpa",
+   "message": null
+  },
+  {
+   "type": "hostname",
+   "settings": {},
+   "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example",
+   "message": null
+  },
+  {
+   "type": "hostname",
+   "settings": {},
+   "value": "-srv",
+   "message": "Enter a host name, such as srv-01.fjordvik.example."
+  },
+  {
+   "type": "hostname",
+   "settings": {},
+   "value": "srv-",
+   "message": "Enter a host name, such as srv-01.fjordvik.example."
+  },
+  {
+   "type": "hostname",
+   "settings": {},
+   "value": "srv_01",
+   "message": "Enter a host name, such as srv-01.fjordvik.example."
+  },
+  {
+   "type": "hostname",
+   "settings": {},
+   "value": "a..b",
+   "message": "Enter a host name, such as srv-01.fjordvik.example."
+  },
+  {
+   "type": "hostname",
+   "settings": {},
+   "value": ".example",
+   "message": "Enter a host name, such as srv-01.fjordvik.example."
+  },
+  {
+   "type": "hostname",
+   "settings": {},
+   "value": "example.",
+   "message": "Enter a host name, such as srv-01.fjordvik.example."
+  },
+  {
+   "type": "hostname",
+   "settings": {},
+   "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example",
+   "message": "Enter a host name, such as srv-01.fjordvik.example."
+  },
+  {
+   "type": "hostname",
+   "settings": {},
+   "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.",
+   "message": "Enter a host name, such as srv-01.fjordvik.example."
+  },
+  {
+   "type": "hostname",
+   "settings": {},
+   "value": "æble.example",
+   "message": "Enter a host name, such as srv-01.fjordvik.example."
+  },
+  {
+   "type": "mac",
+   "settings": {},
+   "value": "00:1A:2B:3C:4D:5E",
+   "message": null
+  },
+  {
+   "type": "mac",
+   "settings": {},
+   "value": "00-1a-2b-3c-4d-5e",
+   "message": null
+  },
+  {
+   "type": "mac",
+   "settings": {},
+   "value": "001A2B3C4D5E",
+   "message": null
+  },
+  {
+   "type": "mac",
+   "settings": {},
+   "value": "001a.2b3c.4d5e",
+   "message": null
+  },
+  {
+   "type": "mac",
+   "settings": {},
+   "value": "00:1A:2B:3C:4D",
+   "message": "Enter a MAC address: six pairs of hex digits, such as 00:1A:2B:3C:4D:5E."
+  },
+  {
+   "type": "mac",
+   "settings": {},
+   "value": "00:1A:2B:3C:4D:5G",
+   "message": "Enter a MAC address: six pairs of hex digits, such as 00:1A:2B:3C:4D:5E."
+  },
+  {
+   "type": "mac",
+   "settings": {},
+   "value": "00:1A-2B:3C:4D:5E",
+   "message": "Enter a MAC address: six pairs of hex digits, such as 00:1A:2B:3C:4D:5E."
+  },
+  {
+   "type": "mac",
+   "settings": {},
+   "value": "001A2B3C4D5",
+   "message": "Enter a MAC address: six pairs of hex digits, such as 00:1A:2B:3C:4D:5E."
+  },
+  {
+   "type": "email",
+   "settings": {},
+   "value": "name@fjordvik.example",
+   "message": null
+  },
+  {
+   "type": "email",
+   "settings": {},
+   "value": "first.last+tag@sub.fjordvik.example",
+   "message": null
+  },
+  {
+   "type": "email",
+   "settings": {},
+   "value": "o'brien@fjordvik.example",
+   "message": null
+  },
+  {
+   "type": "email",
+   "settings": {},
+   "value": "name",
+   "message": "Enter an email address, such as name@fjordvik.example."
+  },
+  {
+   "type": "email",
+   "settings": {},
+   "value": "name@",
+   "message": "Enter an email address, such as name@fjordvik.example."
+  },
+  {
+   "type": "email",
+   "settings": {},
+   "value": "@fjordvik.example",
+   "message": "Enter an email address, such as name@fjordvik.example."
+  },
+  {
+   "type": "email",
+   "settings": {},
+   "value": "name@fjordvik",
+   "message": "Enter an email address, such as name@fjordvik.example."
+  },
+  {
+   "type": "email",
+   "settings": {},
+   "value": "na..me@fjordvik.example",
+   "message": "Enter an email address, such as name@fjordvik.example."
+  },
+  {
+   "type": "email",
+   "settings": {},
+   "value": ".name@fjordvik.example",
+   "message": "Enter an email address, such as name@fjordvik.example."
+  },
+  {
+   "type": "email",
+   "settings": {},
+   "value": "name@-fjordvik.example",
+   "message": "Enter an email address, such as name@fjordvik.example."
+  },
+  {
+   "type": "email",
+   "settings": {},
+   "value": "name @fjordvik.example",
+   "message": "Enter an email address, such as name@fjordvik.example."
+  },
+  {
+   "type": "phone",
+   "settings": {},
+   "value": "+45 70 20 30 40",
+   "message": null
+  },
+  {
+   "type": "phone",
+   "settings": {},
+   "value": "(555) 123-4567",
+   "message": null
+  },
+  {
+   "type": "phone",
+   "settings": {},
+   "value": "70203040",
+   "message": null
+  },
+  {
+   "type": "phone",
+   "settings": {},
+   "value": "+1.555.123.4567",
+   "message": null
+  },
+  {
+   "type": "phone",
+   "settings": {},
+   "value": "call me",
+   "message": "Enter a phone number: digits, spaces and + ( ) - only."
+  },
+  {
+   "type": "phone",
+   "settings": {},
+   "value": "123",
+   "message": "Enter a phone number: digits, spaces and + ( ) - only."
+  },
+  {
+   "type": "phone",
+   "settings": {},
+   "value": "+45 70 20 30 40 ext 2",
+   "message": "Enter a phone number: digits, spaces and + ( ) - only."
+  },
+  {
+   "type": "phone",
+   "settings": {},
+   "value": "111111111111111111111",
+   "message": "Enter a phone number: digits, spaces and + ( ) - only."
+  },
+  {
+   "type": "cvss",
+   "settings": {},
+   "value": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+   "message": null,
+   "score": 9.8,
+   "severity": "Critical"
+  },
+  {
+   "type": "cvss",
+   "settings": {},
+   "value": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:L",
+   "message": null,
+   "score": 5.6,
+   "severity": "Medium"
+  },
+  {
+   "type": "cvss",
+   "settings": {},
+   "value": "CVSS:3.1/AV:P/AC:H/PR:H/UI:R/S:U/C:N/I:N/A:L",
+   "message": null,
+   "score": 1.6,
+   "severity": "Low"
+  },
+  {
+   "type": "cvss",
+   "settings": {},
+   "value": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+   "message": null,
+   "score": 10.0,
+   "severity": "Critical"
+  },
+  {
+   "type": "cvss",
+   "settings": {},
+   "value": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:N/A:N",
+   "message": null,
+   "score": 0.0,
+   "severity": "None"
+  },
+  {
+   "type": "cvss",
+   "settings": {},
+   "value": "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N/E:P/RL:O",
+   "message": null,
+   "score": 5.5,
+   "severity": "Medium"
+  },
+  {
+   "type": "cvss",
+   "settings": {},
+   "value": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N",
+   "message": null,
+   "score": 9.3,
+   "severity": "Critical"
+  },
+  {
+   "type": "cvss",
+   "settings": {},
+   "value": "CVSS:4.0/AV:L/AC:L/AT:N/PR:L/UI:N/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N",
+   "message": null,
+   "score": 6.8,
+   "severity": "Medium"
+  },
+  {
+   "type": "cvss",
+   "settings": {},
+   "value": "CVSS:4.0/AV:P/AC:H/AT:P/PR:H/UI:A/VC:L/VI:N/VA:N/SC:N/SI:N/SA:N",
+   "message": null,
+   "score": 1.0,
+   "severity": "Low"
+  },
+  {
+   "type": "cvss",
+   "settings": {},
+   "value": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H",
+   "message": "Enter a CVSS 3.1 or 4.0 vector, such as CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H."
+  },
+  {
+   "type": "cvss",
+   "settings": {},
+   "value": "CVSS:3.1/AV:X/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+   "message": "Enter a CVSS 3.1 or 4.0 vector, such as CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H."
+  },
+  {
+   "type": "cvss",
+   "settings": {},
+   "value": "CVSS:3.1/AV:N/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+   "message": "Enter a CVSS 3.1 or 4.0 vector, such as CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H."
+  },
+  {
+   "type": "cvss",
+   "settings": {},
+   "value": "CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+   "message": "Enter a CVSS 3.1 or 4.0 vector, such as CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H."
+  },
+  {
+   "type": "cvss",
+   "settings": {},
+   "value": "AV:N/AC:L/Au:N/C:P/I:P/A:P",
+   "message": "Enter a CVSS 3.1 or 4.0 vector, such as CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H."
+  },
+  {
+   "type": "cvss",
+   "settings": {},
+   "value": "CVSS:4.0/AV:N/AC:L/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N",
+   "message": "Enter a CVSS 3.1 or 4.0 vector, such as CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H."
+  },
+  {
+   "type": "cvss",
+   "settings": {},
+   "value": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H/Q:X",
+   "message": "Enter a CVSS 3.1 or 4.0 vector, such as CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H."
+  },
+  {
+   "type": "cvss",
+   "settings": {},
+   "value": "nonsense",
+   "message": "Enter a CVSS 3.1 or 4.0 vector, such as CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H."
+  },
+  {
+   "type": "cvss",
+   "settings": {
+    "versions": [
+     "3.1"
+    ]
+   },
+   "value": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N",
+   "message": "This template takes CVSS 3.1 vectors only."
+  },
+  {
+   "type": "cvss",
+   "settings": {
+    "versions": [
+     "4.0"
+    ]
+   },
+   "value": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+   "message": "This template takes CVSS 4.0 vectors only."
+  },
+  {
+   "type": "number",
+   "settings": {
+    "min": 0,
+    "max": 10
+   },
+   "value": 7.5,
+   "message": null
+  },
+  {
+   "type": "number",
+   "settings": {
+    "min": 0,
+    "max": 10
+   },
+   "value": 10.5,
+   "message": "Enter a number from 0 to 10."
+  },
+  {
+   "type": "number",
+   "settings": {
+    "min": 0
+   },
+   "value": -1,
+   "message": "Enter a number of at least 0."
+  },
+  {
+   "type": "number",
+   "settings": {
+    "max": 10
+   },
+   "value": 11,
+   "message": "Enter a number of at most 10."
+  },
+  {
+   "type": "number",
+   "settings": {
+    "whole": true
+   },
+   "value": 2.5,
+   "message": "Enter a whole number."
+  },
+  {
+   "type": "number",
+   "settings": {
+    "whole": true
+   },
+   "value": 3,
+   "message": null
+  },
+  {
+   "type": "text",
+   "settings": {
+    "pattern": "^SN-[0-9]+$"
+   },
+   "value": "SN-4471",
+   "message": null
+  },
+  {
+   "type": "text",
+   "settings": {
+    "pattern": "^SN-[0-9]+$"
+   },
+   "value": "4471",
+   "message": "This doesn't match what the template asks for."
+  },
+  {
+   "type": "text",
+   "settings": {
+    "pattern": "^SN-[0-9]+$",
+    "pattern_message": "Start with SN-."
+   },
+   "value": "4471",
+   "message": "Start with SN-."
+  },
+  {
+   "type": "text",
+   "settings": {
+    "max_length": 10
+   },
+   "value": "xxxxxxxxxxx",
+   "message": "Keep it to 10 characters."
+  },
+  {
+   "type": "text",
+   "settings": {
+    "max_length": 8
+   },
+   "value": "Æblegrød",
+   "message": null
+  },
+  {
+   "type": "serial",
+   "settings": {},
+   "value": "5CD1234XYZ",
+   "message": null
+  },
+  {
+   "type": "serial",
+   "settings": {
+    "pattern": "^[0-9A-Z]{10}$"
+   },
+   "value": "5CD",
+   "message": "This doesn't match what the template asks for."
+  }
+ ]
+}

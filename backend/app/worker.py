@@ -73,8 +73,10 @@ def _prune_jobs(db: Session, job: jobs.Job) -> dict[str, object]:
 def main() -> None:
     # Modules whose jobs the worker runs register them when imported.
     import app.audit_stamps  # noqa: F401
+    import app.backgrounds  # noqa: F401
     import app.backups  # noqa: F401
     import app.notices  # noqa: F401
+    import app.styles.artwork  # noqa: F401
 
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")

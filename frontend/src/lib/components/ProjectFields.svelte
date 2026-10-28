@@ -8,6 +8,8 @@
     contact_id: string;
     site_ids: number[];
     classification: string;
+    /** Custom fields' values by key. */
+    custom: Record<string, unknown>;
   }
 
   /** The request body for a form: empty choices become null. */
@@ -21,11 +23,13 @@
       contact_id: form.contact_id ? Number(form.contact_id) : null,
       site_ids: form.site_ids,
       classification: form.classification,
+      custom: form.custom,
     };
   }
 </script>
 
 <script lang="ts">
+  import CustomFieldInputs from "#lib/components/CustomFieldInputs.svelte";
   import { CLASSIFICATIONS, reviewers, technicians, type CustomerDetail } from "#lib/customers.js";
 
   // A project's fields; the choices (technicians, reviewers, contacts, sites) are the
@@ -113,6 +117,8 @@
     </label>
   {/each}
 </fieldset>
+
+<CustomFieldInputs appliesTo="project" bind:values={values.custom} />
 
 <style>
   .dates {

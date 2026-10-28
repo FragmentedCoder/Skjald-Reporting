@@ -1,10 +1,11 @@
 import io
+from pathlib import Path
 
 import pytest
 from PIL import Image
 from sqlalchemy import select, text
 
-from app import maintenance
+from app import maintenance, migrate
 from app.audit import AuditEntry
 from app.policy import SecurityPolicy, Setting, save_policy
 from app.roles import Role, grant_role
@@ -29,7 +30,7 @@ def test_branding_starts_with_the_defaults_and_needs_no_sign_in(client) -> None:
     assert client.get("/api/branding").json() == {
         "site_name": "Skjald", "tagline": "Reports worth keeping.", "company_name": None,
         "logo_url": None, "primary_colour": "fjord", "accent_colour": "rav",
-        "enforce_colours": False,
+        "enforce_colours": False, "made_with_skjald": True, "time_zone": "Europe/Copenhagen",
     }
 
 
@@ -139,7 +140,10 @@ def test_the_health_page_checks_everything_that_matters(client, admin, reachable
     assert checks["audit_chain"]["status"] == "ok"
     assert checks["audit_chain"]["detail"].startswith("Chain intact")
     assert checks["breach_check"]["status"] == "ok" and reachable == [1]
-    assert health["versions"]["schema_version"] == "0013"
+    # The newest migration, whichever that is.
+    newest = max(p.name[:4] for p in (Path(migrate.__file__).parent / "migrations" / "versions")
+                 .glob("[0-9][0-9][0-9][0-9]_*.py"))
+    assert health["versions"]["schema_version"] == newest
     assert health["versions"]["skjald"].endswith("-dev")
     assert health["versions"]["sqlcipher"]
     assert any(p["name"] == "fastapi" for p in health["packages"])

@@ -1,0 +1,151 @@
+{
+  "about": "Every piece of text and every rule in incident.json, by address: \"<element id>/<path>\". The server (app/templates/files.py) and the browser (src/lib/templates/strings.ts) must both gather exactly these, for the Strings view and the strings.json and rules.json in a .skjald file.",
+  "strings": {
+    "s_incident/title": "The incident",
+    "s_incident/help": "What happened and when. The summary goes on the first page of the report.",
+    "q_summary/label": "Summary of the incident",
+    "q_summary/help": "Two or three sentences the customer can read on the first page.",
+    "q_detected/label": "Detected at",
+    "q_cvss/label": "Highest CVSS score",
+    "q_cvss/help": "From 0.0 to 10.0. Sets the severity.",
+    "q_severity/label": "Severity",
+    "q_deadline/label": "Incident notification due",
+    "q_deadline/help": "NIS2: 72 hours after the incident was detected.",
+    "s_attack/title": "The attack",
+    "s_attack/help": "Where the attack came from. Add one row per address.",
+    "q_found/label": "Was the attacking address found?",
+    "q_attackers/label": "Attacking addresses",
+    "q_attackers/help": "One row per address.",
+    "q_attackers/settings/columns/0/label": "Address",
+    "q_attackers/settings/columns/1/label": "Sign-in attempts",
+    "q_attackers/settings/columns/2/label": "Status",
+    "q_attackers/settings/columns/2/settings/options/0/label": "Blocked",
+    "q_attackers/settings/columns/2/settings/options/1/label": "Monitored",
+    "q_evidence/label": "Screenshot of the evidence",
+    "q_evidence/help": "For example the firewall graph. Location data is removed from photos.",
+    "s_actions/title": "Actions and handover",
+    "s_actions/help": "What you did, and anything the customer must receive.",
+    "q_actions/label": "Actions taken",
+    "q_credentials/label": "New portal admin password",
+    "q_credentials/help": "Printed partly in the PDF. Give the customer the full password by phone.",
+    "q_sources/label": "Sources you used",
+    "q_sources/help": "Advisories, vendor articles or logs the customer can look up.",
+    "q_sources/settings/columns/0/label": "Title",
+    "q_sources/settings/columns/1/label": "Link or reference",
+    "b_cover/title": "{{report.title}}",
+    "b_cover/subtitle": "{{customer.name}}",
+    "b_cover/facts/0/label": "Report",
+    "b_cover/facts/0/value": "{{report.number}}",
+    "b_cover/facts/1/label": "Detected",
+    "b_cover/facts/1/value": "{{format_date(answers.detected, \"d MMMM yyyy, HH:mm\")}}",
+    "b_cover/facts/2/label": "Severity",
+    "b_cover/facts/2/value": "{{answers.severity}}",
+    "b_summary/title": "Summary",
+    "b_callout/title": "{{answers.severity}} severity",
+    "b_callout/content": {
+      "type": "doc",
+      "content": [
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Highest CVSS score "
+            },
+            {
+              "type": "variable",
+              "attrs": {
+                "expr": "format_number(answers.cvss, 1)"
+              }
+            },
+            {
+              "type": "text",
+              "text": ". The incident notification is due by "
+            },
+            {
+              "type": "variable",
+              "attrs": {
+                "expr": "format_date(answers.deadline, \"d MMMM yyyy, HH:mm\")"
+              }
+            },
+            {
+              "type": "text",
+              "text": "."
+            }
+          ]
+        }
+      ]
+    },
+    "b_attack/title": "Attacking addresses",
+    "b_attack/intro": {
+      "type": "doc",
+      "content": [
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Addresses that attacked the customer's portal, and what was done about each one."
+            }
+          ]
+        }
+      ]
+    },
+    "b_table/caption": "Attacking addresses and sign-in attempts",
+    "b_table/empty_text": "No addresses were recorded.",
+    "b_evidence/caption": "Sign-in attempts per 10 minutes, from the firewall",
+    "b_actions/title": "Actions taken",
+    "b_credhead/text": "New credentials",
+    "b_credtext/content": {
+      "type": "doc",
+      "content": [
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "The portal admin password was changed to "
+            },
+            {
+              "type": "variable",
+              "attrs": {
+                "expr": "answers.credentials.printed"
+              }
+            },
+            {
+              "type": "text",
+              "text": ". The full password was given to "
+            },
+            {
+              "type": "variable",
+              "attrs": {
+                "expr": "contact.name"
+              }
+            },
+            {
+              "type": "text",
+              "text": " by phone."
+            }
+          ]
+        }
+      ]
+    },
+    "b_sources/title": "Sources",
+    "b_srclist/intro": "Background for the findings in this report.",
+    "b_srclist/items/0/title": "NIS2 Directive (EU) 2022/2555, article 23: reporting obligations",
+    "b_signoff/title": "Sign-off",
+    "b_signers/signers/0/label": "Technician",
+    "b_signers/signers/1/label": "Reviewer"
+  },
+  "rules": {
+    "q_severity/value": "answers.cvss >= 9.0 ? \"Critical\" : answers.cvss >= 7.0 ? \"High\" : answers.cvss >= 4.0 ? \"Medium\" : \"Low\"",
+    "q_deadline/value": "add_hours(answers.detected, 72)",
+    "q_attackers/visible_when": "answers.attack_found",
+    "q_attackers/required_when": "answers.attack_found",
+    "b_callout/tone_rule": "answers.cvss >= 9.0 ? \"critical\" : \"warning\"",
+    "b_attack/visible_when": "answers.attack_found",
+    "b_evidence/visible_when": "answers.evidence.filled",
+    "b_credhead/visible_when": "answers.credentials.filled",
+    "b_credtext/visible_when": "answers.credentials.filled"
+  }
+}

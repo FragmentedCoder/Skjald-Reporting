@@ -5,6 +5,7 @@
   import { api, ApiError, sessionGone } from "#lib/api.js";
   import { pageTitle } from "#lib/branding.svelte.js";
   import CustomerFields from "#lib/components/CustomerFields.svelte";
+  import ReportLook from "#lib/components/customers/ReportLook.svelte";
   import Dialog from "#lib/components/Dialog.svelte";
   import { sharedCustomer } from "#lib/context.js";
   import type { CustomerDetail } from "#lib/customers.js";
@@ -16,7 +17,7 @@
   // it, for Administrators only.
   const shared = sharedCustomer();
   const customer = $derived(shared.current);
-  let details = $state({ name: "", cvr: "", address: "", language: "da", retention_months: 12 });
+  let details = $state({ name: "", cvr: "", address: "", language: "da", retention_months: 12, custom: {} as Record<string, unknown> });
   let logoInput = $state<HTMLInputElement>();
   let busy = $state(false);
   let deleteOpen = $state(false);
@@ -31,6 +32,7 @@
       address: customer.address ?? "",
       language: customer.language ?? "da",
       retention_months: customer.retention_months ?? 12,
+      custom: { ...(customer.custom ?? {}) },
     };
   });
 
@@ -110,6 +112,8 @@
       {/if}
     </div>
   </section>
+
+  {#key customer.id}<ReportLook customerId={customer.id} customerName={customer.name} />{/key}
 
   {#if customer.may_delete}
     <section class="section danger-zone" aria-labelledby="delete-title">

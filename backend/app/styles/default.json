@@ -1,0 +1,48 @@
+{
+  "about": "The Skjald default report style: the bottom layer every company and customer style stacks on. Colours come from docs/brand/tokens.json (light). Sizes are in points, positions and margins in millimetres from the page's top left (A4: 210 x 297).",
+  "colours": {
+    "text": "#0F1B2D",
+    "muted": "#5B6675",
+    "heading": "#0F1B2D",
+    "accent": "#C8862A",
+    "link": "#2B5D8A",
+    "line": "#E5E5E5",
+    "table_head": "#EFEFEF",
+    "table_head_text": "#0F1B2D",
+    "classification": "#8A5A12"
+  },
+  "tones": {
+    "info": {"fill": "#DCE6EE", "ink": "#234C72"},
+    "note": {"fill": "#EFEFEF", "ink": "#0F1B2D"},
+    "warning": {"fill": "#FBEFD9", "ink": "#8A5A12"},
+    "critical": {"fill": "#F9E3E0", "ink": "#A3352A"},
+    "success": {"fill": "#E3F1E8", "ink": "#2F6B47"}
+  },
+  "fonts": {"heading": "marcellus", "body": "plex-sans"},
+  "sizes": {"body": 10.5, "title": 30},
+  "margins": {"top": 22, "bottom": 20, "left": 18, "right": 18},
+  "pages": {
+    "cover": {
+      "elements": [
+        {"id": "e_coverlogo", "kind": "logo", "x": 18, "y": 18, "w": 50, "h": 16, "logo": "company"}
+      ]
+    },
+    "first": {
+      "elements": [
+        {"id": "e_headlogo", "kind": "logo", "x": 18, "y": 8, "w": 36, "h": 9, "logo": "company"},
+        {"id": "e_headlabel", "kind": "classification", "x": 112, "y": 10, "w": 80, "h": 5, "size": 8, "colour": "classification", "weight": "bold", "align": "right"},
+        {"id": "e_footnumber", "kind": "report_number", "x": 18, "y": 283, "w": 80, "h": 5, "size": 8, "colour": "muted"},
+        {"id": "e_footpage", "kind": "page_number", "x": 112, "y": 283, "w": 80, "h": 5, "size": 8, "colour": "muted", "align": "right"}
+      ]
+    },
+    "other": {
+      "elements": [
+        {"id": "e_headlogo", "kind": "logo", "x": 18, "y": 8, "w": 36, "h": 9, "logo": "company"},
+        {"id": "e_headlabel", "kind": "classification", "x": 112, "y": 10, "w": 80, "h": 5, "size": 8, "colour": "classification", "weight": "bold", "align": "right"},
+        {"id": "e_footnumber", "kind": "report_number", "x": 18, "y": 283, "w": 80, "h": 5, "size": 8, "colour": "muted"},
+        {"id": "e_footpage", "kind": "page_number", "x": 112, "y": 283, "w": 80, "h": 5, "size": 8, "colour": "muted", "align": "right"}
+      ]
+    }
+  },
+  "artwork": {"first": null, "other": null}
+}

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api, ApiError, sessionGone } from "#lib/api.js";
   import { pageTitle } from "#lib/branding.svelte.js";
+  import CustomFieldValues from "#lib/components/CustomFieldValues.svelte";
   import ProjectFields, { projectBody, type ProjectForm } from "#lib/components/ProjectFields.svelte";
   import { sharedCustomer, sharedProject } from "#lib/context.js";
   import type { ProjectDetail } from "#lib/customers.js";
@@ -27,6 +28,7 @@
       contact_id: project.contact ? String(project.contact.id) : "",
       site_ids: project.sites.map((s) => s.id),
       classification: project.classification,
+      custom: { ...project.custom },
     };
   });
 
@@ -76,6 +78,7 @@
       <dd>{project.classification}</dd>
       <dt>Created</dt>
       <dd>{dateTime(project.created_at)}</dd>
+      <CustomFieldValues appliesTo="project" values={project.custom} />
     </dl>
   </section>
 {/if}
