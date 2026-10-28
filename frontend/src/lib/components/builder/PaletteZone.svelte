@@ -33,7 +33,7 @@
   }
 </script>
 
-<ul class="entries" use:dndzone={{ items, type, dropFromOthersDisabled: true, flipDurationMs: 120, dropTargetStyle: {} }}
+<ul class="entries" use:dndzone={{ items, type, dropFromOthersDisabled: true, flipDurationMs: 120, centreDraggedOnCursor: true, dropTargetStyle: {} }}
   onconsider={consider} onfinalize={finalize}>
   {#each items as item (item.id)}
     <li>

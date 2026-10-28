@@ -181,9 +181,8 @@
     </div>
 
     {#if view === "blocks"}
-      <BlockList bind:blocks={content.layout} label="Blocks in the PDF" selected={selectedId} {hidden}
-        problems={(id) => draft.problemsFor(id).length} readonly={draft.readonly} onselect={select} />
-      {#if !content.layout.length}<p class="empty small muted">Drag a block here, or click one in the palette.</p>{/if}
+      <BlockList bind:blocks={content.layout} label="Blocks in the PDF" empty="Drag a block here, or click one in the palette."
+        selected={selectedId} {hidden} problems={(id) => draft.problemsFor(id).length} readonly={draft.readonly} onselect={select} />
     {:else if live.paged}
       {#if live.problem}<p class="alert alert-warning small">{live.problem}</p>{/if}
       {#if live.model?.errors.length}
@@ -268,12 +267,6 @@
   .views button[aria-pressed="true"] {
     background: var(--surface-subtle);
     color: var(--text);
-  }
-  .empty {
-    padding: var(--space-4);
-    border: 1px dashed var(--border-strong);
-    border-radius: var(--radius-md);
-    text-align: center;
   }
   .panel {
     position: sticky;

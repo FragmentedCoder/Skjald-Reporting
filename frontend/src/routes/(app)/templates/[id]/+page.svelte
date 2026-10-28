@@ -71,12 +71,20 @@
 
   type Item = Question | Dragged;
 
+  // While a question is dragged, each step shows the drag library's order, with its
+  // placeholder in it; the form only changes once it's dropped, so a half-finished
+  // move is never checked or saved.
+  let dragging = $state.raw<Record<string, Item[]>>({});
+  const itemsOf = (step: Step): Item[] => dragging[step.id] ?? step.questions;
+
   function consider(step: Step, event: CustomEvent<DndEvent<Item>>) {
-    step.questions = event.detail.items as Question[];
+    dragging = { ...dragging, [step.id]: event.detail.items };
   }
 
   function finalize(step: Step, event: CustomEvent<DndEvent<Item>>) {
     let added: Question | null = null;
+    const { [step.id]: _done, ...rest } = dragging;
+    dragging = rest;
     step.questions = event.detail.items.map((item) => {
       if ("palette" in item) {
         added = newQuestion(item.kind, content);
@@ -194,13 +202,14 @@
           {#if step.visible_when}<span class="rule small">Shown when a rule says so</span>{/if}
           {#if stepProblems}<span class="flag small">{stepProblems} problem{stepProblems === 1 ? "" : "s"}</span>{/if}
         </button>
-        <ol class="questions" aria-label="Questions in step {s + 1}"
-          use:dndzone={{ items: step.questions, type: "questions", flipDurationMs: 150, dragDisabled: draft.readonly,
+        <ol class="questions" class:empty={!itemsOf(step).length} aria-label="Questions in step {s + 1}"
+          data-empty="Drag a field type here, or select this step and click one."
+          use:dndzone={{ items: itemsOf(step), type: "questions", flipDurationMs: 150, dragDisabled: draft.readonly, centreDraggedOnCursor: true,
                          dropTargetStyle: { outline: "2px dashed var(--link)", outlineOffset: "2px" } }}
           onconsider={(e) => consider(step, e)} onfinalize={(e) => finalize(step, e)}>
-          {#each step.questions as q, i (q.id)}
+          {#each itemsOf(step) as q, i (q.id)}
             {#if "palette" in q}
-              <li class="question shadow"><span class="label">{(q as unknown as Dragged).label}</span></li>
+              <li class="question shadow"><span class="label">{q.label}</span></li>
             {:else}
               {@const type = fieldType(q.type)}
               {@const Icon = fieldIcon(q.type)}
@@ -213,8 +222,7 @@
                     <span class="body">
                       <span class="label">{q.label}{q.required ? " *" : ""}</span>
                       <span class="meta small" id="meta-{q.id}">
-                        {#if q.key}<span class="mono">answers.{q.key}</span> · {/if}{type.label}
-                        {#if q.visible_when} · shown when a rule says so{/if}
+                        {#if q.key}<span class="mono">answers.{q.key}</span>{/if}{`${q.key ? " · " : ""}${type.label}${q.visible_when ? " · shown when a rule says so" : ""}`}
                       </span>
                     </span>
                     <span class="chips">
@@ -227,9 +235,6 @@
             {/if}
           {/each}
         </ol>
-        {#if !step.questions.length}
-          <p class="empty small muted">Drag a field type here, or select this step and click one.</p>
-        {/if}
       </article>
     {/each}
 
@@ -402,11 +407,14 @@
     justify-content: flex-end;
     gap: var(--space-1);
   }
-  .empty {
-    margin: var(--space-2) 0 0;
+  /* An empty step says so where the question would land. */
+  .questions.empty::after {
+    content: attr(data-empty);
     padding: var(--space-3);
     border: 1px dashed var(--border-strong);
     border-radius: var(--radius-md);
+    color: var(--text-muted);
+    font-size: 13px;
     text-align: center;
   }
   .panel {
