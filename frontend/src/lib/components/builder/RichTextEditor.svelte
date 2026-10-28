@@ -10,7 +10,9 @@
   import { onMount } from "svelte";
   import type { NameEntry } from "#lib/templates/catalogue.js";
   import { makeEditor } from "#lib/templates/editor.js";
+  import { matching, printable as printing, typedName } from "#lib/templates/suggest.js";
   import type { RichText } from "#lib/templates/types.js";
+  import NameSuggestions from "./NameSuggestions.svelte";
 
   // Rich text for the PDF: formatting, lists, links, and names whose value is printed
   // where they sit (shown as {{ answers.summary }} chips).
@@ -34,13 +36,52 @@
   let naming = $state(false);
   let expression = $state("");
 
+  // A name typed after "{{": where the "{{" starts in the document, and what follows it.
+  let typed = $state<{ from: number; query: string } | null>(null);
+  let active = $state(0);
+  const suggestions = $derived(typed && names ? matching(printing(entries), typed.query) : []);
+
+  function look() {
+    if (!editor) return;
+    const { $from: at, empty } = editor.state.selection;
+    const before = empty ? at.parent.textBetween(0, at.parentOffset, undefined, "\ufffc") : "";
+    const found = typedName(before);
+    if (found?.query !== typed?.query) active = 0;
+    typed = found ? { from: at.pos - (before.length - found.start), query: found.query } : null;
+  }
+
+  function pickName(entry: NameEntry) {
+    if (!editor || !typed) return;
+    editor.chain().focus().deleteRange({ from: typed.from, to: editor.state.selection.from })
+      .insertContent({ type: "variable", attrs: { expr: entry.name } }).run();
+    typed = null;
+  }
+
+  function key(event: KeyboardEvent): boolean {
+    if (!suggestions.length) return false;
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      active = (active + (event.key === "ArrowDown" ? 1 : suggestions.length - 1)) % suggestions.length;
+    } else if (event.key === "Enter" || event.key === "Tab") {
+      pickName(suggestions[active]);
+    } else if (event.key === "Escape") {
+      typed = null;
+    } else {
+      return false;
+    }
+    return true;
+  }
+
   onMount(() => {
     if (!element) return;
     editor = makeEditor(element, (value ?? { type: "doc", content: [] }) as JSONContent, label, (doc) => {
       written = JSON.stringify(doc);
       value = doc as RichText;
+    }, key);
+    editor.on("transaction", () => {
+      changes++;
+      look();
     });
-    editor.on("transaction", () => changes++);
+    editor.on("blur", () => (typed = null));
     written = JSON.stringify(editor.getJSON());
     return () => editor?.destroy();
   });
@@ -73,7 +114,7 @@
     linking = false;
   }
 
-  const printable = $derived(entries.filter((e) => e.shape !== "rows" && e.shape !== "other"));
+  const printable = $derived(printing(entries));
   const groups = $derived([...new Set(printable.map((e) => e.group))]);
 </script>
 
@@ -92,7 +133,7 @@
       onclick={() => { address = String(editor?.getAttributes("link").href ?? ""); linking = !linking; naming = false; }}><LinkIcon size={15} aria-hidden="true" /></button>
     {#if names}
       <span class="divider"></span>
-      <button type="button" class="text" aria-expanded={naming} onclick={() => { naming = !naming; linking = false; }}><Braces size={15} aria-hidden="true" /> Insert a name</button>
+      <button type="button" aria-label="Insert a name" title="Insert a name" aria-expanded={naming} onclick={() => { naming = !naming; linking = false; }}><Braces size={15} aria-hidden="true" /></button>
     {/if}
   </div>
   {#if linking}
@@ -115,7 +156,10 @@
       </form>
     </div>
   {/if}
-  <div class="surface" bind:this={element}></div>
+  <div class="surface">
+    <div bind:this={element}></div>
+    {#if suggestions.length}<NameSuggestions id="{id}-names" options={suggestions} {active} onpick={pickName} />{/if}
+  </div>
 </div>
 
 <style>
@@ -176,6 +220,9 @@
   }
   form.popover {
     flex-direction: row;
+  }
+  .surface {
+    position: relative;
   }
   .surface :global(.rich-input) {
     min-height: 90px;

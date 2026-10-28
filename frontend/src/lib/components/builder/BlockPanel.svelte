@@ -10,7 +10,8 @@
   import { BLOCK_TYPES, emptyDoc } from "#lib/templates/blocks.js";
   import type { NameEntry } from "#lib/templates/catalogue.js";
   import { settingsOf } from "#lib/templates/fields.js";
-  import { questionsOf, type Block, type Problem, type TemplateContent } from "#lib/templates/types.js";
+  import { questionsOf, type Block, type Problem, type Signer, type TemplateContent } from "#lib/templates/types.js";
+  import NameInput from "./NameInput.svelte";
   import RichTextEditor from "./RichTextEditor.svelte";
   import RuleField from "./RuleField.svelte";
   import Where from "./Where.svelte";
@@ -72,7 +73,7 @@
 {#snippet text(field: string, label: string, value: string, set: (v: string) => void, hint = "")}
   <div class="field">
     <label for="{id}-{field}">{label}</label>
-    <input id="{id}-{field}" class="input" {value} maxlength="500" oninput={(e) => set(e.currentTarget.value)} aria-invalid={problem(field) ? "true" : undefined} />
+    <NameInput id="{id}-{field}" bind:value={() => value, set} {entries} invalid={Boolean(problem(field))} />
     <span class="hint" class:error={problem(field)}>{problem(field) ?? hint}</span>
   </div>
 {/snippet}
@@ -90,7 +91,7 @@
   <div class="group-head"><h3 id="{id}-pdf">In the PDF</h3><Where pdf /></div>
 
   {#if block.kind === "section"}
-    {@render text("title", "Title", block.title, (v) => block.kind === "section" && (block.title = v), "Can hold names in {{ }}.")}
+    {@render text("title", "Title", block.title, (v) => block.kind === "section" && (block.title = v), "Type {{ to insert a name, such as the report's number.")}
     {#if block.intro}
       <RichTextEditor bind:value={block.intro} {entries} label="Introduction, under the heading" id="{id}-intro" />
       <button class="link-button small start" type="button" onclick={() => block.kind === "section" && (block.intro = null)}>Remove the introduction</button>
@@ -117,8 +118,8 @@
       <legend>Facts</legend>
       {#each block.facts as fact, i (i)}
         <div class="pair">
-          <input class="input" aria-label="Fact {i + 1}: label" bind:value={fact.label} maxlength="500" />
-          <input class="input" aria-label="Fact {i + 1}: value" bind:value={fact.value} maxlength="500" />
+          <NameInput label="Fact {i + 1}: label" bind:value={fact.label} {entries} />
+          <NameInput label="Fact {i + 1}: value" bind:value={fact.value} {entries} />
           <button class="mini" type="button" aria-label="Remove fact {i + 1}" onclick={() => block.kind === "cover" && block.facts.splice(i, 1)}><X size={14} aria-hidden="true" /></button>
         </div>
       {/each}
@@ -313,7 +314,7 @@
           <select class="input" aria-label="Signature {i + 1}: how it looks" bind:value={signer.style}>
             <option value="handwritten">Handwritten</option><option value="stamp">A stamp</option>
           </select>
-          <input class="input" aria-label="Signature {i + 1}: label" bind:value={signer.label} maxlength="500" />
+          <NameInput label="Signature {i + 1}: label" bind:value={signer.label} {entries} />
           <button class="mini" type="button" aria-label="Remove signature {i + 1}" disabled={block.signers.length === 1} onclick={() => block.kind === "signatures" && block.signers.splice(i, 1)}><X size={14} aria-hidden="true" /></button>
         </div>
       {/each}
@@ -423,9 +424,6 @@
   }
   .signer {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  }
-  .signer input {
-    grid-column: 1;
   }
   .start,
   .small-button {

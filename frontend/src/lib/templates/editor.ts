@@ -48,13 +48,18 @@ export const EXTENSIONS: Extensions = [
   Variable,
 ];
 
-export function makeEditor(element: HTMLElement, content: JSONContent, label: string, onUpdate: (doc: JSONContent) => void): Editor {
+/** onKey sees each key first, and returns true for one it handled (such as choosing a suggested name). */
+export function makeEditor(element: HTMLElement, content: JSONContent, label: string, onUpdate: (doc: JSONContent) => void,
+  onKey: (event: KeyboardEvent) => boolean = () => false): Editor {
   return new Editor({
     element,
     extensions: EXTENSIONS,
     content,
     injectCSS: false,
-    editorProps: { attributes: { "aria-label": label, role: "textbox", "aria-multiline": "true", class: "rich-input" } },
+    editorProps: {
+      attributes: { "aria-label": label, role: "textbox", "aria-multiline": "true", class: "rich-input" },
+      handleKeyDown: (_view, event) => onKey(event),
+    },
     onUpdate: ({ editor }) => onUpdate(editor.getJSON()),
   });
 }
