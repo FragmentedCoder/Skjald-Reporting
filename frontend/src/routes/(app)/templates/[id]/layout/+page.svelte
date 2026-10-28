@@ -8,7 +8,7 @@
   import ProblemList from "#lib/components/builder/ProblemList.svelte";
   import Where from "#lib/components/builder/Where.svelte";
   import Dialog from "#lib/components/Dialog.svelte";
-  import PdfPages from "#lib/components/preview/PdfPages.svelte";
+  import PdfPages, { type DropAt, type Dropped } from "#lib/components/preview/PdfPages.svelte";
   import StylePicker from "#lib/components/preview/StylePicker.svelte";
   import { branding } from "#lib/branding.svelte.js";
   import { PreviewStyle } from "#lib/reportStyles/preview.svelte.js";
@@ -123,6 +123,26 @@
     void focusPanel();
   }
 
+  // A block dropped on the pages: moved there, or new from the palette. It goes where
+  // the blocks around it say, though never into itself.
+  function place(dropped: Dropped, at: DropAt) {
+    if (draft.readonly) return;
+    const moving = "move" in dropped ? locate(content.layout, dropped.move) : null;
+    if ("move" in dropped && !moving) return;
+    const anchorId = at && ("after" in at ? at.after : "first" in at ? at.first : at.before);
+    if (moving && anchorId && pathTo([moving.block], anchorId)) return;
+    moving?.list.splice(moving.index, 1);
+    let [list, index] = [content.layout, content.layout.length];
+    const anchor = anchorId ? locate(content.layout, anchorId) : null;
+    if (at && anchor) {
+      if ("first" in at && anchor.block.kind === "section") [list, index] = [anchor.block.blocks, 0];
+      else [list, index] = [anchor.list, anchor.index + ("before" in at ? 0 : 1)];
+    }
+    const block = moving ? moving.block : newBlock((dropped as { add: string }).add as BlockKind, list !== content.layout);
+    list.splice(index, 0, block);
+    select(block.id);
+  }
+
   function move(by: number) {
     if (!found) return;
     const { list, index, block } = found;
@@ -199,7 +219,7 @@
       <p class="small muted">
         {view === "blocks"
           ? "Everything here is printed, in this order, for the customer. Drag blocks into place, or click one in the palette."
-          : "What the sample answers print, by the same page rules as the PDF. Click a block to change it."}
+          : "What the sample answers print, by the same page rules as the PDF. Click a block to change it, or drag it somewhere else."}
       </p>
     </div>
 
@@ -213,7 +233,8 @@
       {/if}
       <StylePicker {looks} />
       <PdfPages paged={live.paged} look={looks.look(live.model?.pageTexts)} language={content.settings.language}
-        classification={String(draft.sampleContext.project.classification)} selected={selectedId} onselect={select} />
+        classification={String(draft.sampleContext.project.classification)} selected={selectedId} onselect={select}
+        onplace={draft.readonly ? undefined : place} />
     {:else}
       <p class="muted">Working out the pages…</p>
     {/if}

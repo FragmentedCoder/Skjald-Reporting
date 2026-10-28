@@ -7,10 +7,17 @@
     const light = contrast("#FFFFFF", fill);
     return dark >= light ? { ink: "#0F1B2D", ratio: dark } : { ink: "#FFFFFF", ratio: light };
   }
+
+  /** What was dropped on a page: a block moved there, or a new one from the palette. */
+  export type Dropped = { move: string } | { add: string };
+  /** Where: after a block, first in a section, before a block, or (null) at the end of the PDF. */
+  export type DropAt = { after: string } | { first: string } | { before: string } | null;
 </script>
 
 <script lang="ts">
   import { onMount, tick } from "svelte";
+  import { dndzone, type DndEvent } from "svelte-dnd-action";
+  import type { Dragged } from "#lib/components/builder/Palette.svelte";
   import { FONT_STACKS, plainLook, pointsToCqi, textKey, type PageLook } from "#lib/reportStyles/look.js";
   import { colourOf, TONE_NAMES, type Element, type PageName } from "#lib/reportStyles/resolve.js";
   import type { Paged, Placed } from "#lib/templates/pages.js";
@@ -35,6 +42,7 @@
     language = "en",
     selected = null,
     onselect,
+    onplace,
   }: {
     paged: Paged;
     look?: PageLook;
@@ -44,6 +52,8 @@
     language?: "en" | "da";
     selected?: string | null;
     onselect?: (id: string) => void;
+    /** Given, blocks can be dragged on the pages, and the palette's dropped onto them. */
+    onplace?: (dropped: Dropped, at: DropAt) => void;
   } = $props();
 
   let sheets = $state<HTMLElement[]>([]);
@@ -77,6 +87,35 @@
 
   const total = $derived(paged.pages.length);
   const base = (id: string) => id.split("~")[0];
+
+  // Each page's body is a list to drag blocks in. While something is dragged, a page
+  // shows the drag library's order, with its placeholder in it; once it's dropped, the
+  // blocks around it say where it goes in the layout, and the pages are worked out anew.
+  type Entry = { id: string; placed: Placed } | Dragged;
+  let dragging = $state.raw<Record<number, Entry[]>>({});
+  const entriesOf = (p: number): Entry[] => dragging[p] ?? paged.pages[p].items.map((placed) => ({ id: placed.block.id, placed }));
+
+  function consider(p: number, event: CustomEvent<DndEvent<Entry>>) {
+    dragging = { ...dragging, [p]: event.detail.items };
+  }
+
+  function finalize(p: number, event: CustomEvent<DndEvent<Entry>>) {
+    const { [p]: _done, ...rest } = dragging;
+    dragging = rest;
+    const items = event.detail.items;
+    const k = items.findIndex((e) => e.id === event.detail.info.id);
+    // The page it left, or dropped back where it was: nothing to do here.
+    if (k < 0 || !onplace) return;
+    const before = paged.pages[p].items.map((placed) => placed.block.id);
+    if (items.length === before.length && items.every((e, i) => e.id === before[i])) return;
+    const dropped = items[k];
+    const prev = items[k - 1] as { id: string; placed: Placed } | undefined;
+    const next = items[k + 1] as { id: string; placed: Placed } | undefined;
+    const at: DropAt = prev
+      ? prev.placed.block.kind === "section" ? { first: base(prev.id) } : { after: base(prev.id) }
+      : next ? { before: base(next.id) } : null;
+    onplace("palette" in dropped ? { add: dropped.kind } : { move: base(dropped.id) }, at);
+  }
 
   // Which page design a sheet carries: the cover's, the first page's (the first sheet
   // after any cover) or the other pages'.
@@ -336,8 +375,16 @@
           <img class="art" src={p === 0 ? look.art.first : look.art.other} alt="" />
         {/if}
         {@render design(designOf(p), p, !page.items.some((placed) => placed.block.kind === "cover" && !placed.block.showLogo))}
-        <div class="body">
-          {#each page.items as placed, i (i)}{@render item(placed.block, placed)}{/each}
+        <div class="body" use:dndzone={{ items: entriesOf(p), type: onplace ? "blocks" : "pages", dragDisabled: !onplace, dropFromOthersDisabled: !onplace,
+                                          flipDurationMs: 150, centreDraggedOnCursor: true, dropTargetClasses: ["dropping"], dropTargetStyle: {} }}
+          onconsider={(e) => consider(p, e)} onfinalize={(e) => finalize(p, e)}>
+          {#each entriesOf(p) as entry (entry.id)}
+            {#if "palette" in entry}
+              <div class="item drop-here">{entry.label}</div>
+            {:else}
+              {@render item(entry.placed.block, entry.placed)}
+            {/if}
+          {/each}
         </div>
         {#if look.madeWith}<p class="made-with">Made with Skjald</p>{/if}
         <div class="watermark" aria-hidden="true">DRAFT</div>
@@ -475,6 +522,18 @@
   }
   .item.chosen {
     outline: 2px solid var(--link);
+  }
+  .body:global(.dropping) {
+    outline: 2px dashed var(--link);
+    outline-offset: -2px;
+  }
+  /* Where a block from the palette would land. */
+  .drop-here {
+    padding: 0.4em 0.8em;
+    border: 1px dashed var(--link);
+    color: var(--link);
+    font-family: var(--font-sans);
+    font-size: 0.9em;
   }
   .body :global(p) {
     margin: 0 0 0.6em;
