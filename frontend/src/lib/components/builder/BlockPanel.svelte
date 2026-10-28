@@ -7,7 +7,7 @@
   import type { Engine } from "#lib/cel/engine.js";
   import { inkFor } from "#lib/components/preview/PdfPages.svelte";
   import type { Asset } from "#lib/templates/api.js";
-  import { BLOCK_TYPES, emptyDoc } from "#lib/templates/blocks.js";
+  import { BLOCK_TYPES, changeSigner, emptyDoc, nextSigner } from "#lib/templates/blocks.js";
   import type { NameEntry } from "#lib/templates/catalogue.js";
   import { settingsOf } from "#lib/templates/fields.js";
   import { questionsOf, type Block, type Problem, type Signer, type TemplateContent } from "#lib/templates/types.js";
@@ -308,7 +308,7 @@
       <legend>Who signs</legend>
       {#each block.signers as signer, i (i)}
         <div class="signer">
-          <select class="input" aria-label="Signature {i + 1}: who" bind:value={signer.role}>
+          <select class="input" aria-label="Signature {i + 1}: who" value={signer.role} onchange={(e) => changeSigner(signer, e.currentTarget.value as Signer["role"])}>
             <option value="technician">The technician</option><option value="reviewer">The reviewer</option><option value="company">The company seal</option>
           </select>
           <select class="input" aria-label="Signature {i + 1}: how it looks" bind:value={signer.style}>
@@ -319,7 +319,7 @@
         </div>
       {/each}
       {#if block.signers.length < 4}
-        <button class="link-button small start" type="button" onclick={() => block.kind === "signatures" && block.signers.push({ role: "reviewer", label: "Reviewer", style: "handwritten" })}><Plus size={14} aria-hidden="true" /> Add a signature</button>
+        <button class="link-button small start" type="button" onclick={() => block.kind === "signatures" && block.signers.push(nextSigner(block.signers))}><Plus size={14} aria-hidden="true" /> Add a signature</button>
       {/if}
     </fieldset>
     <div class="field">

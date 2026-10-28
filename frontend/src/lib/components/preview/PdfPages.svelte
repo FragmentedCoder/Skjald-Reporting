@@ -69,6 +69,12 @@
     return () => observer.disconnect();
   });
 
+  // Who signs in the sample, and when: in the PDF, the signers' own signatures.
+  const SAMPLE_SIGNERS = { technician: "Freja Holm", reviewer: "Ivar Lund" } as const;
+  const signedOn = $derived(
+    new Intl.DateTimeFormat(language === "da" ? "da-DK" : "en-GB", { day: "numeric", month: "short", year: "numeric" }).format(new Date("2026-10-24T09:30:00Z")),
+  );
+
   const total = $derived(paged.pages.length);
   const base = (id: string) => id.split("~")[0];
 
@@ -272,13 +278,21 @@
   {:else if b.kind === "signatures"}
     <div class="signatures {b.layout}">
       {#each b.signers as signer, i (i)}
-        <div class="signature">
-          <div class="line" class:stamp={signer.style === "stamp"}>{signer.style === "stamp" ? company : ""}</div>
-          <p class="question">{signer.label}</p>
-          {#if b.showDate}<p class="muted">Date of signing</p>{/if}
-        </div>
+        {@const name = signer.role === "company" ? company : SAMPLE_SIGNERS[signer.role]}
+        <figure class="signature">
+          {#if signer.style === "stamp"}
+            <div class="stamp">
+              {#if look.logos.company}<img src={look.logos.company} alt="" />{/if}
+              <span><strong>{name}</strong>{language === "da" ? "Digitalt underskrevet" : "Digitally signed"}</span>
+            </div>
+          {:else}
+            <div class="hand"><span>{name}</span></div>
+          {/if}
+          <figcaption><strong>{signer.label}</strong>{name}{b.showDate ? ` · ${language === "da" ? "underskrevet" : "signed"} ${signedOn}` : ""}</figcaption>
+        </figure>
       {/each}
     </div>
+    <p class="sample-note">Sample signatures. In the PDF each one is a digital signature that can be checked.</p>
   {:else if b.kind === "columns"}
     <div class="columns">
       {#each b.columns as column, i (i)}<div class="column">{#each column as inner (inner.id)}{@render item(inner, null)}{/each}</div>{/each}
@@ -673,24 +687,73 @@
   }
   .signatures.stack {
     flex-direction: column;
+    max-width: 50%;
   }
   .signature {
-    flex: 1;
-  }
-  .signature .line {
-    height: 3em;
-    border-bottom: 1px solid var(--text-ink);
-  }
-  .signature .line.stamp {
     display: grid;
-    place-items: center;
-    border: 1px solid var(--text-soft);
-    border-radius: 50%;
-    width: 5em;
-    height: 5em;
+    flex: 1;
+    align-content: start;
+    gap: 0.5em;
+    min-width: 0;
+    margin: 0;
+  }
+  .hand,
+  .stamp {
+    display: flex;
+    align-items: center;
+    height: 4em;
+  }
+  .hand {
+    padding-left: 0.4em;
+    overflow: hidden;
+    border-bottom: 1px solid var(--text-ink);
+    color: #1b2f55;
+    font-family: "Mr Dafoe", cursive;
+    white-space: nowrap;
+  }
+  .hand span {
+    font-size: 2.2em;
+  }
+  /* The company seal: a double frame in the style's link colour, with the logo. */
+  .stamp {
+    gap: 0.7em;
+    padding: 0 0.8em;
+    overflow: hidden;
+    border: 2px solid var(--r-link, #2b5d8a);
+    border-radius: 0.4em;
+    box-shadow: inset 0 0 0 2px var(--paper), inset 0 0 0 3px var(--r-link, #2b5d8a);
+    color: var(--r-link, #2b5d8a);
+    line-height: 1.25;
+  }
+  .stamp img {
+    max-width: 2.4em;
+    max-height: 2.4em;
+    object-fit: contain;
+  }
+  .stamp span {
+    display: grid;
+    min-width: 0;
+    font-size: 0.85em;
+  }
+  .stamp strong,
+  .signature figcaption strong {
+    overflow: hidden;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .signature figcaption {
+    display: grid;
     color: var(--text-soft);
-    font-size: 0.7em;
-    text-align: center;
+    font-size: 0.85em;
+  }
+  .signature figcaption strong {
+    color: var(--text-ink);
+  }
+  .sample-note {
+    margin-top: 0.8em;
+    color: var(--text-soft);
+    font-size: 0.8em;
   }
   .columns {
     display: flex;
