@@ -6,12 +6,20 @@
 
 <p align="center"><em>Reports worth keeping.</em></p>
 
+<p align="center">
+  <a href="https://github.com/FragmentedCoder/Skjald-Reporting/actions/workflows/phase-1.yml?query=branch%3Amain"><img src="https://github.com/FragmentedCoder/Skjald-Reporting/actions/workflows/phase-1.yml/badge.svg?branch=main" alt="CI on main"></a>
+  <a href="https://github.com/FragmentedCoder/Skjald-Reporting/actions/workflows/github-code-scanning/codeql"><img src="https://github.com/FragmentedCoder/Skjald-Reporting/actions/workflows/github-code-scanning/codeql/badge.svg" alt="CodeQL"></a>
+  <a href="https://github.com/FragmentedCoder/Skjald-Reporting/releases"><img src="https://img.shields.io/github/v/release/FragmentedCoder/Skjald-Reporting?include_prereleases&amp;sort=semver&amp;label=release" alt="Newest release"></a>
+  <a href="docs/architecture.md#releases"><img src="https://img.shields.io/badge/releases-signed%20with%20Sigstore-2B5D8A" alt="Releases signed with Sigstore"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/FragmentedCoder/Skjald-Reporting" alt="Licence: AGPL-3.0"></a>
+</p>
+
 Skjald is a self-hosted, template-driven report builder for IT, MSP and security work: security incident reports, storage device destruction certificates, vulnerability assessments and similar. A technician picks a customer project and a template, answers the template's questions, reviews the generated PDF, signs it and delivers it to the customer.
 
 A *skald* (Danish *skjald*) was the Norse poet who turned events into a lasting record. Skjald does the same for technical work.
 
 > [!NOTE]
-> **Status: Phase 1 of the road to 1.0.** The platform runs: install, setup wizard, sign-in with MFA, roles, customers and projects, encryption keys, the audit log and backups. Templates and reports come in Phases 2 and 3, so Skjald can't make a report yet. Don't trust it with real customer data before 1.0. Watch the repository to hear about the first release.
+> **Status: Phase 2 of the road to 1.0.** The platform runs (install, setup wizard, sign-in with MFA, roles, customers and projects, encryption keys, the audit log and backups), and so does the template builder: the technician's form, the PDF's layout, rules, styles and page designs, customer report backgrounds, custom fields and `.skjald` files, all tried with sample answers before a template is published. Reports themselves (filling one in, review, signing and delivery) come in Phase 3, so Skjald can't make a report yet. Don't trust it with real customer data before 1.0. Watch the repository to hear about the first release.
 
 ## What it will do
 
