@@ -1,6 +1,17 @@
-name: Phase 1
+name: CI
 
+# Every pull request, and main whenever something lands on it, so main's status (the
+# README's badge) says whether what's there passes.
 on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "shared/**"
+      - "deploy/**"
+      - "install.sh"
+      - ".github/workflows/**"
   pull_request:
     paths:
       - "backend/**"
@@ -15,7 +26,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: phase-1-${{ github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
