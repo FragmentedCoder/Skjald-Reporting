@@ -128,18 +128,20 @@
     font-size: 13px;
     text-align: center;
   }
-  /* The PDF's own list has room after its last block, for dropping one at the end. */
+  /* The PDF's own list has room after its last block, for dropping one at the end: more
+     than a block's placeholder, which the last section grows by as one passes over it on
+     the way, so the room isn't pushed out from under the pointer. */
   .blocks:not(.nested) {
     position: relative;
   }
   .blocks:not(.nested):not(.empty):global(.dropping) {
-    padding-bottom: var(--space-8);
+    padding-bottom: var(--space-16);
   }
   .blocks:not(.nested):not(.empty):global(.dropping)::after {
     content: "Drop here to add it at the end.";
     position: absolute;
     right: 0;
-    bottom: var(--space-3);
+    bottom: var(--space-6);
     left: 0;
     color: var(--text-muted);
     font-size: 13px;

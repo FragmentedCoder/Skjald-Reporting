@@ -334,17 +334,32 @@ test("a designer lays out the PDF and sees its pages", async ({ browser }) => {
   await context.close();
 });
 
-/** Presses on from and moves to (x, y) in small steps, holding there before dropping, as someone deciding where. */
-async function dragTo(page: Page, from: Locator, x: number, y: number, hold = 200) {
+/**
+ * Presses on from, starts the drag, then moves in small steps to where `to` says, holding
+ * there before dropping, as someone deciding where. Where to drop is worked out once the
+ * drag has started, as the lists then have room for the drop and the page may have scrolled.
+ */
+async function dragTo(page: Page, from: Locator, to: () => Promise<{ x: number; y: number }>, hold = 200) {
   await from.scrollIntoViewIfNeeded();
   const a = await from.boundingBox();
   if (!a) throw new Error("Nothing to drag.");
   const [sx, sy] = [a.x + a.width / 2, a.y + a.height / 2];
   await page.mouse.move(sx, sy);
   await page.mouse.down();
-  for (let i = 1; i <= 25; i++) await page.mouse.move(sx + ((x - sx) * i) / 25, sy + ((y - sy) * i) / 25);
+  for (let i = 1; i <= 4; i++) await page.mouse.move(sx + 3 * i, sy + 3 * i);
+  await page.waitForTimeout(150);
+  const { x, y } = await to();
+  const [mx, my] = [sx + 12, sy + 12];
+  for (let i = 1; i <= 25; i++) await page.mouse.move(mx + ((x - mx) * i) / 25, my + ((y - my) * i) / 25);
   await page.waitForTimeout(hold);
   await page.mouse.up();
+}
+
+/** A point in an element: across from its left by a share of its width, down from its top by dy (or up from its bottom). */
+async function pointIn(locator: Locator, { across = 0.5, dy = 0, fromBottom = false } = {}) {
+  const b = await locator.boundingBox();
+  if (!b) throw new Error("Nowhere to drop it.");
+  return { x: b.x + b.width * across, y: fromBottom ? b.y + b.height - dy : b.y + dy };
 }
 
 test("a designer drags blocks in the outline and on the pages", async ({ browser }) => {
@@ -360,8 +375,7 @@ test("a designer drags blocks in the outline and on the pages", async ({ browser
 
   // A question dragged in and held over the form a while: nothing half-dragged is saved.
   const steps = page.getByRole("list", { name: "Questions in step 1" });
-  const s = await steps.boundingBox();
-  await dragTo(page, palette(page).getByRole("button", { name: /^Short text/ }), s!.x + s!.width / 2, s!.y + 20, 2500);
+  await dragTo(page, palette(page).getByRole("button", { name: /^Short text/ }), () => pointIn(steps, { dy: 20 }), 2500);
   await expect(steps.getByRole("button", { name: /^New short text question, Short text, edit/ })).toBeVisible();
   await saved(page);
   await expect(page.getByText(/isn't valid/)).toHaveCount(0);
@@ -371,18 +385,17 @@ test("a designer drags blocks in the outline and on the pages", async ({ browser
   const outline = page.getByRole("list", { name: "Blocks in the PDF" });
   await expect(page.getByRole("button", { name: "Section: Summary, edit" })).toBeVisible();
 
-  // A section dropped below the last block goes at the end of the PDF, on a new page.
+  // A section dropped below the last block goes at the end of the PDF, on a new page,
+  // though the way there crosses the last section.
   const summary = outline.locator(":scope > li").first();
-  const card = await summary.boundingBox();
-  const below = await outline.boundingBox();
-  await dragTo(page, blocks.getByRole("button", { name: /^Section/ }), card!.x + card!.width / 2, below!.y + below!.height + 16, 1500);
+  await dragTo(page, blocks.getByRole("button", { name: /^Section/ }), () => pointIn(outline, { dy: 10, fromBottom: true }), 1500);
   await expect(outline.locator(":scope > li")).toHaveCount(2);
   await expect(outline.locator(":scope > li").nth(1)).toContainText("Section · new page");
   await saved(page);
 
   // A section dragged onto its own inside isn't lost into itself.
-  const own = await summary.boundingBox();
-  await dragTo(page, summary.getByRole("button", { name: "Section: Summary, edit" }), own!.x + own!.width / 2, own!.y + own!.height - 12, 800);
+  const inside = await pointIn(summary, { dy: 12, fromBottom: true });
+  await dragTo(page, summary.getByRole("button", { name: "Section: Summary, edit" }), async () => inside, 800);
   await expect(outline.locator(":scope > li").filter({ has: page.getByRole("button", { name: "Section: Summary, edit" }) })).toHaveCount(1);
   await expect(outline.locator(":scope > li")).toHaveCount(2);
 
@@ -421,8 +434,10 @@ test("a designer drags blocks in the outline and on the pages", async ({ browser
   // A block from the palette dropped on a page goes where it lands.
   const findings = page.getByRole("heading", { name: /^\d Findings for Fjordvik Logistik A\/S$/ });
   await findings.scrollIntoViewIfNeeded();
-  const h = await findings.boundingBox();
-  await dragTo(page, blocks.getByRole("button", { name: /^Callout/ }), h!.x + h!.width / 2, h!.y + h!.height + 12, 600);
+  await dragTo(page, blocks.getByRole("button", { name: /^Callout/ }), async () => {
+    const h = await pointIn(findings, { fromBottom: true });
+    return { x: h.x, y: h.y + 12 };
+  }, 600);
   await page.getByRole("button", { name: "Blocks", exact: true }).click();
   await expect(page.getByRole("list", { name: "Blocks in “Findings for {{customer.name}}”" }).getByRole("button", { name: /^Callout/ })).toBeVisible();
   await saved(page);
