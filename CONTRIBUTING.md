@@ -34,7 +34,7 @@ The design is in [docs/architecture.md](docs/architecture.md); read it before ch
 - **Browser tests** against the whole stack behind Caddy: `frontend/e2e/run.sh` from the repository root. It starts its own stack (project `skjald-e2e`, port 8443) and removes it with its data afterwards, so it runs beside a test install. It needs a master key at `/etc/skjald/master.key`, as `install.sh` makes it.
 - **Installer and scripts**: `deploy/install.test.sh`, `deploy/skjald.test.sh`, `python3 deploy/release-compose.test.py`, `shellcheck -x install.sh deploy/*.sh deploy/skjald frontend/e2e/run.sh`, and actionlint on the workflows.
 
-CI runs all of these on every pull request and on `main` once something lands on it, and the browser tests keep their screenshots as an artifact.
+CI runs all of these on every pull request and on `main` and the phase branches once something lands on them, and the browser tests keep their screenshots as an artifact.
 
 ## Never commit
 
