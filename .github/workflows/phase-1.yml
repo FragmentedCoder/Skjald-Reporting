@@ -3,25 +3,12 @@ name: CI
 # Every pull request, and main and the phase branches whenever something lands on
 # them, so each has a status of its own (main's is the README's badge). "phase-*"
 # doesn't match a phase's work branches, such as phase-2-fix/drag: their pull
-# requests run it.
+# requests run it. Every change runs it, documentation too, so its checks can be
+# required before merging: a check that never runs would hold a pull request up.
 on:
   push:
     branches: [main, "phase-*"]
-    paths:
-      - "backend/**"
-      - "frontend/**"
-      - "shared/**"
-      - "deploy/**"
-      - "install.sh"
-      - ".github/workflows/**"
   pull_request:
-    paths:
-      - "backend/**"
-      - "frontend/**"
-      - "shared/**"
-      - "deploy/**"
-      - "install.sh"
-      - ".github/workflows/**"
   workflow_dispatch:
 
 permissions:
