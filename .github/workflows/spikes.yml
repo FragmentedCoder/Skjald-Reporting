@@ -68,7 +68,7 @@ jobs:
           ! grep -q "^FAIL" verapdf.txt
       - name: Keep the PDFs and the veraPDF report
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: signed-sample-report
           path: |
@@ -132,7 +132,7 @@ jobs:
       - run: npm run check:browser
       - name: Keep the build and screenshots
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: builder-prototype
           path: |
