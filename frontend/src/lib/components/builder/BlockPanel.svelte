@@ -11,6 +11,7 @@
   import type { NameEntry } from "#lib/templates/catalogue.js";
   import { settingsOf } from "#lib/templates/fields.js";
   import { questionsOf, type Block, type Problem, type Signer, type TemplateContent } from "#lib/templates/types.js";
+  import LiteralInput from "./LiteralInput.svelte";
   import NameInput from "./NameInput.svelte";
   import RichTextEditor from "./RichTextEditor.svelte";
   import RuleField from "./RuleField.svelte";
@@ -46,6 +47,32 @@
     { value: "info", label: "Info" }, { value: "note", label: "Note" }, { value: "warning", label: "Warning" },
     { value: "critical", label: "Critical" }, { value: "success", label: "Success" },
   ];
+
+  // A switch picks its case by text or a whole number: an answer, or another name.
+  const switchable = $derived(entries.filter((e) => e.shape === "text" || e.shape === "whole"));
+  const switched = $derived(block.kind === "switch" ? switchable.find((e) => e.name === block.value) : undefined);
+  const caseShape = $derived(switched?.shape === "whole" ? "whole" : "text");
+  const missingChoices = $derived(block.kind === "switch" ? (switched?.choices ?? []).filter((choice) => !block.cases.some((c) => c.match === choice.value)) : []);
+
+  function pickSwitch(name: string) {
+    if (block.kind !== "switch") return;
+    block.value = name || null;
+    const entry = switchable.find((e) => e.name === name);
+    const whole = entry?.shape === "whole";
+    for (const c of block.cases) c.match = whole ? Math.trunc(Number(c.match)) || 0 : String(c.match);
+    // A dropdown's choices become the cases, when there are none yet.
+    if (!block.cases.length) block.cases = (entry?.choices ?? []).map((choice) => ({ match: choice.value, blocks: [] }));
+  }
+
+  function addCases(values: (string | number)[]) {
+    if (block.kind === "switch") block.cases.push(...values.map((match) => ({ match, blocks: [] })));
+  }
+
+  function moveCase(from: number, by: number) {
+    if (block.kind !== "switch") return;
+    const [moved] = block.cases.splice(from, 1);
+    block.cases.splice(from + by, 0, moved);
+  }
 
   let uploading = $state(false);
   let uploadError = $state<string | null>(null);
@@ -337,6 +364,41 @@
       </select>
       <span class="hint">Drag blocks into each column in the outline.</span>
     </div>
+  {:else if block.kind === "switch"}
+    <div class="field">
+      <label for="{id}-value">Picked by</label>
+      <select id="{id}-value" class="input" value={block.value ?? ""} onchange={(e) => pickSwitch(e.currentTarget.value)}>
+        <option value="" disabled>Choose an answer…</option>
+        {#each switchable as e (e.name)}<option value={e.name}>{e.label} ({e.name})</option>{/each}
+        {#if block.value && !switched}<option value={block.value}>{block.value}</option>{/if}
+      </select>
+      <span class="hint" class:error={problem("value")}>{problem("value") ?? "Text or a whole number, usually a dropdown's answer. Choosing a dropdown makes a case for each of its choices."}</span>
+    </div>
+    <fieldset class="plain">
+      <legend>Cases, checked in order</legend>
+      {#each block.cases as c, i (i)}
+        <div class="case">
+          <LiteralInput bind:value={() => c.match, (v) => (c.match = caseShape === "whole" ? Math.trunc(Number(v ?? 0)) || 0 : String(v ?? ""))}
+            shape={caseShape} choices={switched?.choices} label="Case {i + 1}: when it's" />
+          <button class="mini" type="button" aria-label="Move case {i + 1} up" disabled={i === 0} onclick={() => moveCase(i, -1)}><ArrowUp size={14} aria-hidden="true" /></button>
+          <button class="mini" type="button" aria-label="Move case {i + 1} down" disabled={i === block.cases.length - 1} onclick={() => moveCase(i, 1)}><ArrowDown size={14} aria-hidden="true" /></button>
+          <button class="mini" type="button" aria-label="Remove case {i + 1}" title={c.blocks.length ? "Remove the case and its blocks" : "Remove the case"}
+            onclick={() => block.kind === "switch" && block.cases.splice(i, 1)}><X size={14} aria-hidden="true" /></button>
+        </div>
+        {#if problem(`cases.${i}.match`)}<p class="small error">{problem(`cases.${i}.match`)}</p>{/if}
+      {/each}
+      {#if problem("cases")}<p class="small error">{problem("cases")}</p>{/if}
+      <span class="actions-line">
+        <button class="link-button small start" type="button" onclick={() => addCases([caseShape === "whole" ? 0 : ""])}><Plus size={14} aria-hidden="true" /> Add a case</button>
+        {#if missingChoices.length && block.cases.length}
+          <button class="link-button small start" type="button" onclick={() => addCases(missingChoices.map((choice) => choice.value))}>
+            <Plus size={14} aria-hidden="true" /> Add the {missingChoices.length} choice{missingChoices.length === 1 ? "" : "s"} without a case
+          </button>
+        {/if}
+      </span>
+    </fieldset>
+    <p class="small muted">Drag blocks into each case in the outline. Only the first case with the answer's value is printed; when none has it,
+      or nothing is answered, the blocks under Otherwise are. Removing a case removes its blocks.</p>
   {:else if block.kind === "page_break"}
     <p class="small muted">What follows starts on a new page. A page break never leaves an empty page.</p>
   {/if}
@@ -414,6 +476,17 @@
     margin-bottom: var(--space-1);
     font-size: 14px;
     font-weight: 600;
+  }
+  .case {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
+    align-items: center;
+    gap: var(--space-1);
+  }
+  .actions-line {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-3);
   }
   .pair,
   .signer {

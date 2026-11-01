@@ -21,7 +21,7 @@
   import { LivePreview } from "#lib/templates/live.svelte.js";
   import { declarations, ITEM } from "#lib/templates/names.js";
   import { shapeOf } from "#lib/templates/rules.js";
-  import { questionsOf, type Block, type BlockKind, type Problem, type TemplateContent } from "#lib/templates/types.js";
+  import { listsIn, questionsOf, type Block, type BlockKind, type Problem, type TemplateContent } from "#lib/templates/types.js";
   import { toast } from "#lib/toast.svelte.js";
 
   // The Layout tab: the PDF, built from blocks. The outline shows them in the order
@@ -53,9 +53,8 @@
   function locate(blocks: Block[], id: string, repeat: string | null = null): Found | null {
     for (const [index, block] of blocks.entries()) {
       if (block.id === id) return { block, list: blocks, index, repeat };
-      const inner = block.kind === "section" ? [block.blocks] : block.kind === "columns" ? block.columns : [];
       const nextRepeat = block.kind === "section" && block.repeat_for ? block.repeat_for : repeat;
-      for (const list of inner) {
+      for (const list of listsIn(block)) {
         const found = locate(list, id, nextRepeat);
         if (found) return found;
       }
@@ -98,8 +97,7 @@
   function pathTo(blocks: Block[], id: string): { block: Block; list: Block[]; index: number }[] | null {
     for (const [index, block] of blocks.entries()) {
       if (block.id === id) return [{ block, list: blocks, index }];
-      const inner = block.kind === "section" ? [block.blocks] : block.kind === "columns" ? block.columns : [];
-      for (const list of inner) {
+      for (const list of listsIn(block)) {
         const below = pathTo(list, id);
         if (below) return [{ block, list: blocks, index }, ...below];
       }
@@ -160,7 +158,7 @@
   let confirming = $state(false);
   function remove() {
     if (!found) return;
-    const holds = found.block.kind === "section" ? found.block.blocks.length : found.block.kind === "columns" ? found.block.columns.flat().length : 0;
+    const holds = listsIn(found.block).flat().length;
     if (holds) confirming = true;
     else removeNow();
   }

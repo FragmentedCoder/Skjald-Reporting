@@ -6,8 +6,8 @@
   import { DRAG_OPTIONS, dragLook, Hooks, whileDragging } from "./drag.svelte.js";
   import type { Dragged } from "./Palette.svelte";
 
-  // The layout's blocks as an outline, in the order they print: sections and columns
-  // hold blocks of their own, and blocks drag between them.
+  // The layout's blocks as an outline, in the order they print: sections, columns and
+  // a switch's cases hold blocks of their own, and blocks drag between them.
   let { blocks = $bindable(), depth = 0, label, empty, selected, hidden, problems, readonly, onselect }: {
     blocks: Block[];
     depth?: number;
@@ -31,6 +31,9 @@
   const items = $derived(dragging ?? (blocks as Item[]));
   const placeholder = (item: Item) => "palette" in item || SHADOW_ITEM_MARKER_PROPERTY_NAME in item;
 
+  /** A case's value as the outline shows it. */
+  const caseValue = (match: string | number) => (match === "" ? "empty" : typeof match === "string" ? `“${match}”` : String(match));
+
   // What kind of block it is, and what it does besides printing.
   function meta(b: Block): string {
     const section = b.kind === "section" ? b : null;
@@ -39,6 +42,7 @@
       b.visible_when && "printed when a rule says so",
       section?.repeat_for && "once for each row",
       section?.new_page && "new page",
+      b.kind === "switch" && `${b.cases.length} case${b.cases.length === 1 ? "" : "s"} and otherwise`,
     ].filter(Boolean).join(" · ");
   }
 
@@ -102,6 +106,22 @@
                   {selected} {hidden} {problems} {readonly} {onselect} />
               </div>
             {/each}
+          </div>
+        {:else if b.kind === "switch"}
+          <!-- Each case's blocks, then those printed when no case matches. -->
+          <div class="cases">
+            {#each b.cases as c, i (i)}
+              <div class="case">
+                <span class="case-head small">When it's {caseValue(c.match)}</span>
+                <BlockList bind:blocks={b.cases[i].blocks} depth={depth + 1} label="Blocks when it's {caseValue(c.match)}" empty="Drag the blocks for this case here."
+                  {selected} {hidden} {problems} {readonly} {onselect} />
+              </div>
+            {/each}
+            <div class="case">
+              <span class="case-head small">Otherwise</span>
+              <BlockList bind:blocks={b.otherwise} depth={depth + 1} label="Blocks when no case matches" empty="Drag blocks here for when no case matches, or leave it empty."
+                {selected} {hidden} {problems} {readonly} {onselect} />
+            </div>
           </div>
         {/if}
       </li>
@@ -244,5 +264,21 @@
     padding: var(--space-1);
     border: 1px dashed var(--border-strong);
     border-radius: var(--radius-md);
+  }
+  .cases {
+    display: grid;
+    gap: var(--space-2);
+    padding: 0 var(--space-2) var(--space-2) var(--space-6);
+  }
+  .case {
+    display: grid;
+    gap: var(--space-1);
+    padding: var(--space-1);
+    border-left: 3px solid var(--border-strong);
+  }
+  .case-head {
+    padding-left: var(--space-1);
+    color: var(--text-muted);
+    font-weight: 600;
   }
 </style>
