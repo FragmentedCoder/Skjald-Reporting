@@ -9,7 +9,7 @@ import { Engine, ExpressionError, human, unknownName } from "#lib/cel/engine.js"
 import { fieldType, settingsOf } from "./fields";
 import { declarations, ITEM, questionNames } from "./names";
 import { docExpressions, interpolations } from "./text";
-import { questionsOf, type Block, type Problem, type Question, type RichText, type TemplateContent } from "./types";
+import { questionsOf, type Block, type Problem, type Question, type RichText, type Switch, type TemplateContent } from "./types";
 
 // Words CEL keeps for itself: answers.<key> can't be read with one of them as key.
 export const RESERVED = new Set([
@@ -218,6 +218,35 @@ class Checker {
     if (!columns.some((c) => c.key === key)) this.add(element, field, `“${q.label}” has no column ${key}.`);
   }
 
+  /**
+   * What picks a switch's case gives text or a whole number, and each case's value is
+   * one of those, picked by no other case.
+   */
+  switched(b: Switch, item: boolean) {
+    let got: string | null = null;
+    if (b.value === null || !b.value.trim()) {
+      this.add(b.id, "value", "Choose what picks the case.");
+    } else {
+      try {
+        got = (item ? this.itemEngine : this.engine).check(b.value);
+      } catch (error) {
+        if (!(error instanceof ExpressionError)) throw error;
+        this.add(b.id, "value", this.message(error, item));
+      }
+    }
+    if (got !== null && got !== "string" && got !== "int" && got !== "dyn") {
+      this.add(b.id, "value", `A switch picks by text or a whole number, but this gives ${human(got)}.`);
+    }
+    if (!b.cases.length) this.add(b.id, "cases", "Add a case: without one, the switch always prints its otherwise.");
+    const seen: (string | number)[] = [];
+    b.cases.forEach((c, i) => {
+      if (got === "string" && typeof c.match !== "string") this.add(b.id, `cases.${i}.match`, "This case needs text, as what picks it is text.");
+      else if (got === "int" && typeof c.match !== "number") this.add(b.id, `cases.${i}.match`, "This case needs a whole number, as what picks it is one.");
+      else if (seen.includes(c.match)) this.add(b.id, `cases.${i}.match`, `Another case already picks “${c.match}”: only the first one is printed.`);
+      seen.push(c.match);
+    });
+  }
+
   block(b: Block, outer: boolean) {
     this.id(b.id);
     // A repeated section's own rule, title and intro are worked out for each item;
@@ -308,6 +337,11 @@ class Checker {
         break;
       case "columns":
         for (const column of b.columns) for (const child of column) this.block(child, item);
+        break;
+      case "switch":
+        this.switched(b, item);
+        for (const c of b.cases) for (const child of c.blocks) this.block(child, item);
+        for (const child of b.otherwise) this.block(child, item);
         break;
       case "page_break":
         break;

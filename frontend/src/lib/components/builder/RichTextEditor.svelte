@@ -8,7 +8,7 @@
   import ListOrdered from "@lucide/svelte/icons/list-ordered";
   import Underline from "@lucide/svelte/icons/underline";
   import { onMount } from "svelte";
-  import type { NameEntry } from "#lib/templates/catalogue.js";
+  import { entryChoice, type NameEntry } from "#lib/templates/catalogue.js";
   import { makeEditor } from "#lib/templates/editor.js";
   import { claimNames } from "#lib/templates/nameTarget.svelte.js";
   import { matching, printable as printing, typedName } from "#lib/templates/suggest.js";
@@ -158,7 +158,7 @@
       <select class="input" aria-label="Name to insert" onchange={(e) => insertName(e.currentTarget.value)}>
         <option value="">Choose a name…</option>
         {#each groups as group (group)}
-          <optgroup label={group}>{#each printable.filter((e) => e.group === group) as e (e.name)}<option value={e.name}>{e.label}</option>{/each}</optgroup>
+          <optgroup label={group}>{#each printable.filter((e) => e.group === group) as e (e.name)}<option value={e.name}>{entryChoice(e)}</option>{/each}</optgroup>
         {/each}
       </select>
       <form class="expression" onsubmit={(e) => { e.preventDefault(); insertName(expression); }}>

@@ -12,7 +12,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from app.templates.content import Block, Columns, Section, TemplateContent
+from app.templates.content import Block, Columns, Section, Switch, TemplateContent
 from app.templates.names import questions
 
 
@@ -48,6 +48,10 @@ def _blocks(blocks: list[Block]) -> Iterator[Block]:
         elif isinstance(block, Columns):
             for column in block.columns:
                 yield from _blocks(column)
+        elif isinstance(block, Switch):
+            for case in block.cases:
+                yield from _blocks(case.blocks)
+            yield from _blocks(block.otherwise)
 
 
 def _block_label(block: Block) -> str:
@@ -60,6 +64,8 @@ def _block_label(block: Block) -> str:
 
 def _own(block: Block) -> dict[str, Any]:
     """A block's settings without the blocks it holds."""
+    if isinstance(block, Switch):
+        return block.model_dump(exclude={"otherwise": True, "cases": {"__all__": {"blocks"}}})
     return block.model_dump(exclude={"blocks", "columns"} if block.kind in ("section", "columns")
                             else set())
 

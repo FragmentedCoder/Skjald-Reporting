@@ -169,6 +169,21 @@ export interface PageBreak extends BlockBase {
   kind: "page_break";
 }
 
+/** One of a switch's cases: the value that picks it, and what it prints then. */
+export interface SwitchCase {
+  match: string | number;
+  blocks: Block[];
+}
+
+export interface Switch extends BlockBase {
+  kind: "switch";
+  /** What picks the case: text or a whole number, usually an answer. */
+  value: string | null;
+  cases: SwitchCase[];
+  /** Printed when no case matches. */
+  otherwise: Block[];
+}
+
 export type Block =
   | Cover
   | Contents
@@ -184,7 +199,8 @@ export type Block =
   | Sources
   | Signatures
   | Columns
-  | PageBreak;
+  | PageBreak
+  | Switch;
 
 export type BlockKind = Block["kind"];
 
@@ -207,11 +223,15 @@ export function questionsOf(content: TemplateContent): Question[] {
   return content.form.flatMap((step) => step.questions);
 }
 
-/** Every block, depth first, the ones inside sections and columns included. */
+/** The lists of blocks a block holds: a section's, each column's, each case's and a switch's otherwise. */
+export function listsIn(block: Block): Block[][] {
+  if (block.kind === "section") return [block.blocks];
+  if (block.kind === "columns") return block.columns;
+  if (block.kind === "switch") return [...block.cases.map((c) => c.blocks), block.otherwise];
+  return [];
+}
+
+/** Every block, depth first, the ones inside sections, columns and switches included. */
 export function blocksOf(blocks: Block[]): Block[] {
-  return blocks.flatMap((block) => {
-    if (block.kind === "section") return [block, ...blocksOf(block.blocks)];
-    if (block.kind === "columns") return [block, ...block.columns.flatMap(blocksOf)];
-    return [block];
-  });
+  return blocks.flatMap((block) => [block, ...listsIn(block).flatMap(blocksOf)]);
 }
