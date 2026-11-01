@@ -49,9 +49,13 @@
     draft.selection = { kind, id };
   }
 
+  // The settings panel, to put the cursor in after adding something (only this page's:
+  // the side menu has a panel of its own).
+  let panel = $state<HTMLElement>();
+
   async function focusPanel() {
     await tick();
-    document.querySelector<HTMLElement>(".panel input, .panel textarea")?.focus();
+    panel?.querySelector<HTMLElement>("input, textarea")?.focus();
   }
 
   function add(kind: string) {
@@ -254,7 +258,7 @@
     {/if}
   </section>
 
-  <aside class="panel" aria-label="Settings of what's selected">
+  <aside class="panel" aria-label="Settings of what's selected" bind:this={panel}>
     <fieldset class="unstyled" disabled={draft.readonly}>
       {#if where?.question}
         {@const q = where.question}

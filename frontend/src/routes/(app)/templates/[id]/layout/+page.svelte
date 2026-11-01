@@ -84,9 +84,13 @@
     draft.selection = { kind: "block", id };
   }
 
+  // The settings panel, to put the cursor in after adding something (only this page's:
+  // the side menu has a panel of its own).
+  let panel = $state<HTMLElement>();
+
   async function focusPanel() {
     await tick();
-    document.querySelector<HTMLElement>(".panel input, .panel textarea, .panel select")?.focus();
+    panel?.querySelector<HTMLElement>("input, textarea, select")?.focus();
   }
 
   // The blocks holding a block, from the PDF's own list down to it.
@@ -240,7 +244,7 @@
     {/if}
   </section>
 
-  <aside class="panel" aria-label="Settings of what's selected">
+  <aside class="panel" aria-label="Settings of what's selected" bind:this={panel}>
     <fieldset class="unstyled" disabled={draft.readonly}>
       {#if found}
         <BlockPanel block={found.block} {content} engine={repeat ? itemEngine : engine} entries={blockEntries}
