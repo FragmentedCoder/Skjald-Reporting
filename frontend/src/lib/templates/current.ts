@@ -5,6 +5,8 @@
 // details, a reviewer, a detail left empty) keeps its made-up example.
 
 import { api } from "#lib/api.js";
+import { parseDate } from "#lib/cel/dates.js";
+import { DEFAULT_ZONE } from "#lib/cel/engine.js";
 import type { Profile } from "#lib/admin.js";
 import { branding, loadBranding } from "#lib/branding.svelte.js";
 import type { CustomerDetail, ProjectDetail } from "#lib/customers.js";
@@ -19,9 +21,9 @@ export interface Current {
 
 const PROFILE: (keyof Profile)[] = ["display_name", "first_name", "middle_name", "last_name", "job_title", "department", "company", "email", "phone"];
 
-/** A project's date as expressions read it: midnight where the browser is. */
+/** A project's date as expressions read it: midnight in the company's time zone. */
 function day(date: string | null): Date | null {
-  return date ? new Date(`${date}T00:00`) : null;
+  return date ? parseDate(date, DEFAULT_ZONE) : null;
 }
 
 function custom(values: Record<string, unknown>, root: "customer" | "project", found: Record<string, unknown> | null) {
