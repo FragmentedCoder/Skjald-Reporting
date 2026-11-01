@@ -165,11 +165,15 @@ test("a designer builds a template's form, with rules, and publishes it", async 
   await page.getByRole("button", { name: "Edit" }).click();
   await expect(page.getByText("Version 1 is the one in use.")).toBeVisible();
 
-  // The templates list says what's published and what's in a draft.
+  // The templates are cards: the first page, what's published and what's in a draft,
+  // and who made it.
   await page.getByRole("link", { name: "Templates", exact: true }).first().click();
-  const row = page.getByRole("row", { name: new RegExp(TEMPLATE) });
-  await expect(row.getByText("Version 1")).toBeVisible();
-  await expect(row.getByText("Draft", { exact: true })).toBeVisible();
+  const card = page.getByRole("listitem").filter({ has: page.getByRole("link", { name: TEMPLATE, exact: true }) });
+  await expect(card.getByText("Version 1")).toBeVisible();
+  await expect(card.getByText("Draft changes", { exact: true })).toBeVisible();
+  await expect(card).toContainText("Created");
+  await expect(card).toContainText("by Dagny Designer");
+  await expect(card.locator(".paper")).toBeVisible();
   await shot(page, "list");
 
   expect(violations).toEqual([]);

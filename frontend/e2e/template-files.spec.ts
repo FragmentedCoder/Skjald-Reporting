@@ -41,7 +41,8 @@ test("a template goes out as a .skjald file and comes back, and a copy is transl
   await expect(toastWith(page, "That isn't a Skjald template file.")).toBeVisible();
 
   // Copied for translation: a Danish draft, opened on its Strings tab.
-  await page.getByRole("row", { name: /^Firewall change\b(?! \()/ }).getByRole("button", { name: /^Actions for/ }).click();
+  await page.getByRole("listitem").filter({ has: page.getByRole("link", { name: "Firewall change", exact: true }) })
+    .getByRole("button", { name: /^Actions for/ }).click();
   await page.getByRole("menuitem", { name: "Copy for translation" }).click();
   const dialog = page.getByRole("dialog", { name: "Copy for translation" });
   await dialog.getByLabel("Name of the copy").fill("Ændring af firewall");
