@@ -5,7 +5,7 @@
 
 import { human, plain } from "#lib/cel/engine.js";
 import { entryName, type LibraryEntry, type TableValue } from "#lib/library.js";
-import type { NameEntry } from "./catalogue";
+import { rowNames, type NameEntry } from "./catalogue";
 import { CONTEXT_GROUPS } from "./names";
 
 export interface NameRow {
@@ -27,7 +27,9 @@ export interface NameGroup {
 }
 
 const ABOUT: Record<string, string> = {
-  Answers: "What the technician fills in, by each question's variable name. Calculated values are worked out from the others.",
+  Answers: "What the technician fills in, by each question's variable name. Calculated values are worked out from the others. "
+    + "A repeating group or table is a list of rows: size(answers.x) is how many, answers.x[0] the first row and answers.x[1] the second "
+    + "(counting from 0), answers.x[0].column one of its columns, and a section can be repeated for each row.",
   "Customer: custom fields": "The company's own details about customers, filled in on the customer's settings. The examples are made up.",
   "Project: custom fields": "The company's own details about projects, filled in with the project's details. The examples are made up.",
   Library: "Shared by every template and report. A report uses the current values until it's signed, then keeps those.",
@@ -48,6 +50,16 @@ export function valueOf(values: Record<string, unknown>, name: string): unknown 
   return current;
 }
 
+/** An example for a name read from a list's rows, from the list's own example. */
+function rowExample(values: Record<string, unknown>, of: NonNullable<NameEntry["of"]>): unknown {
+  const rows = valueOf(values, of.list);
+  if (!Array.isArray(rows)) return undefined;
+  if (of.column === null) return rows.length;
+  const column = of.column;
+  const cell = (row: unknown) => (row && typeof row === "object" ? (row as Record<string, unknown>)[column] : undefined);
+  return of.every ? rows.map(cell).filter((v) => v !== null && v !== undefined && v !== "").join(", ") : cell(rows[0]);
+}
+
 /**
  * The names in their groups, in order: answers, the report's context, custom fields,
  * the library, data tables. With `live`, the names whose example is a current value;
@@ -56,12 +68,12 @@ export function valueOf(values: Record<string, unknown>, name: string): unknown 
 export function nameGroups(entries: NameEntry[], values: Record<string, unknown>, library: LibraryEntry[] = [], live?: Set<string>): NameGroup[] {
   const sources = Object.fromEntries(CONTEXT_GROUPS.map((g) => [g.label, `${g.source}.`]));
   const groups: NameGroup[] = [];
-  for (const entry of entries) {
+  for (const entry of entries.flatMap((e) => [e, ...rowNames(e)])) {
     let group = groups.find((g) => g.title === entry.group);
     if (!group) groups.push((group = { title: entry.group, about: ABOUT[entry.group] ?? sources[entry.group] ?? "", rows: [] }));
     const current = live && (live.has(entry.name) || /^(vars|text)\./.test(entry.name));
     group.rows.push({
-      name: entry.name, what: entry.label, kind: human(entry.type), example: shown(valueOf(values, entry.name)),
+      name: entry.name, what: entry.label, kind: human(entry.type), example: shown(entry.of ? rowExample(values, entry.of) : valueOf(values, entry.name)),
       ...(entry.field ? { field: entry.field } : {}), ...(live ? { live: current } : {}),
     });
   }
