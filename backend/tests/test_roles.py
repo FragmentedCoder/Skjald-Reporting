@@ -14,7 +14,7 @@ A, M, D, T, R, U = (
     "administrator", "manager", "report_designer", "technician", "reviewer", "auditor")
 
 # The access table from the spec ("Users, roles and access"), row by row, with the
-# Manager role added since (docs/architecture.md, Roles).
+# Manager role and deleting retired templates added since (docs/architecture.md, Roles).
 SPEC = {
     "manage_customers": {A, M},
     "delete_customers": {A},
@@ -23,6 +23,7 @@ SPEC = {
     "fill_in_reports": {A, T},
     "review_and_countersign": {A, R},
     "build_templates": {A, D},
+    "delete_templates": {A, M},
     "edit_library": {A, D, T},
     "lock_library_entries": {A},
     "check_signed_reports": {A, M, D, T, R, U},

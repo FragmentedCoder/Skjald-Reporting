@@ -1,7 +1,8 @@
 """The templates API: templates, their drafts and published versions, and their images.
 
 Everything here is for those who build templates (BUILD_TEMPLATES: Administrators
-and Report Designers). Drafts save whatever their problems, so a designer can stop
+and Report Designers), except that Managers, who may delete retired templates
+(DELETE_TEMPLATES), see the list too. Drafts save whatever their problems, so a designer can stop
 halfway; a save over someone else's newer one is refused (409) rather than lost.
 Publishing needs a draft without problems, freezes it as the next version and logs
 its SHA-256. Saves while someone works are logged once every few minutes per
@@ -19,11 +20,17 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, Field, ValidationError, field_validator
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app import audit, clock
-from app.auth.dependencies import DB, client_ip, require
+from app.auth.dependencies import (
+    DB,
+    client_ip,
+    effective_capabilities,
+    require,
+    require_step_up,
+)
 from app.auth.sessions import UserSession
 from app.branding import company_timezone
 from app.custom_fields import custom_names
@@ -45,6 +52,9 @@ from app.users import User
 router = APIRouter(prefix="/templates")
 
 Designer = Annotated[UserSession, Depends(require(Capability.BUILD_TEMPLATES))]
+# The list and deleting: for those who build templates, and those who delete retired ones.
+Viewer = Annotated[UserSession, Depends(require(Capability.BUILD_TEMPLATES,
+                                                Capability.DELETE_TEMPLATES))]
 
 NOT_FOUND = "That template doesn't exist."
 # Saves while someone works on a draft are logged at most this often per person.
@@ -101,6 +111,10 @@ class TemplateSummary(BaseModel):
     published_at: datetime | None
     draft: DraftSummary | None
     retired: bool
+    retired_at: datetime | None
+    retired_by: str | None
+    # The report language of its draft, else its newest version.
+    language: str
     created_at: datetime
     created_by: str | None
     updated_at: datetime
@@ -146,6 +160,11 @@ class PublishIn(BaseModel):
 
 class VersionOut(VersionSummary):
     content: dict[str, Any]
+
+
+class DeleteIn(BaseModel):
+    # For a published template: its name, typed to confirm.
+    confirm_name: str = Field(default="", max_length=200)
 
 
 class CopyIn(BaseModel):
@@ -245,6 +264,9 @@ def _summary(db: Session, template: Template, names: dict[int, str]) -> dict[str
     latest = db.scalar(select(TemplateVersion).where(TemplateVersion.template_id == template.id,
                                                      TemplateVersion.number.is_not(None))
                        .order_by(TemplateVersion.number.desc()).limit(1))
+    shown = draft or latest
+    language = db.scalar(select(func.json_extract(TemplateVersion.content, "$.settings.language"))
+                         .where(TemplateVersion.id == shown.id)) if shown else None
     return {
         "id": template.id, "uuid": template.uuid, "name": template.name,
         "description": template.description,
@@ -253,6 +275,9 @@ def _summary(db: Session, template: Template, names: dict[int, str]) -> dict[str
         "draft": DraftSummary(revision=draft.revision, saved_at=draft.saved_at,
                               saved_by=names.get(draft.saved_by or 0)) if draft else None,
         "retired": template.retired_at is not None,
+        "retired_at": template.retired_at,
+        "retired_by": names.get(template.retired_by or 0) if template.retired_at else None,
+        "language": language or "en",
         "created_at": template.created_at,
         "created_by": names.get(template.created_by or 0),
         "updated_at": template.updated_at,
@@ -306,10 +331,11 @@ def _conflict(db: Session, draft: TemplateVersion) -> HTTPException:
 
 
 @router.get("")
-def list_templates(record: Designer, db: DB) -> list[TemplateSummary]:
+def list_templates(record: Viewer, db: DB) -> list[TemplateSummary]:
     templates = list(db.scalars(select(Template)))
     drafts = list(db.scalars(select(TemplateVersion).where(TemplateVersion.number.is_(None))))
-    names = _names(db, {d.saved_by for d in drafts} | {t.created_by for t in templates})
+    names = _names(db, {d.saved_by for d in drafts} | {t.created_by for t in templates}
+                   | {t.retired_by for t in templates})
     found = [TemplateSummary(**_summary(db, t, names)) for t in templates]
     return sorted(found, key=lambda t: (t.retired, t.name.casefold()))
 
@@ -377,13 +403,38 @@ def restore_template(template_id: int, request: Request, record: Designer, db: D
 
 
 @router.delete("/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_template(template_id: int, request: Request, record: Designer, db: DB) -> Response:
+def delete_template(template_id: int, request: Request, record: Viewer, db: DB,
+                    body: Annotated[DeleteIn | None, Body()] = None) -> Response:
+    """Delete a template. One never published goes with its draft, for those who build
+    templates. A published one only once it's retired, for Administrators and Managers,
+    who type its name and confirm it's them: its versions and images go with it, and the
+    audit log keeps its name and each version's SHA-256. (Phase 3: refused while a
+    report is pinned to one of its versions.)"""
     template = _template(db, template_id)
-    if _published(db, template.id):
-        raise HTTPException(status.HTTP_409_CONFLICT,
-                            "A published template is kept: retire it instead.")
+    published = _published(db, template.id)
+    details: dict[str, object] = {"name": template.name}
+    if not published:
+        retired_for_them = (template.retired_at is not None and Capability.DELETE_TEMPLATES
+                            in effective_capabilities(db, record, request))
+        if not retired_for_them:
+            require(Capability.BUILD_TEMPLATES)(request, record, db)
+    else:
+        if template.retired_at is None:
+            raise HTTPException(status.HTTP_409_CONFLICT,
+                                "A published template is kept: retire it instead. An "
+                                "administrator or manager can then delete it.")
+        require(Capability.DELETE_TEMPLATES)(request, record, db)
+        if body is None or body.confirm_name.strip() != template.name:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                                "Type the template's name exactly to confirm.")
+        require_step_up(record, "Confirm it's you to delete a published template.")
+        details["versions"] = {str(v.number): v.content_sha256 for v in published}
+        # The guard on published versions lets them go only while their template is
+        # retired (migration 0020): before the template itself, then.
+        db.execute(delete(TemplateVersion).where(TemplateVersion.template_id == template.id))
+        db.execute(delete(TemplateAsset).where(TemplateAsset.template_id == template.id))
     db.delete(template)
-    _log(db, request, record, "template.deleted", template_id, {"name": template.name})
+    _log(db, request, record, "template.deleted", template_id, details)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

@@ -13,6 +13,7 @@ from sqlalchemy.exc import DBAPIError
 
 from app.audit import AuditEntry
 from app.roles import Role, grant_role
+from tests.conftest import PASSWORD
 
 TEMPLATES = "/api/templates"
 INCIDENT = json.loads((Path(__file__).resolve().parents[2] / "shared" / "templates"
@@ -58,10 +59,13 @@ def save(client, headers, template_id, content, revision):
 def test_only_designers_and_administrators_build_templates(client, person, session, role,
                                                            template) -> None:
     _, headers = person(f"someone_{role}", role)
-    for method, path in [("get", TEMPLATES), ("post", TEMPLATES),
+    for method, path in [("post", TEMPLATES), ("get", f"{TEMPLATES}/{template['id']}"),
                          ("get", f"{TEMPLATES}/{template['id']}/draft")]:
         response = client.request(method, path, headers=headers, json={"name": "x"})
         assert response.status_code == 403, (role, path)
+    # Managers see the list, to delete retired templates; nobody else does.
+    listed = client.get(TEMPLATES, headers=headers)
+    assert listed.status_code == (200 if role == "manager" else 403)
     assert entries(session, "auth.access_denied")
 
 
@@ -225,8 +229,57 @@ def test_a_draft_is_discarded_and_a_never_published_template_deleted(client, des
 def test_retiring_and_restoring(client, designer, template) -> None:
     _, headers = designer
     tid = template["id"]
-    assert client.post(f"{TEMPLATES}/{tid}/retire", headers=headers).json()["retired"] is True
-    assert client.post(f"{TEMPLATES}/{tid}/restore", headers=headers).json()["retired"] is False
+    retired = client.post(f"{TEMPLATES}/{tid}/retire", headers=headers).json()
+    assert retired["retired"] is True
+    assert retired["retired_by"] == "Dagny" and retired["retired_at"]
+    restored = client.post(f"{TEMPLATES}/{tid}/restore", headers=headers).json()
+    assert restored["retired"] is False and restored["retired_by"] is None
+
+
+def test_the_list_gives_each_template_its_report_language(client, designer, template) -> None:
+    _, headers = designer
+    assert client.get(TEMPLATES, headers=headers).json()[0]["language"] == "en"
+    danish = json.loads(json.dumps(INCIDENT))
+    danish["settings"]["language"] = "da"
+    save(client, headers, template["id"], danish, 1)
+    assert client.get(TEMPLATES, headers=headers).json()[0]["language"] == "da"
+
+
+def test_administrators_and_managers_delete_a_retired_template(client, designer, person,
+                                                               template, session, engine) -> None:
+    _, as_designer = designer
+    _, as_manager = person("maja", "manager")
+    tid = template["id"]
+    save(client, as_designer, tid, INCIDENT, 1)
+    client.post(f"{TEMPLATES}/{tid}/publish", headers=as_designer, json={"revision": 2})
+    client.post(f"{TEMPLATES}/{tid}/assets", content=png(),
+                headers={**as_designer, "Content-Type": "application/octet-stream"})
+    confirm = {"confirm_name": "Security incident report"}
+    url = f"{TEMPLATES}/{tid}"
+
+    # In use, it's kept: for everyone, and in the database itself.
+    in_use = client.request("DELETE", url, headers=as_manager, json=confirm)
+    assert in_use.status_code == 409
+    with engine.connect() as conn, pytest.raises(DBAPIError, match="published template"):
+        conn.execute(text("DELETE FROM template_versions WHERE number = 1"))
+
+    client.post(f"{url}/retire", headers=as_designer)
+    # Retired, those who build templates still can't delete it.
+    assert client.request("DELETE", url, headers=as_designer, json=confirm).status_code == 403
+    wrong = client.request("DELETE", url, headers=as_manager, json={"confirm_name": "Security"})
+    assert wrong.status_code == 400
+    unconfirmed = client.request("DELETE", url, headers=as_manager, json=confirm)
+    assert unconfirmed.headers["X-Skjald-Reason"] == "step_up_required"
+
+    client.post("/api/auth/confirm-password", headers=as_manager, json={"password": PASSWORD})
+    assert client.request("DELETE", url, headers=as_manager, json=confirm).status_code == 204
+    assert client.get(url, headers=as_designer).status_code == 404
+    for table in ("templates", "template_versions", "template_assets"):
+        assert session.execute(text(f"SELECT count(*) FROM {table}")).scalar() == 0, table
+    session.commit()
+    deleted = json.loads(entries(session, "template.deleted")[0].details)
+    assert deleted["name"] == "Security incident report"
+    assert list(deleted["versions"]) == ["1"] and len(deleted["versions"]["1"]) == 64
 
 
 def test_changes_since_the_newest_version(client, designer, template) -> None:

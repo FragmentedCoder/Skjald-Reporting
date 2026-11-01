@@ -35,6 +35,7 @@ class Capability(StrEnum):
     FILL_IN_REPORTS = "fill_in_reports"
     REVIEW_AND_COUNTERSIGN = "review_and_countersign"
     BUILD_TEMPLATES = "build_templates"
+    DELETE_TEMPLATES = "delete_templates"  # a retired template, published versions and all
     EDIT_LIBRARY = "edit_library"
     LOCK_LIBRARY_ENTRIES = "lock_library_entries"
     CHECK_SIGNED_REPORTS = "check_signed_reports"
@@ -61,6 +62,7 @@ GRANTS: dict[Capability, frozenset[Role]] = {
     Capability.FILL_IN_REPORTS: frozenset({_A, _T}),
     Capability.REVIEW_AND_COUNTERSIGN: frozenset({_A, _R}),
     Capability.BUILD_TEMPLATES: frozenset({_A, _D}),
+    Capability.DELETE_TEMPLATES: frozenset({_A, _M}),
     Capability.EDIT_LIBRARY: frozenset({_A, _D, _T}),
     Capability.LOCK_LIBRARY_ENTRIES: frozenset({_A}),
     Capability.CHECK_SIGNED_REPORTS: frozenset(Role),
