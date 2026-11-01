@@ -15,6 +15,7 @@ import MessageSquareWarning from "@lucide/svelte/icons/message-square-warning";
 import PenTool from "@lucide/svelte/icons/pen-tool";
 import Pilcrow from "@lucide/svelte/icons/pilcrow";
 import SeparatorHorizontal from "@lucide/svelte/icons/separator-horizontal";
+import Signpost from "@lucide/svelte/icons/signpost";
 import SquareSplitVertical from "@lucide/svelte/icons/square-split-vertical";
 import Table2 from "@lucide/svelte/icons/table-2";
 import { newId } from "./edit";
@@ -33,6 +34,7 @@ export const BLOCK_TYPES: Record<BlockKind, BlockType> = {
   cover: { label: "Cover", hint: "The first page: title and key facts", group: "Structure", icon: BookOpenText },
   toc: { label: "Contents", hint: "The sections, with their pages", group: "Structure", icon: ListTree },
   columns: { label: "Columns", hint: "Blocks side by side", group: "Structure", icon: Columns2 },
+  switch: { label: "Switch", hint: "One of several versions, picked by an answer", group: "Structure", icon: Signpost },
   page_break: { label: "Page break", hint: "Starts a new page", group: "Structure", icon: SeparatorHorizontal },
   heading: { label: "Heading", hint: "A sub-heading", group: "Text", icon: Heading2 },
   text: { label: "Text", hint: "Paragraphs with answers and names", group: "Text", icon: Pilcrow },
@@ -87,6 +89,8 @@ export function newBlock(kind: BlockKind, nested = false): Block {
       return { ...base, kind, columns: [[], []] };
     case "page_break":
       return { ...base, kind };
+    case "switch":
+      return { ...base, kind, value: null, cases: [], otherwise: [] };
   }
 }
 
@@ -128,6 +132,8 @@ export function blockSummary(block: Block): string {
     case "gallery":
     case "severity_summary":
       return block.caption || BLOCK_TYPES[block.kind].label;
+    case "switch":
+      return block.value?.trim() ? `By ${block.value.trim()}` : "Switch";
     default:
       return BLOCK_TYPES[block.kind].label;
   }
