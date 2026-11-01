@@ -145,10 +145,13 @@
   </section>
 
   <section class="pdf" aria-labelledby="pdf-heading">
-    <h2 id="pdf-heading" class="section-title">The PDF <Where pdf /></h2>
+    <div class="title-line">
+      <h2 id="pdf-heading" class="section-title">The PDF <Where pdf /></h2>
+      {#if live.paged}<StylePicker {looks} />{/if}
+    </div>
+    {#if looks.problem}<p class="alert alert-warning small">{looks.problem}</p>{/if}
     {#if live.problem}<p class="alert alert-warning small">{live.problem}</p>{/if}
     {#if live.paged}
-      <StylePicker {looks} />
       <PdfPages paged={live.paged} look={looks.look(live.model?.pageTexts)} language={content.settings.language}
         classification={String(draft.sampleContext.project.classification)} />
     {:else}
@@ -169,6 +172,15 @@
     display: flex;
     align-items: center;
     gap: var(--space-2);
+  }
+  /* The PDF's title, and at its right end which style the preview is drawn in. */
+  .title-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    margin-bottom: var(--space-3);
   }
   .intro p {
     margin: var(--space-1) 0 var(--space-3);

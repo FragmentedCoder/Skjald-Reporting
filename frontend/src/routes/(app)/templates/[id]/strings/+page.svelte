@@ -63,15 +63,28 @@
     return [...words, FIELDS[last] ?? last].join(": ");
   }
 
+  type Group = { id: string; name: string; rows: [string, string | RichText][] };
+
+  // Each element's text, the form's and the PDF's apart, each in its order. Elements
+  // that share a name (three sections called "New section") are numbered.
   const groups = $derived.by(() => {
-    const list: { id: string; name: string; rows: [string, string | RichText][] }[] = [];
+    const list: Group[] = [];
     for (const [address, value] of found) {
       const id = address.split("/")[0];
       let group = list.find((g) => g.id === id);
       if (!group) list.push((group = { id, name: elements[id] ?? id, rows: [] }));
       group.rows.push([address, value]);
     }
-    return list;
+    const counts: Record<string, number> = {};
+    for (const g of list) counts[g.name] = (counts[g.name] ?? 0) + 1;
+    const seen: Record<string, number> = {};
+    for (const g of list) {
+      if (counts[g.name] < 2) continue;
+      seen[g.name] = (seen[g.name] ?? 0) + 1;
+      g.name = `${g.name} (${seen[g.name]})`;
+    }
+    const blocks = new Set(blocksOf(content.layout).map((b) => b.id));
+    return { form: list.filter((g) => !blocks.has(g.id)), pdf: list.filter((g) => blocks.has(g.id)) };
   });
 
   function set(address: string, value: string | RichText | null) {
@@ -84,49 +97,73 @@
   <p class="alert alert-info small">This version is published and can't change. Start a new draft on the Versions tab to change its text.</p>
 {/if}
 
-<div class="strings">
-  <p class="small muted">Every piece of text in the template, element by element: what the technician reads on the form <Where form /> and what's printed in the PDF <Where pdf />. To translate a template, copy it for translation on the Templates page and change its text here. Leave names in {"{{ }}"} as they are.</p>
-  {#each groups as group (group.id)}
-    <section class="section" aria-label={group.name}>
-      <h2 class="section-title">{group.name}</h2>
-      <div class="stack">
-        {#each group.rows as [address, value] (address)}
-          <div class="field">
-            {#if typeof value === "string"}
-              <label for="str-{address}">{field(address)}</label>
-              {#if value.length > 80 || field(address) === "Help"}
-                <textarea id="str-{address}" class="input" rows="2" {value} disabled={draft.readonly} onchange={(e) => set(address, e.currentTarget.value)}></textarea>
-              {:else}
-                <input id="str-{address}" class="input" {value} disabled={draft.readonly} onchange={(e) => set(address, e.currentTarget.value)} />
-              {/if}
+{#snippet element(group: Group)}
+  <section class="section" aria-label={group.name}>
+    <h3 class="section-title">{group.name}</h3>
+    <div class="stack">
+      {#each group.rows as [address, value] (address)}
+        <div class="field">
+          {#if typeof value === "string"}
+            <label for="str-{address}">{field(address)}</label>
+            {#if value.length > 80 || field(address) === "Help"}
+              <textarea id="str-{address}" class="input" rows="2" {value} disabled={draft.readonly} onchange={(e) => set(address, e.currentTarget.value)}></textarea>
             {:else}
-              <span class="label">{field(address)}</span>
-              {#if draft.readonly}
-                <p class="small muted">Rich text: shown with the published version.</p>
-              {:else}
-                <RichTextEditor bind:value={() => value as RichText, (v) => set(address, v)} {entries} label={`${group.name}: ${field(address)}`} id="str-{address}" />
-              {/if}
+              <input id="str-{address}" class="input" {value} disabled={draft.readonly} onchange={(e) => set(address, e.currentTarget.value)} />
             {/if}
-          </div>
-        {/each}
-      </div>
-    </section>
-  {:else}
-    <p class="muted">No text yet.</p>
-  {/each}
+          {:else if draft.readonly}
+            <span class="label">{field(address)}</span>
+            <p class="small muted">Rich text: shown with the published version.</p>
+          {:else}
+            <!-- The editor shows its label itself. -->
+            <RichTextEditor bind:value={() => value as RichText, (v) => set(address, v)} {entries} label={field(address)} id="str-{address}" />
+          {/if}
+        </div>
+      {/each}
+    </div>
+  </section>
+{/snippet}
+
+<div class="strings">
+  <p class="small muted intro">Every piece of text in the template, element by element: what the technician reads on the form and what's printed in the PDF. To translate a template, copy it for translation on the Templates page and change its text here. Leave names in {"{{ }}"} as they are.</p>
+  <!-- The form beside the PDF where the window is wide enough, each in its own order. -->
+  <div class="sides">
+    <div class="side">
+      <h2 class="side-title">The technician's form <Where form /></h2>
+      {#each groups.form as group (group.id)}{@render element(group)}{:else}<p class="small muted">No text on the form yet.</p>{/each}
+    </div>
+    <div class="side">
+      <h2 class="side-title">The PDF <Where pdf /></h2>
+      {#each groups.pdf as group (group.id)}{@render element(group)}{:else}<p class="small muted">No text in the PDF yet.</p>{/each}
+    </div>
+  </div>
 </div>
 
 <style>
-  /* Element by element, in two columns where the window is wide enough. */
   .strings {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(min(100%, 560px), 1fr));
+    gap: var(--space-4);
+    margin-top: var(--space-4);
+  }
+  .intro {
+    max-width: 960px;
+    margin: 0;
+  }
+  .sides {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr));
     gap: var(--space-4);
     align-items: start;
   }
-  .strings > p {
-    grid-column: 1 / -1;
-    max-width: 960px;
+  .side {
+    display: grid;
+    gap: var(--space-2);
+  }
+  .side-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0;
+    font: var(--type-subheading);
   }
   .label {
     font-weight: 500;

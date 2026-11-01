@@ -1,6 +1,6 @@
 // The style the builder shows a template in: the company's default style to start with,
-// or another of its styles, or the Skjald default. Customer styles belong to their
-// customers' pages.
+// or another of its styles, a customer's style (of customers this person sees), or the
+// Skjald default.
 
 import { branding } from "#lib/branding.svelte.js";
 import { stylesApi, type Style, type StyleSummary } from "./api";
@@ -28,8 +28,8 @@ export class PreviewStyle {
 
   async load(): Promise<void> {
     try {
-      this.choices = (await stylesApi.list()).filter((s) => s.customer_id === null);
-      await this.choose(this.choices.find((s) => s.is_default)?.id ?? null);
+      this.choices = await stylesApi.list();
+      await this.choose(this.choices.find((s) => s.is_default && s.customer_id === null)?.id ?? null);
     } catch {
       this.problem = "Skjald couldn't load the styles, so the preview uses the Skjald default.";
     }

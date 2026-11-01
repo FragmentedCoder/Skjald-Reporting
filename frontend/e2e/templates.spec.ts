@@ -363,6 +363,7 @@ async function pointIn(locator: Locator, { across = 0.5, dy = 0, fromBottom = fa
 }
 
 test("a designer drags blocks in the outline and on the pages", async ({ browser }) => {
+  test.setTimeout(90_000);
   const { context, page } = await signedIn(browser, "e2e-dragger");
   const violations = watchForCspViolations(page);
   const crashes: string[] = [];
@@ -393,11 +394,20 @@ test("a designer drags blocks in the outline and on the pages", async ({ browser
   await expect(outline.locator(":scope > li").nth(1)).toContainText("Section · new page");
   await saved(page);
 
-  // A section dragged onto its own inside isn't lost into itself.
-  const inside = await pointIn(summary, { dy: 12, fromBottom: true });
+  // A section dragged onto itself isn't lost into itself: while it's dragged, its place
+  // is one line, with no list of its own to drop into.
+  const inside = await pointIn(summary, { dy: 12 });
   await dragTo(page, summary.getByRole("button", { name: "Section: Summary, edit" }), async () => inside, 800);
   await expect(outline.locator(":scope > li").filter({ has: page.getByRole("button", { name: "Section: Summary, edit" }) })).toHaveCount(1);
   await expect(outline.locator(":scope > li")).toHaveCount(2);
+
+  // A section moved can be moved again straight away (its card was left unhooked after a drop).
+  for (let i = 0; i < 2; i++) {
+    const wasFirst = ((await outline.locator(":scope > li").first().textContent()) ?? "").includes("Summary");
+    const other = outline.locator(":scope > li").filter({ hasText: "New section" }).locator(":scope > button");
+    await dragTo(page, page.getByRole("button", { name: "Section: Summary, edit" }), () => pointIn(other), 600);
+    await expect(outline.locator(":scope > li").first()).toContainText(wasFirst ? "New section" : "Summary");
+  }
 
   // Typing {{ in a title suggests names; Enter takes one.
   await page.getByRole("button", { name: "Section: New section, edit" }).click();
@@ -417,16 +427,25 @@ test("a designer drags blocks in the outline and on the pages", async ({ browser
   await expect(outline.locator(":scope > li").filter({ hasText: "New section" })).toContainText("Section · new page");
   await expect(page.getByRole("list", { name: "Blocks in “Summary”" }).getByRole("button", { name: /^Section/ })).toHaveCount(0);
 
-  // A clicked cover goes first. On the pages it sits right under the style picker, and
+  // Backspace in a field edits its text; Delete with a block selected removes the block.
+  await blocks.getByRole("button", { name: /^Heading/ }).click();
+  await page.keyboard.press("End");
+  await page.keyboard.press("Backspace");
+  await expect(page.getByRole("button", { name: "Heading: New headin, edit" })).toBeVisible();
+  await page.getByRole("button", { name: "Heading: New headin, edit" }).click();
+  await page.keyboard.press("Delete");
+  await expect(page.getByRole("button", { name: /^Heading: / })).toHaveCount(0);
+
+  // A clicked cover goes first. On the pages it sits right under the title, and
   // the signatures look as in the design.
   await blocks.getByRole("button", { name: /^Cover/ }).click();
   await expect(outline.locator(":scope > li").first()).toContainText("Cover");
   await page.getByRole("button", { name: "Pages", exact: true }).click();
   const first = page.getByRole("region", { name: /^Page 1 of / });
   await expect(first.getByRole("heading", { name: "Security incident report" })).toBeVisible();
-  const picker = await page.getByLabel("Preview in").boundingBox();
+  const intro = await page.locator(".workspace > .intro").boundingBox();
   const sheet = await first.boundingBox();
-  expect(sheet!.y - (picker!.y + picker!.height)).toBeLessThan(40);
+  expect(sheet!.y - (intro!.y + intro!.height)).toBeLessThan(40);
   const signed = page.getByRole("region", { name: /^Page 2 of / });
   await expect(signed.getByText("Freja Holm", { exact: true })).toBeVisible();
   await expect(signed.getByText("Sample signatures. In the PDF each one is a digital signature that can be checked.")).toBeVisible();
@@ -442,6 +461,16 @@ test("a designer drags blocks in the outline and on the pages", async ({ browser
   await expect(page.getByRole("list", { name: "Blocks in “Findings for {{customer.name}}”" }).getByRole("button", { name: /^Callout/ })).toBeVisible();
   await saved(page);
   await shot(page, "dragged");
+
+  // The Strings tab: the form's text beside the PDF's, each in its order.
+  await page.getByRole("link", { name: "Strings" }).click();
+  const side = (name: RegExp) => page.locator(".side").filter({ has: page.getByRole("heading", { name }) });
+  await expect(side(/^The technician's form/).getByRole("region", { name: "Step “Details”" })).toBeVisible();
+  await expect(side(/^The PDF/).getByRole("region", { name: "Section block “Summary”" })).toBeVisible();
+  await shot(page, "strings");
+
+  // Which Skjald this is, just above who's signed in.
+  await expect(page.getByRole("complementary", { name: "Side menu" }).getByText(/^Skjald \S+$/)).toBeVisible();
 
   expect(crashes).toEqual([]);
   expect(violations).toEqual([]);

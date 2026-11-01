@@ -66,7 +66,7 @@
   <span class="head-actions">
     <button class="mini" type="button" aria-label="Move up" title="Move up" disabled={first} onclick={() => onmove(-1)}><ArrowUp size={16} aria-hidden="true" /></button>
     <button class="mini" type="button" aria-label="Move down" title="Move down" disabled={last} onclick={() => onmove(1)}><ArrowDown size={16} aria-hidden="true" /></button>
-    <button class="mini" type="button" aria-label="Remove the question" title="Remove" onclick={onremove}><X size={16} aria-hidden="true" /></button>
+    <button class="mini" type="button" aria-label="Remove the question" title="Remove (Delete)" aria-keyshortcuts="Delete" onclick={onremove}><X size={16} aria-hidden="true" /></button>
   </span>
 </div>
 

@@ -3,6 +3,8 @@
   import { tick } from "svelte";
   import { dndzone, type DndEvent } from "svelte-dnd-action";
   import { Engine } from "#lib/cel/engine.js";
+  import { DRAG_OPTIONS, dragLook, Hooks, whileDragging } from "#lib/components/builder/drag.svelte.js";
+  import { removesSelection } from "#lib/components/builder/keys.js";
   import Palette, { type Dragged, type PaletteEntry } from "#lib/components/builder/Palette.svelte";
   import Dialog from "#lib/components/Dialog.svelte";
   import ProblemList from "#lib/components/builder/ProblemList.svelte";
@@ -48,9 +50,13 @@
     draft.selection = { kind, id };
   }
 
+  // The settings panel, to put the cursor in after adding something (only this page's:
+  // the side menu has a panel of its own).
+  let panel = $state<HTMLElement>();
+
   async function focusPanel() {
     await tick();
-    document.querySelector<HTMLElement>(".panel input, .panel textarea")?.focus();
+    panel?.querySelector<HTMLElement>("input, textarea")?.focus();
   }
 
   function add(kind: string) {
@@ -77,14 +83,26 @@
   let dragging = $state.raw<Record<string, Item[]>>({});
   const itemsOf = (step: Step): Item[] => dragging[step.id] ?? step.questions;
 
+  const hooks = new Hooks();
+  const look = dragLook<Item>((q) => ("palette" in q ? q.label : `${fieldType(q.type).label}: ${q.label}`));
+  // Each step's list: what the drag library is given.
+  function zoneOf(step: Step) {
+    const options = { items: itemsOf(step), type: "questions", flipDurationMs: 150, dragDisabled: draft.readonly,
+      dropTargetStyle: { outline: "2px dashed var(--link)", outlineOffset: "2px" }, transformDraggedElement: look, ...DRAG_OPTIONS, hooked: hooks.hooked };
+    return options;
+  }
+
   function consider(step: Step, event: CustomEvent<DndEvent<Item>>) {
-    dragging = { ...dragging, [step.id]: event.detail.items };
+    const { [step.id]: _was, ...others } = dragging;
+    const shown = whileDragging(event.detail.items, step.questions);
+    dragging = shown ? { ...others, [step.id]: shown } : others;
   }
 
   function finalize(step: Step, event: CustomEvent<DndEvent<Item>>) {
     let added: Question | null = null;
     const { [step.id]: _done, ...rest } = dragging;
     dragging = rest;
+    hooks.again();
     step.questions = event.detail.items.map((item) => {
       if ("palette" in item) {
         added = newQuestion(item.kind, content);
@@ -160,6 +178,14 @@
     ask(`“${step.title}” has ${step.questions.length} question${step.questions.length === 1 ? "" : "s"}, which go with it.`, remove);
   }
 
+  // Delete (or the Mac's delete key) removes the selected question or step, as the panel's × does.
+  function keydown(event: KeyboardEvent) {
+    if (!removesSelection(event) || draft.readonly || !where || confirming) return;
+    event.preventDefault();
+    if (where.question) removeQuestion(where.step, where.question);
+    else removeStep();
+  }
+
   function show(problem: Problem) {
     const isStep = content.form.some((s) => s.id === problem.element);
     const isQuestion = content.form.some((s) => s.questions.some((q) => q.id === problem.element));
@@ -175,6 +201,8 @@
     stepIndex === content.form.length - 1 && index === content.form[stepIndex].questions.length - 1;
 </script>
 
+<svelte:window onkeydown={keydown} />
+
 {#if draft.readonly}
   <p class="alert alert-info small">This is version {draft.shownVersion}, which reports use. Choose Edit to change it in a new draft.</p>
 {/if}
@@ -184,15 +212,14 @@
     <Palette entries={palette} type="questions" title="Field types" onadd={add} />
   {/if}
 
+  <div class="intro">
+    <h2 id="form-title" class="section-title">The form <Where form /></h2>
+    <p class="small muted">
+      What the technician fills in, one step at a time: {content.form.length} step{content.form.length === 1 ? "" : "s"}, {total} question{total === 1 ? "" : "s"}.
+      Nothing is printed unless a block on the Layout tab, or a text, uses it.
+    </p>
+  </div>
   <section class="canvas" aria-labelledby="form-title">
-    <div class="intro">
-      <h2 id="form-title" class="section-title">The form <Where form /></h2>
-      <p class="small muted">
-        What the technician fills in, one step at a time: {content.form.length} step{content.form.length === 1 ? "" : "s"}, {total} question{total === 1 ? "" : "s"}.
-        Nothing is printed unless a block on the Layout tab, or a text, uses it.
-      </p>
-    </div>
-
     {#each content.form as step, s (step.id)}
       {@const stepProblems = draft.problemsFor(step.id).length}
       <article class="step" class:selected={selection?.id === step.id}>
@@ -204,9 +231,7 @@
         </button>
         <ol class="questions" class:empty={!itemsOf(step).length} aria-label="Questions in step {s + 1}"
           data-empty="Drag a field type here, or select this step and click one."
-          use:dndzone={{ items: itemsOf(step), type: "questions", flipDurationMs: 150, dragDisabled: draft.readonly, centreDraggedOnCursor: true,
-                         dropTargetStyle: { outline: "2px dashed var(--link)", outlineOffset: "2px" } }}
-          onconsider={(e) => consider(step, e)} onfinalize={(e) => finalize(step, e)}>
+          use:dndzone={zoneOf(step)} onconsider={(e) => consider(step, e)} onfinalize={(e) => finalize(step, e)}>
           {#each itemsOf(step) as q, i (q.id)}
             {#if "palette" in q}
               <li class="question shadow"><span class="label">{q.label}</span></li>
@@ -215,7 +240,8 @@
               {@const Icon = fieldIcon(q.type)}
               {@const flagged = draft.problemsFor(q.id).length}
               <li class="question" class:selected={selection?.id === q.id} class:heading={q.type === "heading"} data-question={q.id}>
-                <button class="pick" type="button" onclick={() => select("question", q.id)}
+                <!-- The drag library keeps a press from focusing the card, so the click does: keys such as Delete then go to it. -->
+                <button class="pick" type="button" onclick={(e) => { e.currentTarget.focus(); select("question", q.id); }}
                   aria-label="{q.label}, {type.label}, edit" aria-describedby="meta-{q.id}">
                   <span class="pick-in">
                     <span class="icon" aria-hidden="true"><Icon size={16} aria-hidden="true" /></span>
@@ -243,7 +269,7 @@
     {/if}
   </section>
 
-  <aside class="panel" aria-label="Settings of what's selected">
+  <aside class="panel" aria-label="Settings of what's selected" bind:this={panel}>
     <fieldset class="unstyled" disabled={draft.readonly}>
       {#if where?.question}
         {@const q = where.question}
@@ -274,18 +300,31 @@
 </Dialog>
 
 <style>
+  /* The title and its line over the middle column only, so the palette, the first
+     card and the settings panel start level. */
   .workspace {
     display: grid;
     grid-template-columns: 210px minmax(0, 1fr) minmax(290px, 360px);
+    grid-template-areas: ". intro ." "palette canvas panel";
     gap: var(--space-4);
     align-items: start;
     margin-top: var(--space-4);
   }
   .workspace.readonly {
     grid-template-columns: minmax(0, 1fr) minmax(290px, 360px);
+    grid-template-areas: "intro ." "canvas panel";
+  }
+  .workspace > :global(.palette) {
+    grid-area: palette;
+  }
+  .intro {
+    grid-area: intro;
+  }
+  .canvas {
+    grid-area: canvas;
   }
   .intro p {
-    margin: var(--space-1) 0 var(--space-3);
+    margin: var(--space-1) 0 0;
   }
   .section-title {
     display: flex;
@@ -418,6 +457,7 @@
     text-align: center;
   }
   .panel {
+    grid-area: panel;
     position: sticky;
     top: var(--space-4);
     max-height: calc(100vh - 2 * var(--space-4));
@@ -434,9 +474,13 @@
     border: 0;
   }
   @media (max-width: 1100px) {
-    .workspace,
+    .workspace {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-areas: "palette" "intro" "canvas" "panel";
+    }
     .workspace.readonly {
       grid-template-columns: minmax(0, 1fr);
+      grid-template-areas: "intro" "canvas" "panel";
     }
     .panel {
       position: static;

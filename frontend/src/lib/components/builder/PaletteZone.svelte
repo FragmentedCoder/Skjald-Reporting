@@ -1,5 +1,6 @@
 <script lang="ts">
   import { dndzone, SHADOW_ITEM_MARKER_PROPERTY_NAME, TRIGGERS, type DndEvent } from "svelte-dnd-action";
+  import { DRAG_OPTIONS, dragLook, Hooks } from "./drag.svelte.js";
   import type { Dragged, PaletteEntry } from "./Palette.svelte";
 
   // One group of a palette: svelte-dnd-action's copy-on-drag pattern, so dragging an
@@ -30,11 +31,15 @@
   function finalize(event: CustomEvent<DndEvent<Dragged>>) {
     items = ignoring ? [...items] : event.detail.items;
     ignoring = false;
+    hooks.again();
   }
+
+  const hooks = new Hooks();
+  const zone = $derived({ items, type, dropFromOthersDisabled: true, flipDurationMs: 120, dropTargetStyle: {},
+    transformDraggedElement: dragLook<Dragged>((e) => e.label), ...DRAG_OPTIONS, hooked: hooks.hooked });
 </script>
 
-<ul class="entries" use:dndzone={{ items, type, dropFromOthersDisabled: true, flipDurationMs: 120, centreDraggedOnCursor: true, dropTargetStyle: {} }}
-  onconsider={consider} onfinalize={finalize}>
+<ul class="entries" use:dndzone={zone} onconsider={consider} onfinalize={finalize}>
   {#each items as item (item.id)}
     <li>
       <button type="button" class="entry" onclick={() => onadd(item.kind)} title={item.hint}>

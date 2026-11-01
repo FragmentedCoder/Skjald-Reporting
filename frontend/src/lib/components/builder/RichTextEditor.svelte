@@ -26,6 +26,7 @@
   } = $props();
 
   let element = $state<HTMLDivElement>();
+  let surface = $state<HTMLDivElement>();
   let editor = $state<Editor | null>(null);
   // Bumped on every change, so the buttons show what's on where the cursor is.
   let changes = $state(0);
@@ -156,9 +157,9 @@
       </form>
     </div>
   {/if}
-  <div class="surface">
+  <div class="surface" bind:this={surface}>
     <div bind:this={element}></div>
-    {#if suggestions.length}<NameSuggestions id="{id}-names" options={suggestions} {active} onpick={pickName} />{/if}
+    {#if suggestions.length}<NameSuggestions id="{id}-names" options={suggestions} {active} anchor={surface} onpick={pickName} />{/if}
   </div>
 </div>
 
