@@ -257,7 +257,7 @@
               <div class="status-bar">
                 <span class="small version">
                   {#if t.latest_version !== null}
-                    Version {t.latest_version}<span class="muted"> · {dateTime(t.published_at)}</span>
+                    Version {t.latest_version}<span class="muted">{` · ${dateTime(t.published_at)}`}</span>
                   {:else}
                     <span class="muted">Not published yet</span>
                   {/if}
