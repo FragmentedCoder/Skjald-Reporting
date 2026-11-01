@@ -212,15 +212,14 @@
     <Palette entries={palette} type="questions" title="Field types" onadd={add} />
   {/if}
 
+  <div class="intro">
+    <h2 id="form-title" class="section-title">The form <Where form /></h2>
+    <p class="small muted">
+      What the technician fills in, one step at a time: {content.form.length} step{content.form.length === 1 ? "" : "s"}, {total} question{total === 1 ? "" : "s"}.
+      Nothing is printed unless a block on the Layout tab, or a text, uses it.
+    </p>
+  </div>
   <section class="canvas" aria-labelledby="form-title">
-    <div class="intro">
-      <h2 id="form-title" class="section-title">The form <Where form /></h2>
-      <p class="small muted">
-        What the technician fills in, one step at a time: {content.form.length} step{content.form.length === 1 ? "" : "s"}, {total} question{total === 1 ? "" : "s"}.
-        Nothing is printed unless a block on the Layout tab, or a text, uses it.
-      </p>
-    </div>
-
     {#each content.form as step, s (step.id)}
       {@const stepProblems = draft.problemsFor(step.id).length}
       <article class="step" class:selected={selection?.id === step.id}>
@@ -301,18 +300,31 @@
 </Dialog>
 
 <style>
+  /* The title and its line over the middle column only, so the palette, the first
+     card and the settings panel start level. */
   .workspace {
     display: grid;
     grid-template-columns: 210px minmax(0, 1fr) minmax(290px, 360px);
+    grid-template-areas: ". intro ." "palette canvas panel";
     gap: var(--space-4);
     align-items: start;
     margin-top: var(--space-4);
   }
   .workspace.readonly {
     grid-template-columns: minmax(0, 1fr) minmax(290px, 360px);
+    grid-template-areas: "intro ." "canvas panel";
+  }
+  .workspace > :global(.palette) {
+    grid-area: palette;
+  }
+  .intro {
+    grid-area: intro;
+  }
+  .canvas {
+    grid-area: canvas;
   }
   .intro p {
-    margin: var(--space-1) 0 var(--space-3);
+    margin: var(--space-1) 0 0;
   }
   .section-title {
     display: flex;
@@ -445,6 +457,7 @@
     text-align: center;
   }
   .panel {
+    grid-area: panel;
     position: sticky;
     top: var(--space-4);
     max-height: calc(100vh - 2 * var(--space-4));
@@ -461,9 +474,13 @@
     border: 0;
   }
   @media (max-width: 1100px) {
-    .workspace,
+    .workspace {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-areas: "palette" "intro" "canvas" "panel";
+    }
     .workspace.readonly {
       grid-template-columns: minmax(0, 1fr);
+      grid-template-areas: "intro" "canvas" "panel";
     }
     .panel {
       position: static;

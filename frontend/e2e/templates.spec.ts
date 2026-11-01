@@ -443,7 +443,7 @@ test("a designer drags blocks in the outline and on the pages", async ({ browser
   await page.getByRole("button", { name: "Pages", exact: true }).click();
   const first = page.getByRole("region", { name: /^Page 1 of / });
   await expect(first.getByRole("heading", { name: "Security incident report" })).toBeVisible();
-  const intro = await page.locator(".canvas .intro").boundingBox();
+  const intro = await page.locator(".workspace > .intro").boundingBox();
   const sheet = await first.boundingBox();
   expect(sheet!.y - (intro!.y + intro!.height)).toBeLessThan(40);
   const signed = page.getByRole("region", { name: /^Page 2 of / });
