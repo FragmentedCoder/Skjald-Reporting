@@ -67,8 +67,11 @@ def test_only_designers_and_administrators_build_templates(client, person, sessi
 
 def test_administrators_build_templates_too(client, admin, template) -> None:
     _, headers = admin
-    assert [t["name"] for t in client.get(TEMPLATES, headers=headers).json()] == [
-        "Security incident report"]
+    listed = client.get(TEMPLATES, headers=headers).json()
+    assert [t["name"] for t in listed] == ["Security incident report"]
+    # Who made it and when, for the Templates page's cards.
+    assert listed[0]["created_by"] == template["created_by"] is not None
+    assert listed[0]["created_at"] == template["created_at"]
 
 
 def test_a_new_template_has_a_starter_draft(client, designer, template, session) -> None:

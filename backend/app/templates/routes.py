@@ -101,6 +101,8 @@ class TemplateSummary(BaseModel):
     published_at: datetime | None
     draft: DraftSummary | None
     retired: bool
+    created_at: datetime
+    created_by: str | None
     updated_at: datetime
 
 
@@ -251,6 +253,8 @@ def _summary(db: Session, template: Template, names: dict[int, str]) -> dict[str
         "draft": DraftSummary(revision=draft.revision, saved_at=draft.saved_at,
                               saved_by=names.get(draft.saved_by or 0)) if draft else None,
         "retired": template.retired_at is not None,
+        "created_at": template.created_at,
+        "created_by": names.get(template.created_by or 0),
         "updated_at": template.updated_at,
     }
 
@@ -258,7 +262,8 @@ def _summary(db: Session, template: Template, names: dict[int, str]) -> dict[str
 def _detail(db: Session, template: Template) -> TemplateDetail:
     versions = _published(db, template.id)
     draft = _draft(db, template.id)
-    names = _names(db, {v.published_by for v in versions} | {draft.saved_by if draft else None})
+    names = _names(db, {v.published_by for v in versions}
+                   | {draft.saved_by if draft else None, template.created_by})
     return TemplateDetail(
         **_summary(db, template, names),
         versions=[VersionSummary(number=v.number or 0, published_at=v.published_at or v.saved_at,
@@ -304,7 +309,7 @@ def _conflict(db: Session, draft: TemplateVersion) -> HTTPException:
 def list_templates(record: Designer, db: DB) -> list[TemplateSummary]:
     templates = list(db.scalars(select(Template)))
     drafts = list(db.scalars(select(TemplateVersion).where(TemplateVersion.number.is_(None))))
-    names = _names(db, {d.saved_by for d in drafts})
+    names = _names(db, {d.saved_by for d in drafts} | {t.created_by for t in templates})
     found = [TemplateSummary(**_summary(db, t, names)) for t in templates]
     return sorted(found, key=lambda t: (t.retired, t.name.casefold()))
 
