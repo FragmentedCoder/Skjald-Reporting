@@ -25,6 +25,16 @@ describe("nameGroups", () => {
     expect(searchNames(groups, "nothing like this")).toEqual([]);
     expect(searchNames(groups, "  ")).toBe(groups);
   });
+
+  it("marks which examples are current values, given them: the library's always are", () => {
+    const marked = nameGroups(catalogue(null, { "vars.desk": "string" }, { "vars.desk": "Service desk" }), sampleContext(), [table], new Set(["company.name"]));
+    const rows = marked.flatMap((g) => g.rows);
+    expect(rows.find((r) => r.name === "company.name")?.live).toBe(true);
+    expect(rows.find((r) => r.name === "report.number")?.live).toBe(false);
+    expect(rows.find((r) => r.name === "vars.desk")?.live).toBe(true);
+    expect(rows.find((r) => r.name === 'lookup("cvss", key)')?.live).toBe(true);
+    expect(groups.flatMap((g) => g.rows).some((r) => "live" in r)).toBe(false);
+  });
 });
 
 describe("shown and valueOf", () => {

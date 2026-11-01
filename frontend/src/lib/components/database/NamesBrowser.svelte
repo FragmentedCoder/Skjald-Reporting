@@ -5,7 +5,8 @@
   import { toast } from "#lib/toast.svelte.js";
 
   // The names a template can read, to look up: search them by any word, and see what
-  // each is, its kind and an example. On a page each name has a button to copy it in
+  // each is, its kind and an example, made-up ones set apart where some are current
+  // values. On a page each name has a button to copy it in
   // {{ }}; in the editor's Names drawer (compact) a name is picked, to go where the
   // designer is typing.
   let { groups, compact = false, onpick, id = "names" }: {
@@ -53,7 +54,7 @@
                 <button type="button" class="row" onclick={() => (onpick ?? copy)(row)} title="Insert {`{{${row.name}}}`}">
                   <span class="line"><span class="mono name">{row.name}</span><span class="kind small">{row.kind}</span></span>
                   <span class="small what">{row.what}</span>
-                  <span class="small muted mono example">{row.example}</span>
+                  <span class="small muted mono example" class:made-up={row.live === false}>{row.example}</span>
                 </button>
               </li>
             {/each}
@@ -73,7 +74,7 @@
                     </td>
                     <td>{row.what}</td>
                     <td class="small">{row.kind}</td>
-                    <td class="mono small example">{row.example}</td>
+                    <td class="mono small example" class:made-up={row.live === false} title={row.live === false ? "Made up: there's nothing to show here yet" : undefined}>{row.example}</td>
                   </tr>
                 {/each}
               </tbody>
@@ -180,6 +181,11 @@
   .example {
     max-width: 260px;
     overflow-wrap: anywhere;
+  }
+  /* Where there's no current value to show: a made-up example, set apart. */
+  .made-up {
+    color: var(--text-muted);
+    font-style: italic;
   }
   .rows {
     display: grid;
