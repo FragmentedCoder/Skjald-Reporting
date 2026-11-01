@@ -4,6 +4,7 @@
   import { dndzone, type DndEvent } from "svelte-dnd-action";
   import { Engine } from "#lib/cel/engine.js";
   import { DRAG_OPTIONS, dragLook, Hooks, whileDragging } from "#lib/components/builder/drag.svelte.js";
+  import { removesSelection } from "#lib/components/builder/keys.js";
   import Palette, { type Dragged, type PaletteEntry } from "#lib/components/builder/Palette.svelte";
   import Dialog from "#lib/components/Dialog.svelte";
   import ProblemList from "#lib/components/builder/ProblemList.svelte";
@@ -177,6 +178,14 @@
     ask(`“${step.title}” has ${step.questions.length} question${step.questions.length === 1 ? "" : "s"}, which go with it.`, remove);
   }
 
+  // Delete (or the Mac's delete key) removes the selected question or step, as the panel's × does.
+  function keydown(event: KeyboardEvent) {
+    if (!removesSelection(event) || draft.readonly || !where || confirming) return;
+    event.preventDefault();
+    if (where.question) removeQuestion(where.step, where.question);
+    else removeStep();
+  }
+
   function show(problem: Problem) {
     const isStep = content.form.some((s) => s.id === problem.element);
     const isQuestion = content.form.some((s) => s.questions.some((q) => q.id === problem.element));
@@ -191,6 +200,8 @@
   const lastQuestion = (stepIndex: number, index: number) =>
     stepIndex === content.form.length - 1 && index === content.form[stepIndex].questions.length - 1;
 </script>
+
+<svelte:window onkeydown={keydown} />
 
 {#if draft.readonly}
   <p class="alert alert-info small">This is version {draft.shownVersion}, which reports use. Choose Edit to change it in a new draft.</p>
@@ -230,7 +241,8 @@
               {@const Icon = fieldIcon(q.type)}
               {@const flagged = draft.problemsFor(q.id).length}
               <li class="question" class:selected={selection?.id === q.id} class:heading={q.type === "heading"} data-question={q.id}>
-                <button class="pick" type="button" onclick={() => select("question", q.id)}
+                <!-- The drag library keeps a press from focusing the card, so the click does: keys such as Delete then go to it. -->
+                <button class="pick" type="button" onclick={(e) => { e.currentTarget.focus(); select("question", q.id); }}
                   aria-label="{q.label}, {type.label}, edit" aria-describedby="meta-{q.id}">
                   <span class="pick-in">
                     <span class="icon" aria-hidden="true"><Icon size={16} aria-hidden="true" /></span>

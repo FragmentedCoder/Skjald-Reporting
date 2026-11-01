@@ -4,6 +4,7 @@
   import { Engine } from "#lib/cel/engine.js";
   import BlockList from "#lib/components/builder/BlockList.svelte";
   import BlockPanel from "#lib/components/builder/BlockPanel.svelte";
+  import { removesSelection } from "#lib/components/builder/keys.js";
   import Palette, { type PaletteEntry } from "#lib/components/builder/Palette.svelte";
   import ProblemList from "#lib/components/builder/ProblemList.svelte";
   import Where from "#lib/components/builder/Where.svelte";
@@ -170,6 +171,13 @@
     confirming = false;
   }
 
+  // Delete (or the Mac's delete key) removes the selected block, as the panel's × does.
+  function keydown(event: KeyboardEvent) {
+    if (!removesSelection(event) || draft.readonly || !found || confirming) return;
+    event.preventDefault();
+    remove();
+  }
+
   async function upload(file: File): Promise<Asset | null> {
     try {
       const asset = await templatesApi.upload(draft.id, file);
@@ -201,6 +209,8 @@
     }
   }
 </script>
+
+<svelte:window onkeydown={keydown} />
 
 {#if draft.readonly}
   <p class="alert alert-info small">This is version {draft.shownVersion}, which reports use. Choose Edit to change it in a new draft.</p>

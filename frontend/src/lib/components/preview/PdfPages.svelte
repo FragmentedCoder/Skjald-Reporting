@@ -224,7 +224,10 @@
   function choose(node: HTMLElement) {
     const click = (event: MouseEvent) => {
       const block = (event.target as HTMLElement).closest<HTMLElement>("[data-block]");
-      if (block?.dataset.block && onselect) onselect(block.dataset.block);
+      if (!block?.dataset.block || !onselect) return;
+      // Out of any field typed in before: keys such as Delete are for the block now.
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+      onselect(block.dataset.block);
     };
     node.addEventListener("click", click);
     return { destroy: () => node.removeEventListener("click", click) };

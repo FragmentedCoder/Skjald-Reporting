@@ -77,7 +77,8 @@
       {@const flagged = problems(b.id)}
       {@const why = hidden.get(b.id)}
       <li class="block kind-{b.kind}" class:selected={selected === b.id} class:hidden={why}>
-        <button class="pick" type="button" onclick={() => onselect(b.id)} aria-label="{type.label}: {blockSummary(b)}, edit">
+        <!-- The drag library keeps a press from focusing the card, so the click does: keys such as Delete then go to it. -->
+        <button class="pick" type="button" onclick={(e) => { e.currentTarget.focus(); onselect(b.id); }} aria-label="{type.label}: {blockSummary(b)}, edit">
           <span class="pick-in">
             <span class="icon" aria-hidden="true"><type.icon size={15} aria-hidden="true" /></span>
             <span class="body">
