@@ -124,7 +124,7 @@
       </span>
       {#if suggested}
         <button class="link-button small start" type="button" onclick={() => { if (suggested) { key = suggested; onrename(suggested); } }}>
-          Rename it <span class="mono">{suggested}</span>: the type's shorthand and the label
+          Name it <span class="mono">{suggested}</span>: the type's shorthand and the label
         </button>
       {/if}
     </div>

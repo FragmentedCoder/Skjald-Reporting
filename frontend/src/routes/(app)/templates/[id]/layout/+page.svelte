@@ -105,14 +105,18 @@
     return null;
   }
 
-  // A clicked block goes after what's selected, or into a selected section. A clicked
-  // section goes after the section the selection is in, beside it rather than into it,
-  // so it starts a new page like that one (a subsection is made by dragging); a cover
-  // goes first in the PDF, and contents after the part of the PDF that's selected.
+  // A clicked block goes after what's selected, into a selected section, or into a
+  // selected switch's first empty case (else its otherwise, if empty), so cases fill
+  // without dragging. A clicked section goes after the section the selection is in,
+  // beside it rather than into it, so it starts a new page like that one (a subsection
+  // is made by dragging); a cover goes first in the PDF, and contents after the part
+  // of the PDF that's selected.
   function add(kind: string) {
     if (draft.readonly) return;
     let target = found?.block.kind === "section" ? found.block.blocks : found?.list ?? content.layout;
     let at = found && found.block.kind !== "section" ? found.index + 1 : target.length;
+    const empty = found?.block.kind === "switch" ? listsIn(found.block).find((list) => !list.length) : undefined;
+    if (empty) [target, at] = [empty, 0];
     const path = selectedId ? (pathTo(content.layout, selectedId) ?? []) : [];
     if (kind === "cover") {
       [target, at] = [content.layout, 0];

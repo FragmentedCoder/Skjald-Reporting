@@ -397,8 +397,9 @@
         {/if}
       </span>
     </fieldset>
-    <p class="small muted">Drag blocks into each case in the outline. Only the first case with the answer's value is printed; when none has it,
-      or nothing is answered, the blocks under Otherwise are. Removing a case removes its blocks.</p>
+    <p class="small muted">Drag blocks into each case in the outline, or click blocks in the palette with the switch selected: each goes into the
+      first empty case, then Otherwise. Only the first case with the answer's value is printed; when none has it, or nothing is answered,
+      the blocks under Otherwise are. Removing a case removes its blocks.</p>
   {:else if block.kind === "page_break"}
     <p class="small muted">What follows starts on a new page. A page break never leaves an empty page.</p>
   {/if}

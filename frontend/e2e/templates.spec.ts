@@ -488,17 +488,21 @@ test("a designer drags blocks in the outline and on the pages", async ({ browser
   await saved(page);
   await shot(page, "dragged");
 
-  // A switch picked by the short text: a case for one value, with a heading dragged into
-  // it, left out while the sample answers give nothing.
+  // A switch picked by the short text, with a case for one value. Blocks clicked while
+  // it's selected fill its empty case, then otherwise; the case is left out while the
+  // sample answers give nothing.
   await blocks.getByRole("button", { name: /^Switch/ }).click();
   await panel(page).getByLabel("Picked by").selectOption("answers.text");
   await panel(page).getByRole("button", { name: "Add a case" }).click();
   await panel(page).getByLabel("Case 1: when it's").fill("Rack A");
   const rackA = page.getByRole("list", { name: "Blocks when it's “Rack A”" });
-  await dragTo(page, blocks.getByRole("button", { name: /^Heading/ }), () => pointIn(rackA), 800);
+  const otherwise = page.getByRole("list", { name: "Blocks when no case matches" });
+  await blocks.getByRole("button", { name: /^Heading/ }).click();
+  await page.getByRole("button", { name: "Switch: By answers.text, edit" }).click();
+  await blocks.getByRole("button", { name: /^Page break/ }).click();
   await expect(rackA.getByRole("button", { name: /^Heading: New heading/ })).toBeVisible();
   await expect(rackA).toContainText("The answers give nothing");
-  await expect(page.getByRole("list", { name: "Blocks when no case matches" })).toBeVisible();
+  await expect(otherwise.getByRole("button", { name: /^Page break/ })).toBeVisible();
   await saved(page);
 
   // The Strings tab: the form's text beside the PDF's, each in its order.
