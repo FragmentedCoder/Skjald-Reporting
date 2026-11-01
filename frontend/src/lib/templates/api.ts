@@ -35,6 +35,10 @@ export interface TemplateSummary {
   published_at: string | null;
   draft: DraftSummary | null;
   retired: boolean;
+  retired_at: string | null;
+  retired_by: string | null;
+  /** The report language of its draft, else its newest version. */
+  language: "da" | "en";
   created_at: string;
   created_by: string | null;
   updated_at: string;
@@ -92,7 +96,8 @@ export const templatesApi = {
   update: (id: number, change: { name?: string; description?: string }) => api<TemplateDetail>("PATCH", base(id), change),
   retire: (id: number) => api<TemplateDetail>("POST", `${base(id)}/retire`),
   restore: (id: number) => api<TemplateDetail>("POST", `${base(id)}/restore`),
-  remove: (id: number) => api<void>("DELETE", base(id)),
+  /** A published template, once retired, is deleted with its name typed to confirm. */
+  remove: (id: number, confirmName?: string) => api<void>("DELETE", base(id), confirmName === undefined ? undefined : { confirm_name: confirmName }),
   copy: (id: number, name: string, language: "da" | "en" | null = null) => api<TemplateDetail>("POST", `${base(id)}/copy`, { name, language }),
   /** Where a version (the newest by default, or the draft before any) downloads as a .skjald file. */
   exportUrl: (id: number, version?: number) => `/api${base(id)}/export${version ? `?version=${version}` : ""}`,
