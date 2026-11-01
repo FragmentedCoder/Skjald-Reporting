@@ -3,6 +3,7 @@
   import { tick } from "svelte";
   import { dndzone, type DndEvent } from "svelte-dnd-action";
   import { Engine } from "#lib/cel/engine.js";
+  import { DRAG_OPTIONS, dragLook, Hooks, whileDragging } from "#lib/components/builder/drag.svelte.js";
   import Palette, { type Dragged, type PaletteEntry } from "#lib/components/builder/Palette.svelte";
   import Dialog from "#lib/components/Dialog.svelte";
   import ProblemList from "#lib/components/builder/ProblemList.svelte";
@@ -77,14 +78,26 @@
   let dragging = $state.raw<Record<string, Item[]>>({});
   const itemsOf = (step: Step): Item[] => dragging[step.id] ?? step.questions;
 
+  const hooks = new Hooks();
+  const look = dragLook<Item>((q) => ("palette" in q ? q.label : `${fieldType(q.type).label}: ${q.label}`));
+  // Each step's list: what the drag library is given.
+  function zoneOf(step: Step) {
+    const options = { items: itemsOf(step), type: "questions", flipDurationMs: 150, dragDisabled: draft.readonly,
+      dropTargetStyle: { outline: "2px dashed var(--link)", outlineOffset: "2px" }, transformDraggedElement: look, ...DRAG_OPTIONS, hooked: hooks.hooked };
+    return options;
+  }
+
   function consider(step: Step, event: CustomEvent<DndEvent<Item>>) {
-    dragging = { ...dragging, [step.id]: event.detail.items };
+    const { [step.id]: _was, ...others } = dragging;
+    const shown = whileDragging(event.detail.items, step.questions);
+    dragging = shown ? { ...others, [step.id]: shown } : others;
   }
 
   function finalize(step: Step, event: CustomEvent<DndEvent<Item>>) {
     let added: Question | null = null;
     const { [step.id]: _done, ...rest } = dragging;
     dragging = rest;
+    hooks.again();
     step.questions = event.detail.items.map((item) => {
       if ("palette" in item) {
         added = newQuestion(item.kind, content);
@@ -204,9 +217,7 @@
         </button>
         <ol class="questions" class:empty={!itemsOf(step).length} aria-label="Questions in step {s + 1}"
           data-empty="Drag a field type here, or select this step and click one."
-          use:dndzone={{ items: itemsOf(step), type: "questions", flipDurationMs: 150, dragDisabled: draft.readonly, centreDraggedOnCursor: true,
-                         dropTargetStyle: { outline: "2px dashed var(--link)", outlineOffset: "2px" } }}
-          onconsider={(e) => consider(step, e)} onfinalize={(e) => finalize(step, e)}>
+          use:dndzone={zoneOf(step)} onconsider={(e) => consider(step, e)} onfinalize={(e) => finalize(step, e)}>
           {#each itemsOf(step) as q, i (q.id)}
             {#if "palette" in q}
               <li class="question shadow"><span class="label">{q.label}</span></li>

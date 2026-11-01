@@ -3,6 +3,7 @@
   import { BLOCK_TYPES, blockSummary, newBlock } from "#lib/templates/blocks.js";
   import type { Block, BlockKind } from "#lib/templates/types.js";
   import BlockList from "./BlockList.svelte";
+  import { DRAG_OPTIONS, dragLook, Hooks, whileDragging } from "./drag.svelte.js";
   import type { Dragged } from "./Palette.svelte";
 
   // The layout's blocks as an outline, in the order they print: sections and columns
@@ -42,12 +43,18 @@
   }
 
   function consider(event: CustomEvent<DndEvent<Item>>) {
-    dragging = event.detail.items;
+    dragging = whileDragging(event.detail.items, blocks);
   }
+
+  const hooks = new Hooks();
+  const look = dragLook<Item>((b) => ("palette" in b ? b.label : `${BLOCK_TYPES[b.kind].label}: ${blockSummary(b)}`));
+  const zone = $derived({ items, type: "blocks", flipDurationMs: 150, dragDisabled: readonly, dropTargetClasses: ["dropping"],
+    dropTargetStyle: {}, transformDraggedElement: look, ...DRAG_OPTIONS, hooked: hooks.hooked });
 
   function finalize(event: CustomEvent<DndEvent<Item>>) {
     let added: Block | null = null;
     dragging = null;
+    hooks.again();
     blocks = event.detail.items.map((item) => {
       if ("palette" in item) {
         added = newBlock(item.kind as BlockKind, depth > 0);
@@ -60,9 +67,7 @@
 </script>
 
 <ol class="blocks" class:nested={depth > 0} class:empty={!items.length} aria-label={label} data-empty={empty}
-  use:dndzone={{ items, type: "blocks", flipDurationMs: 150, dragDisabled: readonly, centreDraggedOnCursor: true,
-                 dropTargetClasses: ["dropping"], dropTargetStyle: {} }}
-  onconsider={consider} onfinalize={finalize}>
+  use:dndzone={zone} onconsider={consider} onfinalize={finalize}>
   {#each items as b (b.id)}
     {#if placeholder(b)}
       <!-- Where it would land: one line, whatever it holds, so nothing drops into the block being moved. -->

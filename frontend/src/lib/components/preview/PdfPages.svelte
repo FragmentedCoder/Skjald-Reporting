@@ -17,7 +17,10 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
   import { dndzone, type DndEvent } from "svelte-dnd-action";
+  import { DRAG_OPTIONS, dragLook, Hooks, whileDragging } from "#lib/components/builder/drag.svelte.js";
   import type { Dragged } from "#lib/components/builder/Palette.svelte";
+  import { BLOCK_TYPES } from "#lib/templates/blocks.js";
+  import type { BlockKind } from "#lib/templates/types.js";
   import { FONT_STACKS, plainLook, pointsToCqi, textKey, type PageLook } from "#lib/reportStyles/look.js";
   import { colourOf, TONE_NAMES, type Element, type PageName } from "#lib/reportStyles/resolve.js";
   import type { Paged, Placed } from "#lib/templates/pages.js";
@@ -96,12 +99,28 @@
   const entriesOf = (p: number): Entry[] => dragging[p] ?? paged.pages[p].items.map((placed) => ({ id: placed.block.id, placed }));
 
   function consider(p: number, event: CustomEvent<DndEvent<Entry>>) {
-    dragging = { ...dragging, [p]: event.detail.items };
+    const { [p]: _was, ...others } = dragging;
+    const shown = whileDragging(event.detail.items, paged.pages[p].items.map((placed) => placed.block));
+    dragging = shown ? { ...others, [p]: shown } : others;
+  }
+
+  const hooks = new Hooks();
+  const carried = dragLook<Entry>((e) => {
+    if ("palette" in e) return e.label;
+    const b = e.placed.block as { kind: string; title?: string };
+    return `${BLOCK_TYPES[b.kind as BlockKind]?.label ?? "Block"}${b.title ? `: ${b.title}` : ""}`;
+  });
+  // Each page's list: what the drag library is given.
+  function zoneOf(p: number) {
+    const options = { items: entriesOf(p), type: onplace ? "blocks" : "pages", dragDisabled: !onplace, dropFromOthersDisabled: !onplace,
+      flipDurationMs: 150, dropTargetClasses: ["dropping"], dropTargetStyle: {}, transformDraggedElement: carried, ...DRAG_OPTIONS, hooked: hooks.hooked };
+    return options;
   }
 
   function finalize(p: number, event: CustomEvent<DndEvent<Entry>>) {
     const { [p]: _done, ...rest } = dragging;
     dragging = rest;
+    hooks.again();
     const items = event.detail.items;
     const k = items.findIndex((e) => e.id === event.detail.info.id);
     // The page it left, or dropped back where it was: nothing to do here.
@@ -375,9 +394,7 @@
           <img class="art" src={p === 0 ? look.art.first : look.art.other} alt="" />
         {/if}
         {@render design(designOf(p), p, !page.items.some((placed) => placed.block.kind === "cover" && !placed.block.showLogo))}
-        <div class="body" use:dndzone={{ items: entriesOf(p), type: onplace ? "blocks" : "pages", dragDisabled: !onplace, dropFromOthersDisabled: !onplace,
-                                          flipDurationMs: 150, centreDraggedOnCursor: true, dropTargetClasses: ["dropping"], dropTargetStyle: {} }}
-          onconsider={(e) => consider(p, e)} onfinalize={(e) => finalize(p, e)}>
+        <div class="body" use:dndzone={zoneOf(p)} onconsider={(e) => consider(p, e)} onfinalize={(e) => finalize(p, e)}>
           {#each entriesOf(p) as entry (entry.id)}
             {#if "palette" in entry}
               <div class="item drop-here">{entry.label}</div>
