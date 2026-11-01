@@ -33,9 +33,11 @@
 
 <div class="browser" class:compact>
   <div class="search">
-    <Search size={16} aria-hidden="true" />
-    <label class="visually-hidden" for="{id}-search">Search names</label>
-    <input id="{id}-search" class="input" type="search" placeholder="Search, such as customer, date or phone" bind:value={query} autocomplete="off" />
+    <div class="search-box">
+      <Search class="search-icon" size={16} aria-hidden="true" />
+      <label class="visually-hidden" for="{id}-search">Search names</label>
+      <input id="{id}-search" class="input" type="search" placeholder="Search, such as customer, date or phone" bind:value={query} autocomplete="off" />
+    </div>
     <span class="small muted" aria-live="polite">{count} name{count === 1 ? "" : "s"}</span>
   </div>
 
@@ -97,9 +99,22 @@
     max-width: 640px;
     color: var(--text-muted);
   }
-  .search .input {
+  .search-box {
+    position: relative;
     flex: 1;
     min-width: 0;
+  }
+  .search-box :global(.search-icon) {
+    position: absolute;
+    top: 50%;
+    left: 12px;
+    color: var(--text-muted);
+    transform: translateY(-50%);
+    pointer-events: none;
+  }
+  .search-box .input {
+    width: 100%;
+    padding-left: 36px;
   }
   .search span {
     white-space: nowrap;
