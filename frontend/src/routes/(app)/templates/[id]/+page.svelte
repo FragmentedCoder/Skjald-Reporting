@@ -10,11 +10,12 @@
   import ProblemList from "#lib/components/builder/ProblemList.svelte";
   import QuestionPanel from "#lib/components/builder/QuestionPanel.svelte";
   import StepPanel from "#lib/components/builder/StepPanel.svelte";
+  import TypeCode from "#lib/components/builder/TypeCode.svelte";
   import Where from "#lib/components/builder/Where.svelte";
   import { useDraft } from "#lib/templates/draft.svelte.js";
   import { newQuestion, newStep, renameKey, usage } from "#lib/templates/edit.js";
   import { fieldIcon } from "#lib/templates/fieldIcons.js";
-  import { FIELD_GROUPS, FIELD_TYPES, fieldType } from "#lib/templates/fields.js";
+  import { FIELD_GROUPS, FIELD_TYPES, fieldType, typeCode } from "#lib/templates/fields.js";
   import { catalogue } from "#lib/templates/catalogue.js";
   import { declarations } from "#lib/templates/names.js";
   import type { Problem, Question, Step, TemplateContent } from "#lib/templates/types.js";
@@ -26,7 +27,7 @@
   const content = $derived(draft.content as TemplateContent);
 
   const palette: PaletteEntry[] = FIELD_GROUPS.flatMap((group) =>
-    Object.entries(FIELD_TYPES).filter(([, t]) => t.group === group).map(([kind, t]) => ({ kind, label: t.label, hint: t.hint, icon: fieldIcon(kind), group })),
+    Object.entries(FIELD_TYPES).filter(([, t]) => t.group === group).map(([kind, t]) => ({ kind, label: t.label, hint: t.hint, icon: fieldIcon(kind), group, code: typeCode(kind) })),
   );
 
   // The names expressions can read; the engine is made again only when they change.
@@ -249,7 +250,7 @@
                     <span class="body">
                       <span class="label">{q.label}{q.required ? " *" : ""}</span>
                       <span class="meta small" id="meta-{q.id}">
-                        {#if q.key}<span class="mono">answers.{q.key}</span>{/if}{`${q.key ? " · " : ""}${type.label}${q.visible_when ? " · shown when a rule says so" : ""}`}
+                        <TypeCode type={q.type} /> {#if q.key}<span class="mono">answers.{q.key}</span>{/if}{`${q.key ? " · " : ""}${type.label}${q.visible_when ? " · shown when a rule says so" : ""}`}
                       </span>
                     </span>
                     <span class="chips">

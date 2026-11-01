@@ -8,8 +8,8 @@
   import { inkFor } from "#lib/components/preview/PdfPages.svelte";
   import type { Asset } from "#lib/templates/api.js";
   import { BLOCK_TYPES, changeSigner, emptyDoc, nextSigner } from "#lib/templates/blocks.js";
-  import type { NameEntry } from "#lib/templates/catalogue.js";
-  import { settingsOf } from "#lib/templates/fields.js";
+  import { entryChoice, type NameEntry } from "#lib/templates/catalogue.js";
+  import { questionChoice, settingsOf } from "#lib/templates/fields.js";
   import { questionsOf, type Block, type Problem, type Signer, type TemplateContent } from "#lib/templates/types.js";
   import LiteralInput from "./LiteralInput.svelte";
   import NameInput from "./NameInput.svelte";
@@ -172,7 +172,7 @@
       <label for="{id}-question">Answer to print</label>
       <select id="{id}-question" class="input" value={block.question ?? ""} onchange={(e) => block.kind === "answer" && (block.question = e.currentTarget.value || null)}>
         <option value="" disabled>Choose a question…</option>
-        {#each questions.filter((q) => q.type !== "heading") as q (q.id)}<option value={q.id}>{q.label}</option>{/each}
+        {#each questions.filter((q) => q.type !== "heading") as q (q.id)}<option value={q.id}>{questionChoice(q)}</option>{/each}
       </select>
       {#if problem("question")}<span class="hint error">{problem("question")}</span>{/if}
     </div>
@@ -182,7 +182,7 @@
       <label for="{id}-question">Rows from</label>
       <select id="{id}-question" class="input" value={block.question ?? ""} onchange={(e) => { if (block.kind === "table") { block.question = e.currentTarget.value || null; block.columns = null; } }}>
         <option value="" disabled>Choose a repeating group or table…</option>
-        {#each lists as q (q.id)}<option value={q.id}>{q.label}</option>{/each}
+        {#each lists as q (q.id)}<option value={q.id}>{questionChoice(q)}</option>{/each}
       </select>
       {#if problem("question")}<span class="hint error">{problem("question")}</span>{/if}
     </div>
@@ -230,7 +230,7 @@
         <label for="{id}-photo">Photo question</label>
         <select id="{id}-photo" class="input" value={block.question ?? ""} onchange={(e) => block.kind === "image" && (block.question = e.currentTarget.value || null)}>
           <option value="" disabled>Choose a photo question…</option>
-          {#each photos as q (q.id)}<option value={q.id}>{q.label}</option>{/each}
+          {#each photos as q (q.id)}<option value={q.id}>{questionChoice(q)}</option>{/each}
         </select>
         {#if problem("question")}<span class="hint error">{problem("question")}</span>{/if}
       </div>
@@ -248,7 +248,7 @@
       <label for="{id}-photo">Photos from</label>
       <select id="{id}-photo" class="input" value={block.question ?? ""} onchange={(e) => block.kind === "gallery" && (block.question = e.currentTarget.value || null)}>
         <option value="" disabled>Choose a photo question…</option>
-        {#each photos as q (q.id)}<option value={q.id}>{q.label}</option>{/each}
+        {#each photos as q (q.id)}<option value={q.id}>{questionChoice(q)}</option>{/each}
       </select>
       {#if problem("question")}<span class="hint error">{problem("question")}</span>{/if}
     </div>
@@ -288,7 +288,7 @@
       <label for="{id}-question">Count the rows of</label>
       <select id="{id}-question" class="input" value={block.question ?? ""} onchange={(e) => { if (block.kind === "severity_summary") { block.question = e.currentTarget.value || null; block.column = null; } }}>
         <option value="" disabled>Choose a repeating group…</option>
-        {#each lists as q (q.id)}<option value={q.id}>{q.label}</option>{/each}
+        {#each lists as q (q.id)}<option value={q.id}>{questionChoice(q)}</option>{/each}
       </select>
       {#if problem("question")}<span class="hint error">{problem("question")}</span>{/if}
     </div>
@@ -326,7 +326,7 @@
       <label for="{id}-own">The technician's own, from</label>
       <select id="{id}-own" class="input" value={block.question ?? ""} onchange={(e) => block.kind === "sources" && (block.question = e.currentTarget.value || null)}>
         <option value="">None</option>
-        {#each lists as q (q.id)}<option value={q.id}>{q.label}</option>{/each}
+        {#each lists as q (q.id)}<option value={q.id}>{questionChoice(q)}</option>{/each}
       </select>
       <span class="hint" class:error={problem("question")}>{problem("question") ?? "A repeating group with title and link columns."}</span>
     </div>
@@ -369,7 +369,7 @@
       <label for="{id}-value">Picked by</label>
       <select id="{id}-value" class="input" value={block.value ?? ""} onchange={(e) => pickSwitch(e.currentTarget.value)}>
         <option value="" disabled>Choose an answer…</option>
-        {#each switchable as e (e.name)}<option value={e.name}>{e.label} ({e.name})</option>{/each}
+        {#each switchable as e (e.name)}<option value={e.name}>{entryChoice(e)} ({e.name})</option>{/each}
         {#if block.value && !switched}<option value={block.value}>{block.value}</option>{/if}
       </select>
       <span class="hint" class:error={problem("value")}>{problem("value") ?? "Text or a whole number, usually a dropdown's answer. Choosing a dropdown makes a case for each of its choices."}</span>

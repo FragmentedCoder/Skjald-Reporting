@@ -2,7 +2,7 @@
 // the report's context by what it is, the library by its name. Repeating groups carry
 // their columns, and dropdowns their choices, so a rule can pick from them.
 
-import { settingsOf } from "./fields";
+import { settingsOf, typeCode } from "./fields";
 import { CONTEXT_GROUPS, questionNames } from "./names";
 import { shapeOf, type Shape } from "./rules";
 import { questionsOf, type TemplateContent } from "./types";
@@ -27,6 +27,8 @@ export interface NameEntry {
   shape: Shape;
   choices?: Choice[];
   columns?: Column[];
+  /** For an answer, its question's field type. */
+  field?: string;
 }
 
 const PARTS: Record<string, string> = {
@@ -74,6 +76,7 @@ export function catalogue(content: TemplateContent | null, library: Record<strin
         shape: shapeOf(type),
         choices: q.type === "dropdown" || q.type === "multi_select" ? (settings.options as Choice[]) : undefined,
         columns: q.type === "repeating" || q.type === "table" ? columnsOf(settings) : undefined,
+        field: q.type,
       });
     }
   }
@@ -87,6 +90,11 @@ export function catalogue(content: TemplateContent | null, library: Record<strin
     entries.push({ name, label: labels[name] || name, group, type, shape: shapeOf(type) });
   }
   return entries;
+}
+
+/** A name as lists to choose from show it: an answer with its question's shorthand. */
+export function entryChoice(entry: NameEntry): string {
+  return entry.field ? `${typeCode(entry.field)} · ${entry.label}` : entry.label;
 }
 
 /** The shapes of every name, row columns included (as row.<key>), for rules.ts. */

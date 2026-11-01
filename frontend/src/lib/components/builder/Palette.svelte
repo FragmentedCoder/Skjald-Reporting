@@ -7,6 +7,8 @@
     hint: string;
     icon: Icon;
     group: string;
+    /** A field type's shorthand. */
+    code?: string;
   }
 
   /** What a palette entry looks like while it's dragged into a list. */

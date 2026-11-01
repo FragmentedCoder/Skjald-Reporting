@@ -16,6 +16,8 @@ export interface NameRow {
   example: string;
   /** Given current values: whether the example is one (true) or made up (false). */
   live?: boolean;
+  /** For an answer, its question's field type. */
+  field?: string;
 }
 
 export interface NameGroup {
@@ -58,7 +60,10 @@ export function nameGroups(entries: NameEntry[], values: Record<string, unknown>
     let group = groups.find((g) => g.title === entry.group);
     if (!group) groups.push((group = { title: entry.group, about: ABOUT[entry.group] ?? sources[entry.group] ?? "", rows: [] }));
     const current = live && (live.has(entry.name) || /^(vars|text)\./.test(entry.name));
-    group.rows.push({ name: entry.name, what: entry.label, kind: human(entry.type), example: shown(valueOf(values, entry.name)), ...(live ? { live: current } : {}) });
+    group.rows.push({
+      name: entry.name, what: entry.label, kind: human(entry.type), example: shown(valueOf(values, entry.name)),
+      ...(entry.field ? { field: entry.field } : {}), ...(live ? { live: current } : {}),
+    });
   }
   const tables = library.filter((e) => e.kind === "table");
   if (tables.length) {

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { NameEntry } from "#lib/templates/catalogue.js";
+  import { entryChoice, type NameEntry } from "#lib/templates/catalogue.js";
   import { NO_VALUE, OPS, type Compare, type Op } from "#lib/templates/rules.js";
   import CompareRow from "./CompareRow.svelte";
   import LiteralInput from "./LiteralInput.svelte";
@@ -46,7 +46,7 @@
     {#each groups as group (group)}
       <optgroup label={group}>
         {#each entries.filter((e) => e.group === group && e.shape !== "other") as e (e.name)}
-          <option value={e.name}>{e.label}</option>
+          <option value={e.name}>{entryChoice(e)}</option>
         {/each}
       </optgroup>
     {/each}
