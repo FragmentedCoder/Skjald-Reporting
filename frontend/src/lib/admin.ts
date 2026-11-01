@@ -9,6 +9,7 @@ export interface Profile {
   last_name: string | null;
   job_title: string | null;
   department: string | null;
+  company: string | null;
   email: string | null;
   phone: string | null;
 }
@@ -29,6 +30,7 @@ export const PROFILE_FIELDS: {
   { key: "last_name", label: "Last name", autocomplete: "family-name" },
   { key: "job_title", label: "Job title", autocomplete: "organization-title" },
   { key: "department", label: "Department", autocomplete: "off" },
+  { key: "company", label: "Company", autocomplete: "organization" },
   { key: "email", label: "Work email", type: "email", autocomplete: "email" },
   { key: "phone", label: "Work phone", type: "tel", autocomplete: "tel" },
 ];
@@ -43,6 +45,7 @@ export function profileForm(profile: Profile): ProfileForm {
     last_name: profile.last_name ?? "",
     job_title: profile.job_title ?? "",
     department: profile.department ?? "",
+    company: profile.company ?? "",
     email: profile.email ?? "",
     phone: profile.phone ?? "",
   };

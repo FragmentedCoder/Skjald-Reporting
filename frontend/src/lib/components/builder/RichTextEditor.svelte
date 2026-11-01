@@ -10,6 +10,7 @@
   import { onMount } from "svelte";
   import type { NameEntry } from "#lib/templates/catalogue.js";
   import { makeEditor } from "#lib/templates/editor.js";
+  import { claimNames } from "#lib/templates/nameTarget.svelte.js";
   import { matching, printable as printing, typedName } from "#lib/templates/suggest.js";
   import type { RichText } from "#lib/templates/types.js";
   import NameSuggestions from "./NameSuggestions.svelte";
@@ -39,6 +40,7 @@
 
   // A name typed after "{{": where the "{{" starts in the document, and what follows it.
   let typed = $state<{ from: number; query: string } | null>(null);
+  let letGo = () => {};
   let active = $state(0);
   const suggestions = $derived(typed && names ? matching(printing(entries), typed.query) : []);
 
@@ -83,8 +85,16 @@
       look();
     });
     editor.on("blur", () => (typed = null));
+    // A name picked in the Names drawer goes where the caret was, as a name chip.
+    editor.on("focus", () => {
+      letGo();
+      letGo = claimNames({ label, insert: (name) => void editor?.chain().focus().insertContent({ type: "variable", attrs: { expr: name } }).run() });
+    });
     written = JSON.stringify(editor.getJSON());
-    return () => editor?.destroy();
+    return () => {
+      letGo();
+      editor?.destroy();
+    };
   });
 
   // Changes from elsewhere (a rename, a reload) reach the editor.

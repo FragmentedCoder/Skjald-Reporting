@@ -38,7 +38,7 @@ CONTEXT: dict[str, str] = {
     **{f"{person}.{part}": "string"
        for person in ("author", "reviewer")
        for part in ("display_name", "first_name", "middle_name", "last_name", "job_title",
-                    "department", "email", "phone")},
+                    "department", "company", "email", "phone")},
 }
 
 # Inside a section repeated for each item of a list.

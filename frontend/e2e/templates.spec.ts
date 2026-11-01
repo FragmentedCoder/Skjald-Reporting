@@ -183,9 +183,13 @@ test("a designer builds a template's form, with rules, and publishes it", async 
 test("the library: a technician adds entries, an administrator locks one", async ({ browser }) => {
   const { context, page } = await signedIn(browser, "e2e-librarian");
   const violations = watchForCspViolations(page);
-  await menu(page, "Library").click();
-  await expect(page.getByRole("heading", { name: "Library" })).toBeVisible();
+  await menu(page, "Database").click();
+  await expect(page.getByRole("heading", { name: "Database" })).toBeVisible();
   await expect(menu(page, "Templates")).toHaveCount(0);
+  // A technician sees the names and the library, not the custom fields' definitions.
+  const tabs = page.getByRole("navigation", { name: "Database" });
+  await expect(tabs.getByRole("link")).toHaveText(["All names", "Variables", "Text snippets", "Data tables"]);
+  await tabs.getByRole("link", { name: "Variables" }).click();
 
   await page.getByRole("button", { name: "Add a variable" }).click();
   const dialog = page.getByRole("dialog");
@@ -195,7 +199,7 @@ test("the library: a technician adds entries, an administrator locks one", async
   await dialog.getByRole("button", { name: "Save" }).click();
   await expect(toastWith(page, "vars.support_phone is in the library.")).toBeVisible();
 
-  await page.getByRole("button", { name: /^Text snippets/ }).click();
+  await tabs.getByRole("link", { name: "Text snippets" }).click();
   await page.getByRole("button", { name: "Add a text snippet" }).click();
   await dialog.getByLabel("Name", { exact: true }).fill("handover");
   await dialog.getByLabel("Text", { exact: true }).fill("See {{text.other}}");
@@ -205,7 +209,7 @@ test("the library: a technician adds entries, an administrator locks one", async
   await dialog.getByRole("button", { name: "Save" }).click();
   await expect(page.getByRole("cell", { name: "Call {{vars.support_phone}} for the full password." })).toBeVisible();
 
-  await page.getByRole("button", { name: /^Data tables/ }).click();
+  await tabs.getByRole("link", { name: "Data tables" }).click();
   await page.getByRole("button", { name: "Add a data table" }).click();
   await dialog.getByLabel("Name", { exact: true }).fill("severity");
   await dialog.getByRole("button", { name: "Add a row" }).click();
@@ -214,12 +218,25 @@ test("the library: a technician adds entries, an administrator locks one", async
   await dialog.getByRole("button", { name: "Save" }).click();
   await expect(page.getByRole("cell", { name: "1 row: Key → Value" })).toBeVisible();
 
+  // All names: the library among every name a template can read, found by searching,
+  // and an expression tried on the examples, the library's tables included.
+  await tabs.getByRole("link", { name: "All names" }).click();
+  await page.getByRole("textbox", { name: "Expression" }).fill('lookup("severity", "high") + " / " + vars.support_phone');
+  await expect(page.getByRole("status")).toHaveText('"Høj / +45 70 20 30 40", which is text');
+  await page.getByLabel("Search names").fill("service desk");
+  await expect(page.getByRole("row", { name: /^vars\.support_phone .*The service desk text "\+45 70 20 30 40"$/ })).toBeVisible();
+  await page.getByLabel("Search names").fill("severity");
+  await expect(page.getByRole("row", { name: /lookup\("severity", key\)/ })).toContainText("1 row: Key → Value");
+
   // An administrator locks the variable; nobody can change it then.
   const { context: adminContext, page: admin } = await signedIn(browser, "e2e-locksmith");
-  await menu(admin, "Library").click();
+  await menu(admin, "Database").click();
+  await admin.getByRole("navigation", { name: "Database" }).getByRole("link", { name: "Variables" }).click();
   await admin.getByRole("button", { name: "Actions for vars.support_phone" }).click();
   await admin.getByRole("menuitem", { name: "Lock" }).click();
   await expect(admin.getByRole("row", { name: /vars\.support_phone/ }).getByText("Locked")).toBeVisible();
+  await tabs.getByRole("link", { name: "Variables" }).click();
+  await expect(page).toHaveURL(/\/database\/variables$/);
   await page.reload();
   await page.getByRole("button", { name: "Actions for vars.support_phone" }).click();
   await expect(page.getByRole("menuitem", { name: "History" })).toBeVisible();
@@ -328,8 +345,8 @@ test("a designer lays out the PDF and sees its pages", async ({ browser }) => {
   await shot(page, "try-it");
 
   // The Data tab: every name, with the sample answers; expressions tried on them.
-  await page.getByRole("link", { name: "Data" }).click();
-  await expect(page.getByRole("row", { name: /answers\.serials Serial numbers text "SN-4471"/ })).toBeVisible();
+  await page.getByRole("link", { name: "Data", exact: true }).click();
+  await expect(page.getByRole("row", { name: /answers\.serials .*Serial numbers text "SN-4471"/ })).toBeVisible();
   await page.getByRole("textbox", { name: "Expression" }).fill("answers.serials.lowerAscii()");
   await expect(page.getByRole("status")).toHaveText('"sn-4471", which is text');
   await page.getByRole("textbox", { name: "Expression" }).fill("answers.serials > 1");
@@ -422,6 +439,15 @@ test("a designer drags blocks in the outline and on the pages", async ({ browser
   await expect(panel(page).getByRole("listbox", { name: "Names" }).getByRole("option").first()).toContainText("customer.name");
   await title.press("Enter");
   await expect(title).toHaveValue("Findings for {{customer.name}}");
+
+  // The Names drawer: every name to search, and a click puts one where the caret was.
+  await page.getByRole("button", { name: "Names", exact: true }).click();
+  const drawer = page.getByRole("complementary", { name: "Names" });
+  await drawer.getByLabel("Search names").fill("author company");
+  await drawer.getByRole("button", { name: /^author\.company/ }).click();
+  await expect(title).toHaveValue("Findings for {{customer.name}}{{author.company}}");
+  await drawer.getByRole("button", { name: "Close the names" }).click();
+  await title.fill("Findings for {{customer.name}}");
 
   // Clicking Section with a block inside a section selected adds one beside that section.
   await page.getByRole("button", { name: "Section: Summary, edit" }).click();
