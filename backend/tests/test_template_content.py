@@ -75,6 +75,12 @@ def test_a_new_template_starts_with_a_step_and_a_section() -> None:
          "settings": {"whole": True, "colour": "red"}}]}]}, "Extra inputs"),
     ({"layout": [{"id": "b_main1", "kind": "marquee"}]}, "does not match any of the expected"),
     ({"layout": [{"id": "B_MAIN", "kind": "page_break"}]}, "pattern"),
+    ({"layout": [{"id": "b_switch", "kind": "switch", "value": "answers.seen",
+                  "cases": [{"match": True}]}]}, "Input should be a valid"),
+    ({"layout": [{"id": "b_switch", "kind": "switch",
+                  "cases": [{"match": 1.5}]}]}, "Input should be a valid"),
+    ({"layout": [{"id": "b_switch", "kind": "switch",
+                  "cases": [{"match": "a", "label": "A"}]}]}, "Extra inputs"),
     ({"settings": {"prefix": "inc"}}, "pattern"),
     ({"settings": {"delivery": ["email", "email"]}}, "Each choice can be made once"),
     ({"layout": [{"id": "b_text1", "kind": "text", "content": {"type": "doc", "content": [
@@ -165,6 +171,19 @@ def test_changes_by_id() -> None:
     assert found.settings_changed == ["prefix"]
     assert found.any
     assert not changes(old, old).any
+
+
+def test_changes_inside_a_switch_are_the_blocks_own() -> None:
+    def layout(match: str, text: str) -> TemplateContent:
+        return content(layout=[{"id": "b_switch", "kind": "switch", "value": "customer.language",
+                                "cases": [{"match": match, "blocks": [
+                                    {"id": "b_head1", "kind": "heading", "text": text}]}],
+                                "otherwise": []}])
+
+    found = changes(layout("da", "Hej"), layout("en", "Hello"))
+    assert [(b.id, b.parts) for b in found.blocks_changed] == [
+        ("b_switch", ["cases"]), ("b_head1", ["text"])]
+    assert not changes(layout("da", "Hej"), layout("da", "Hej")).any
 
 
 SECRETS = json.loads((SHARED / "secrets.json").read_text())
