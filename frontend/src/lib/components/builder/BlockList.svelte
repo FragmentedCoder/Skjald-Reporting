@@ -229,6 +229,15 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  /* A text's first words over two lines: texts often start alike, as a switch's cases do. */
+  .kind-text > .pick .label {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    white-space: normal;
+  }
   .kind-section > .pick .label {
     font-family: var(--font-display);
     font-size: 17px;

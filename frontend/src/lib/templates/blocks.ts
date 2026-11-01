@@ -138,7 +138,7 @@ export function blockSummary(block: Block): string {
     case "text": {
       // Its first words, so texts side by side (a switch's cases) can be told apart.
       const words = docText(block.content).replace(/\s+/g, " ").trim();
-      return words ? (words.length > 80 ? `${words.slice(0, 79).trimEnd()}…` : words) : "Text";
+      return words ? (words.length > 160 ? `${words.slice(0, 159).trimEnd()}…` : words) : "Text";
     }
     default:
       return BLOCK_TYPES[block.kind].label;

@@ -25,7 +25,7 @@ describe("blockSummary", () => {
   it("names a text block by its first words, and a switch by what picks its case", () => {
     expect(blockSummary({ ...newBlock("text"), content: emptyDoc("During the attack on {{company.name}} infrastructure") } as Block)).toBe("During the attack on {{company.name}} infrastructure");
     expect(blockSummary({ ...newBlock("text"), content: emptyDoc("") } as Block)).toBe("Text");
-    expect(blockSummary({ ...newBlock("text"), content: emptyDoc("x".repeat(100)) } as Block)).toHaveLength(80);
+    expect(blockSummary({ ...newBlock("text"), content: emptyDoc("x".repeat(200)) } as Block)).toHaveLength(160);
     expect(blockSummary({ ...newBlock("switch"), value: "answers.found" } as Block)).toBe("By answers.found");
     expect(blockSummary(newBlock("switch"))).toBe("Switch");
   });
