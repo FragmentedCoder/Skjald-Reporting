@@ -81,7 +81,7 @@ Only Administrators and Report Designers see the template builder. Every element
 
 - **Questions** — the form a technician fills in, in steps: fields, help text, validation, defaults and repeating groups. Each question shows which PDF blocks print it.
 - **Layout** — the PDF, built by drag and drop from blocks: sections, headings, text with variables, answers, tables bound to repeating groups, images, callouts, sources, page breaks and signature boxes, plus the cover, table of contents and repeated sections. Every major section starts on its own page by default (a per-section setting), headings are never left alone at the foot of a page, table rows never split and table headers repeat on each page.
-- **Data** — every name a template can read, with what it is, where it comes from and an example: company, customer, project, report, answers, the people on the report (`author` and `reviewer`, with the business details from their profiles, such as `{{author.job_title}}`), the shared library and calculated values, plus a reference for each function.
+- **Data** — every name a template can read, with what it is, where it comes from and an example: company, customer, project, report, answers, the people on the report (`author` and `reviewer`, with the business details from their profiles, such as `{{author.job_title}}`, and their company, `{{author.company}}`: their own for a consultant or subcontractor, else the company's name), the shared library and calculated values, plus a reference for each function.
 
 - **Strings** — every piece of text in the template on one page, element by element (the form's beside the PDF's), to translate a copy or check the wording.
 
