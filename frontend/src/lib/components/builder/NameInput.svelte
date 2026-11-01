@@ -1,7 +1,8 @@
 <script lang="ts">
   import Braces from "@lucide/svelte/icons/braces";
-  import { tick } from "svelte";
+  import { onDestroy, tick } from "svelte";
   import type { NameEntry } from "#lib/templates/catalogue.js";
+  import { claimNames } from "#lib/templates/nameTarget.svelte.js";
   import { complete, matching, printable, typedName } from "#lib/templates/suggest.js";
   import NameSuggestions from "./NameSuggestions.svelte";
 
@@ -54,6 +55,24 @@
     void put(value.slice(0, caret) + "{{" + value.slice(caret), caret + 2);
   }
 
+  // A name picked in the Names drawer goes where the caret was, the last time this
+  // field had the focus.
+  let letGo = () => {};
+  onDestroy(() => letGo());
+  function claim() {
+    if (!input) return;
+    const field = input;
+    letGo();
+    letGo = claimNames({
+      label: field.labels?.[0]?.textContent?.trim() || label || "the field",
+      insert: (name) => {
+        const caret = field.selectionStart ?? value.length;
+        const text = `{{${name}}}`;
+        void put(value.slice(0, caret) + text + value.slice(caret), caret + text.length);
+      },
+    });
+  }
+
   function keydown(event: KeyboardEvent) {
     if (!open) return;
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -74,7 +93,7 @@
     role="combobox" aria-autocomplete="list" aria-expanded={open} aria-controls="{uid}-names"
     aria-activedescendant={open ? `${uid}-names-${active}` : undefined}
     bind:value oninput={look} onclick={look} onkeyup={(e) => ["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key) && look()}
-    onkeydown={keydown} onblur={() => (query = null)} />
+    onkeydown={keydown} onfocus={claim} onblur={() => (query = null)} />
   <button class="start" type="button" aria-label="Insert a name" title="Insert a name" onmousedown={(e) => e.preventDefault()} onclick={start}>
     <Braces size={15} aria-hidden="true" />
   </button>
