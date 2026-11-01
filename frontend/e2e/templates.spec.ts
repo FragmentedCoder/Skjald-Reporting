@@ -488,6 +488,19 @@ test("a designer drags blocks in the outline and on the pages", async ({ browser
   await saved(page);
   await shot(page, "dragged");
 
+  // A switch picked by the short text: a case for one value, with a heading dragged into
+  // it, left out while the sample answers give nothing.
+  await blocks.getByRole("button", { name: /^Switch/ }).click();
+  await panel(page).getByLabel("Picked by").selectOption("answers.text");
+  await panel(page).getByRole("button", { name: "Add a case" }).click();
+  await panel(page).getByLabel("Case 1: when it's").fill("Rack A");
+  const rackA = page.getByRole("list", { name: "Blocks when it's “Rack A”" });
+  await dragTo(page, blocks.getByRole("button", { name: /^Heading/ }), () => pointIn(rackA), 800);
+  await expect(rackA.getByRole("button", { name: /^Heading: New heading/ })).toBeVisible();
+  await expect(rackA).toContainText("The answers give nothing");
+  await expect(page.getByRole("list", { name: "Blocks when no case matches" })).toBeVisible();
+  await saved(page);
+
   // The Strings tab: the form's text beside the PDF's, each in its order.
   await page.getByRole("link", { name: "Strings" }).click();
   const side = (name: RegExp) => page.locator(".side").filter({ has: page.getByRole("heading", { name }) });
