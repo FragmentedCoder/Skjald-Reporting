@@ -65,6 +65,19 @@ export function interpolations(text: string): Interpolation[] {
   return found;
 }
 
+/**
+ * What's typed in a box to try expressions: an expression as rules have it, the same
+ * in {{ }} as the name lists show it, or text with names in {{ }} as a text block has.
+ */
+export function readTyped(typed: string): { expr: string } | { text: string; parts: Interpolation[] } | { unclosed: true } {
+  const parts = interpolations(typed);
+  if (!parts.length) return { expr: typed.trim() };
+  if (parts.some((p) => !p.closed)) return { unclosed: true };
+  const [first] = parts;
+  const alone = parts.length === 1 && !typed.slice(0, first.start).trim() && !typed.slice(first.end).trim();
+  return alone ? { expr: first.expr } : { text: typed, parts };
+}
+
 function* nodes(node: RichNode | RichText): Generator<RichNode | RichText> {
   yield node;
   for (const child of node.content ?? []) yield* nodes(child);

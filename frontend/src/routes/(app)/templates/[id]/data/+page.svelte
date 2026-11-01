@@ -36,7 +36,7 @@
   <section class="section" aria-labelledby="try-title">
     <h2 id="try-title" class="section-title">Try an expression <Where builder /></h2>
     <TryExpression declarations={declared} {values} language={content.settings.language} tables={draft.libraryPreview.tables}
-      about={"Worked out on the sample answers, the way rules and text in {{ }} are."} />
+      about={"An expression as rules have it, a name in {{ }}, or text with names in {{ }} as a text block has, worked out on the sample answers."} />
   </section>
 
   <NamesBrowser {groups} />
