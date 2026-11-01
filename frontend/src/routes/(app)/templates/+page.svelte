@@ -9,17 +9,21 @@
   import Upload from "@lucide/svelte/icons/upload";
   import Plus from "@lucide/svelte/icons/plus";
   import X from "@lucide/svelte/icons/x";
-  import { onMount } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import { ApiError, sessionGone } from "#lib/api.js";
   import { pageTitle } from "#lib/branding.svelte.js";
   import Dialog from "#lib/components/Dialog.svelte";
   import Pill from "#lib/components/Pill.svelte";
+  import TemplateCover from "#lib/components/TemplateCover.svelte";
   import RowMenu, { type MenuItem } from "#lib/components/RowMenu.svelte";
   import { dateTime } from "#lib/format.js";
+  import { PreviewStyle } from "#lib/reportStyles/preview.svelte.js";
   import { templatesApi, type TemplateSummary } from "#lib/templates/api.js";
+  import { Covers } from "#lib/templates/covers.js";
   import { toast } from "#lib/toast.svelte.js";
 
-  // Every template, for those who build them: what's published, what's in a draft.
+  // Every template, for those who build them, as cards: its first page, name and
+  // description, what's published and what's in a draft, and when it was made.
   let templates = $state<TemplateSummary[] | null>(null);
   let error = $state<string | null>(null);
 
@@ -125,7 +129,14 @@
     return items;
   }
 
-  onMount(load);
+  // The cards' first pages: drawn in the company's default style, one by one.
+  const covers = new Covers();
+  const looks = new PreviewStyle();
+  onMount(() => {
+    void load();
+    void looks.load();
+  });
+  onDestroy(() => covers.close());
 </script>
 
 <svelte:head><title>{pageTitle("Templates")}</title></svelte:head>
@@ -155,41 +166,34 @@
 
   {#if templates}
     {#if templates.length}
-      <div class="section table-wrap">
-        <table class="table">
-          <thead>
-            <tr><th>Name</th><th>Published</th><th class="roomy">Draft</th><th><span class="visually-hidden">Actions</span></th></tr>
-          </thead>
-          <tbody>
-            {#each templates as t (t.id)}
-              <tr class:retired={t.retired}>
-                <td>
-                  <a class="row-link" href={resolve("/(app)/templates/[id]", { id: String(t.id) })}>{t.name}</a>
-                  {#if t.retired}<Pill tone="neutral" text="Retired" />{/if}
-                  {#if t.description}<span class="small muted description">{t.description}</span>{/if}
-                </td>
-                <td>
-                  {#if t.latest_version !== null}
-                    Version {t.latest_version}
-                    <span class="small muted">{dateTime(t.published_at ?? "")}</span>
-                  {:else}
-                    <span class="muted">Not yet</span>
-                  {/if}
-                </td>
-                <td class="roomy">
-                  {#if t.draft}
-                    <Pill tone="info" text="Draft" />
-                    <span class="small muted">{t.draft.saved_by ?? "Someone"}, {dateTime(t.draft.saved_at)}</span>
-                  {:else}
-                    <span class="muted">None</span>
-                  {/if}
-                </td>
-                <td class="actions"><RowMenu label="Actions for {t.name}" items={menu(t)} /></td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
+      <ul class="cards" aria-label="Templates">
+        {#each templates as t (t.id)}
+          {@const href = resolve("/(app)/templates/[id]", { id: String(t.id) })}
+          <li class="card" class:retired={t.retired}>
+            <a class="picture" {href} tabindex="-1" aria-hidden="true"><TemplateCover template={t} {covers} {looks} /></a>
+            <div class="about">
+              <div class="title-row">
+                <a class="name" {href}>{t.name}</a>
+                <RowMenu label="Actions for {t.name}" items={menu(t)} />
+              </div>
+              {#if t.description}<p class="small muted description" title={t.description}>{t.description}</p>{/if}
+              <div class="status">
+                {#if t.retired}<Pill tone="neutral" text="Retired" />{/if}
+                {#if t.latest_version !== null}
+                  <Pill tone="ok" text="Version {t.latest_version}" />
+                {:else}
+                  <Pill tone="neutral" text="Not published yet" />
+                {/if}
+                {#if t.draft}<Pill tone="info" text={t.latest_version !== null ? "Draft changes" : "Draft"} />{/if}
+              </div>
+              <p class="small muted when">
+                {#if t.latest_version !== null}Published {dateTime(t.published_at ?? "")}<br />{/if}
+                Created {dateTime(t.created_at)}{t.created_by ? ` by ${t.created_by}` : ""}
+              </p>
+            </div>
+          </li>
+        {/each}
+      </ul>
     {:else}
       <section class="empty">
         <p>No templates yet.</p>
@@ -261,27 +265,82 @@
     opacity: 0.6;
     pointer-events: none;
   }
-  .description {
+  /* Cards, as many to a row as fit. */
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: var(--space-4);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .card {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+  }
+  .card:hover {
+    border-color: var(--border-strong);
+  }
+  .card:focus-within {
+    outline: 2px solid var(--link);
+    outline-offset: 2px;
+  }
+  /* The top of the first page: what tells templates apart. */
+  .picture {
     display: block;
+    aspect-ratio: 4 / 3;
+    overflow: hidden;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-subtle);
+  }
+  .about {
+    display: grid;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4) var(--space-4);
+  }
+  .title-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+  .name {
+    color: var(--text);
+    font-weight: 600;
+    text-decoration: none;
+  }
+  .name:hover {
+    text-decoration: underline;
+  }
+  .description {
+    display: -webkit-box;
+    margin: 0;
+    overflow: hidden;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  .status {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+  }
+  .when {
+    margin: 0;
+  }
+  .retired .picture {
+    opacity: 0.5;
+  }
+  .retired .name {
+    color: var(--text-muted);
   }
   .danger-fill {
     background: var(--critical-text);
     color: var(--surface);
-  }
-  .retired .row-link {
-    color: var(--text-muted);
-  }
-  .actions {
-    width: 1%;
-    text-align: right;
-  }
-  .table-wrap {
-    container-type: inline-size;
-  }
-  @container (max-width: 560px) {
-    .roomy {
-      display: none;
-    }
   }
   .empty {
     display: flex;

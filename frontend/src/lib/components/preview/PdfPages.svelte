@@ -112,7 +112,8 @@
   });
   // Each page's list: what the drag library is given.
   function zoneOf(p: number) {
-    const options = { items: entriesOf(p), type: onplace ? "blocks" : "pages", dragDisabled: !onplace, dropFromOthersDisabled: !onplace,
+    // Pages only to look at are no stop for the keyboard.
+    const options = { items: entriesOf(p), type: onplace ? "blocks" : "pages", dragDisabled: !onplace, dropFromOthersDisabled: !onplace, zoneTabIndex: onplace ? 0 : -1,
       flipDurationMs: 150, dropTargetClasses: ["dropping"], dropTargetStyle: {}, transformDraggedElement: carried, ...DRAG_OPTIONS, hooked: hooks.hooked };
     return options;
   }

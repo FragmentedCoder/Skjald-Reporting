@@ -35,6 +35,8 @@ export interface TemplateSummary {
   published_at: string | null;
   draft: DraftSummary | null;
   retired: boolean;
+  created_at: string;
+  created_by: string | null;
   updated_at: string;
 }
 
