@@ -278,7 +278,7 @@
       <h1>{b.title}</h1>
       {#if b.subtitle}<p class="subtitle">{b.subtitle}</p>{/if}
       {#if b.facts.length}
-        <dl class="facts">{#each b.facts as fact, i (i)}<dt>{fact.label}</dt><dd>{fact.value}</dd>{/each}</dl>
+        <dl class="cover-facts">{#each b.facts as fact, i (i)}<dt>{fact.label}</dt><dd>{fact.value}</dd>{/each}</dl>
       {/if}
     </div>
   {:else if b.kind === "toc"}
@@ -620,16 +620,17 @@
     color: var(--text-soft);
     font-size: 1.33em;
   }
-  .facts {
+  /* Not "facts": the app has a style of its own by that name. */
+  .cover-facts {
     display: grid;
     grid-template-columns: max-content 1fr;
     gap: 0.3em 1.2em;
     margin: 2em 0 0;
   }
-  .facts dt {
+  .cover-facts dt {
     color: var(--text-soft);
   }
-  .facts dd {
+  .cover-facts dd {
     margin: 0;
   }
   .toc ol {
