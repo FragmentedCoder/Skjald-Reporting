@@ -1,7 +1,9 @@
 <script lang="ts">
   import type { PreviewStyle } from "#lib/reportStyles/preview.svelte.js";
 
-  // Which style the builder's preview is drawn in: the company's styles, or the Skjald default.
+  // Which style the builder's preview is drawn in: the company's styles, or the Skjald
+  // default. Only the preview changes: a report is printed in its customer's style. It
+  // sits at the end of the preview's title line; the page shows looks.problem itself.
   let { looks }: { looks: PreviewStyle } = $props();
 
   function pick(event: Event & { currentTarget: HTMLSelectElement }) {
@@ -10,7 +12,7 @@
   }
 </script>
 
-<label class="picker small">
+<label class="picker small" title="The report style the preview is drawn in: its colours, fonts, page designs and logos. Only the preview changes; a report is printed in its customer's style.">
   <span>Preview in</span>
   <select class="input" value={looks.chosen === null ? "" : String(looks.chosen)} onchange={pick}>
     <option value="">The Skjald default</option>
@@ -19,18 +21,22 @@
     {/each}
   </select>
 </label>
-{#if looks.problem}<p class="alert alert-warning small">{looks.problem}</p>{/if}
 
 <style>
   .picker {
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    margin-bottom: var(--space-3);
     color: var(--text-muted);
   }
+  /* Compact, to sit in a title line beside other small controls. */
   .picker select {
     width: auto;
     min-width: 12rem;
+    min-height: 0;
+    height: 34px;
+    padding-top: 0;
+    padding-bottom: 0;
+    font-size: 13px;
   }
 </style>

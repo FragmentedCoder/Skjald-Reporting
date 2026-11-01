@@ -225,9 +225,13 @@
     <div class="intro">
       <div class="title-line">
         <h2 id="layout-title" class="section-title">The PDF <Where pdf /></h2>
-        <div class="views" role="group" aria-label="Show">
-          <button type="button" aria-pressed={view === "blocks"} onclick={() => (view = "blocks")}>Blocks</button>
-          <button type="button" aria-pressed={view === "pages"} onclick={() => (view = "pages")}>Pages</button>
+        <!-- At the right end: on the pages, which style they're drawn in; then the switch. -->
+        <div class="tools">
+          {#if view === "pages" && live.paged}<StylePicker {looks} />{/if}
+          <div class="views" role="group" aria-label="Show">
+            <button type="button" aria-pressed={view === "blocks"} onclick={() => (view = "blocks")}>Blocks</button>
+            <button type="button" aria-pressed={view === "pages"} onclick={() => (view = "pages")}>Pages</button>
+          </div>
         </div>
       </div>
       <p class="small muted">
@@ -241,11 +245,11 @@
       <BlockList bind:blocks={content.layout} label="Blocks in the PDF" empty="Drag a block here, or click one in the palette."
         selected={selectedId} {hidden} problems={(id) => draft.problemsFor(id).length} readonly={draft.readonly} onselect={select} />
     {:else if live.paged}
+      {#if looks.problem}<p class="alert alert-warning small">{looks.problem}</p>{/if}
       {#if live.problem}<p class="alert alert-warning small">{live.problem}</p>{/if}
       {#if live.model?.errors.length}
         <p class="alert alert-warning small">{live.model.errors.length} expression{live.model.errors.length === 1 ? "" : "s"} failed with the sample answers, shown as ⚠ on the pages.</p>
       {/if}
-      <StylePicker {looks} />
       <PdfPages paged={live.paged} look={looks.look(live.model?.pageTexts)} language={content.settings.language}
         classification={String(draft.sampleContext.project.classification)} selected={selectedId} onselect={select}
         onplace={draft.readonly ? undefined : place} />
@@ -305,6 +309,13 @@
   }
   .intro p {
     margin: var(--space-1) 0 var(--space-3);
+  }
+  .tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-3);
   }
   .views {
     display: inline-flex;
