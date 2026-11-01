@@ -60,6 +60,14 @@ function rowExample(values: Record<string, unknown>, of: NonNullable<NameEntry["
   return of.every ? rows.map(cell).filter((v) => v !== null && v !== undefined && v !== "").join(", ") : cell(rows[0]);
 }
 
+/** A name's example: a list of rows by how many there are. */
+function example(entry: NameEntry, values: Record<string, unknown>): string {
+  if (entry.of) return shown(rowExample(values, entry.of));
+  const value = valueOf(values, entry.name);
+  if (entry.shape === "rows" && Array.isArray(value)) return `${value.length} row${value.length === 1 ? "" : "s"}`;
+  return shown(value);
+}
+
 /**
  * The names in their groups, in order: answers, the report's context, custom fields,
  * the library, data tables. With `live`, the names whose example is a current value;
@@ -73,7 +81,7 @@ export function nameGroups(entries: NameEntry[], values: Record<string, unknown>
     if (!group) groups.push((group = { title: entry.group, about: ABOUT[entry.group] ?? sources[entry.group] ?? "", rows: [] }));
     const current = live && (live.has(entry.name) || /^(vars|text)\./.test(entry.name));
     group.rows.push({
-      name: entry.name, what: entry.label, kind: human(entry.type), example: shown(entry.of ? rowExample(values, entry.of) : valueOf(values, entry.name)),
+      name: entry.name, what: entry.label, kind: human(entry.type), example: example(entry, values),
       ...(entry.field ? { field: entry.field } : {}), ...(live ? { live: current } : {}),
     });
   }

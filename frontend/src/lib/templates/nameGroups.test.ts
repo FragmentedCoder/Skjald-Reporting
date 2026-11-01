@@ -79,6 +79,7 @@ describe("names read from rows", () => {
     const values = { answers: { attackers: [{ ip: "198.51.100.23", attempts: 1204, status: "blocked" }, { ip: "203.0.113.77", attempts: 611, status: "" }] } };
     const rows = nameGroups(entries, values).find((g) => g.title === "Answers")?.rows ?? [];
     const example = (name: string) => rows.find((r) => r.name === name)?.example;
+    expect(example("answers.attackers")).toBe("2 rows");
     expect(example("size(answers.attackers)")).toBe("2");
     expect(example("answers.attackers[0].attempts")).toBe("1204");
     expect(example('answers.attackers.map(row, row.ip).join(", ")')).toBe('"198.51.100.23, 203.0.113.77"');
