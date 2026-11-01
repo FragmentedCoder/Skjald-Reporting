@@ -235,10 +235,9 @@
             {@const now = status(t)}
             {@const items = menu(t)}
             <li class="card" class:retired={t.retired}>
+              <!-- Only for those who open templates: the drawing reads the template. -->
               {#if builds}
                 <a class="picture" {href} tabindex="-1" aria-hidden="true"><TemplateCover template={t} {covers} {looks} /></a>
-              {:else}
-                <div class="picture"><TemplateCover template={t} {looks} /></div>
               {/if}
               <div class="title-bar">
                 <span class="language" title={t.language === "da" ? "Reports in Danish" : "Reports in English"}>{t.language.toUpperCase()}</span>
@@ -332,7 +331,7 @@
     <form id="delete-template" class="stack" onsubmit={(e) => { e.preventDefault(); void remove(); }}>
       <p>
         Delete “{deleting?.name}” for good? Its {deleting?.latest_version === 1 ? "version" : `${deleting?.latest_version} versions`}
-        and pictures go with it, and no one can bring it back. The audit log keeps its name and its versions' fingerprints.
+        and pictures go with it, and no one can bring it back. The audit log keeps its name and a fingerprint of each version.
       </p>
       <div class="field">
         <label for="delete-name">Type the template's name to confirm</label>

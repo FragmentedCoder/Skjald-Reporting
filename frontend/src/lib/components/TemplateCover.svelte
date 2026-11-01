@@ -7,25 +7,19 @@
 
   // A template's first page, small, for its card: worked out once the card comes into
   // view, in the company's default style. Only a picture: the card's link opens it.
-  let { template, covers, looks }: {
-    template: TemplateSummary;
-    /** Without it (for those who can't open templates), there's no picture. */
-    covers?: Covers;
-    looks: PreviewStyle;
-  } = $props();
+  let { template, covers, looks }: { template: TemplateSummary; covers: Covers; looks: PreviewStyle } = $props();
 
   let frame = $state<HTMLDivElement>();
   let paged = $state<Paged | null>(null);
   let progress = $state<"waiting" | "drawing" | "done">("waiting");
 
   $effect(() => {
-    const drawer = covers;
-    if (!frame || !drawer) return;
+    if (!frame) return;
     const observer = new IntersectionObserver(async ([seen]) => {
       if (!seen.isIntersecting || progress !== "waiting") return;
       observer.disconnect();
       progress = "drawing";
-      paged = await drawer.firstPage(template, looks.texts);
+      paged = await covers.firstPage(template, looks.texts);
       progress = "done";
     }, { rootMargin: "200px" });
     observer.observe(frame);
@@ -37,7 +31,7 @@
   {#if paged}
     <PdfPages {paged} look={looks.look(undefined)} />
   {:else}
-    <div class="blank small muted">{!covers ? "No picture" : progress === "done" ? "No pages yet" : "Drawing the first page…"}</div>
+    <div class="blank small muted">{progress === "done" ? "No pages yet" : "Drawing the first page…"}</div>
   {/if}
 </div>
 
