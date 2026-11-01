@@ -89,7 +89,7 @@ test("a designer builds a template's form, with rules, and publishes it", async 
   await panel(page).getByLabel("Question", { exact: true }).fill("Attacking addresses");
   const showWhen = panel(page).getByRole("group", { name: "Show only when" });
   await showWhen.getByRole("button", { name: "Add a condition" }).click();
-  await showWhen.getByLabel("Show only when 1: what to check").selectOption({ label: "Was the attacking address found?" });
+  await showWhen.getByLabel("Show only when 1: what to check").selectOption({ label: "YN · Was the attacking address found?" });
   await expect(showWhen.getByLabel("Show only when 1: how")).toHaveValue("yes");
   await expect(showWhen.getByText("answers.attack_found", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /^Attacking addresses, Repeating group, edit/ })).toContainText("shown when a rule says so");
@@ -114,7 +114,7 @@ test("a designer builds a template's form, with rules, and publishes it", async 
   await rename(page, "severity");
   const worked = panel(page).getByRole("group", { name: "Worked out as" });
   await worked.getByLabel("Worked out as: how it's worked out").selectOption({ label: "By conditions (IF / ELSE)" });
-  await worked.getByLabel("Worked out as, if 1: what to check").selectOption({ label: "Highest CVSS score" });
+  await worked.getByLabel("Worked out as, if 1: what to check").selectOption({ label: "NU · Highest CVSS score" });
   await worked.getByLabel("Worked out as, if 1: how").selectOption({ label: "is at least" });
   await worked.getByLabel("Worked out as, if 1: value").fill("9");
   await worked.getByLabel("Worked out as, if: then").fill("Critical");
@@ -266,10 +266,10 @@ test("a designer lays out the PDF and sees its pages", async ({ browser }) => {
   // Selecting the section and clicking a block adds it inside the section.
   await page.getByRole("button", { name: "Section: Summary, edit" }).click();
   await blocks.getByRole("button", { name: /^Answer/ }).click();
-  await panel(page).getByLabel("Answer to print").selectOption({ label: "Serial numbers" });
+  await panel(page).getByLabel("Answer to print").selectOption({ label: "ST · Serial numbers (serials)" });
   await expect(page.getByRole("list", { name: "Blocks in “Summary”" }).getByRole("button", { name: "Answer: Answer, edit" })).toBeVisible();
   await blocks.getByRole("button", { name: /^Table/ }).click();
-  await panel(page).getByLabel("Rows from").selectOption({ label: "Devices" });
+  await panel(page).getByLabel("Rows from").selectOption({ label: "RG · Devices (devices)" });
   await panel(page).getByLabel("Caption", { exact: true }).fill("Devices destroyed");
 
   // Rich text with a name in it.
@@ -295,7 +295,7 @@ test("a designer lays out the PDF and sees its pages", async ({ browser }) => {
   const tone = panel(page).getByRole("group", { name: "Tone set by the answers" });
   await tone.getByRole("button", { name: "Add a rule" }).click();
   await tone.getByLabel("Tone set by the answers: how it's worked out").selectOption({ label: "By conditions (IF / ELSE)" });
-  await tone.getByLabel("Tone set by the answers, if 1: what to check").selectOption({ label: "Devices" });
+  await tone.getByLabel("Tone set by the answers, if 1: what to check").selectOption({ label: "RG · Devices" });
   await tone.getByLabel("Tone set by the answers, if 1: how").selectOption({ label: "has no rows" });
   await tone.getByLabel("Tone set by the answers, if: then").selectOption({ label: "Critical" });
   await tone.getByLabel("Tone set by the answers: otherwise").selectOption({ label: "Info" });
