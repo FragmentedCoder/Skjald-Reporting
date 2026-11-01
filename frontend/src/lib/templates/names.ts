@@ -43,9 +43,9 @@ export function questionNames(question: Question): Record<string, string> {
  * questions share a variable name the first one's names count; the duplicate is a
  * problem of its own.
  */
-export function declarations(content: TemplateContent, library: Record<string, string> = {}): Record<string, string> {
+export function declarations(content: TemplateContent | null, library: Record<string, string> = {}): Record<string, string> {
   const names: Record<string, string> = { ...CONTEXT };
-  for (const question of questionsOf(content)) {
+  for (const question of content ? questionsOf(content) : []) {
     for (const [name, type] of Object.entries(questionNames(question))) {
       if (!(name in names)) names[name] = type;
     }

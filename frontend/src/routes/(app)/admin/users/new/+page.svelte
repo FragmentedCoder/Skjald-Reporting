@@ -17,7 +17,7 @@
 
   const blank = (): ProfileForm => ({
     display_name: "", first_name: "", middle_name: "", last_name: "", job_title: "",
-    department: "", email: "", phone: "",
+    department: "", company: "", email: "", phone: "",
   });
   let profile = $state<ProfileForm>(blank());
   let username = $state("");
