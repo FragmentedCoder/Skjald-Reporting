@@ -23,9 +23,9 @@
   let { kind: shown }: { kind: LibraryKind } = $props();
 
   const KINDS: { kind: LibraryKind; label: string; one: string; about: string }[] = [
-    { kind: "variable", label: "Variables", one: "variable", about: "One line each, such as the service desk's phone number. Templates read them as vars.name." },
-    { kind: "snippet", label: "Text snippets", one: "text snippet", about: "Paragraphs to reuse, which may use variables in {{ }}. Templates read them as text.name; technicians can insert them in long answers." },
-    { kind: "table", label: "Data tables", one: "data table", about: "Values by key, such as a severity for each CVSS rating. Templates read them with lookup(\"table\", key), or lookup(\"table\", key, \"column\")." },
+    { kind: "variable", label: "Variables", one: "variable", about: "One line each, such as the service desk's phone number or the company's web address. Change one here and every template, and every report not yet signed, shows the new value. Templates read them as vars.name, such as {{vars.service_desk}} in text." },
+    { kind: "snippet", label: "Text snippets", one: "text snippet", about: "Paragraphs to reuse, such as a standard disclaimer or how to reach the service desk. They may use variables in {{ }}, but not other snippets. Templates read them as text.name; technicians can insert them in long answers." },
+    { kind: "table", label: "Data tables", one: "data table", about: "Values looked up by a key, such as a severity for each CVSS rating or a contact for each region: a key column, and one or more columns of values. Templates read them with lookup(\"table\", key), or lookup(\"table\", key, \"column\") for one of several columns." },
   ];
 
   let entries = $state<LibraryEntry[] | null>(null);
@@ -141,7 +141,7 @@
 
 <div class="list">
   <div class="intro">
-    <p class="small muted">{kind.about} Every change is kept, and a report keeps the values it was signed with.</p>
+    <p class="small muted">{kind.about} Every change is kept as a version, an administrator can lock an entry so it stays as it is, and a signed report keeps the values it was signed with.</p>
     <button class="button button-primary" type="button" onclick={() => open(null)}>
       <Plus size={18} aria-hidden="true" /> Add a {kind.one}
     </button>

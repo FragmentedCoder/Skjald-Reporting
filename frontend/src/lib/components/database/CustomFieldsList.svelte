@@ -130,7 +130,7 @@
 
 <div class="list">
   <div class="intro">
-    <p class="small muted">What the company keeps about customers and projects beyond the built-in details, such as a support agreement or a ticket number. The values are encrypted with each customer's own key.</p>
+    <p class="small muted">What the company keeps about customers and projects beyond the built-in details, such as a support agreement or a ticket number. Administrators and managers fill them in; templates print them and use them in rules. A field's key and type never change once it's made, since templates read it by them, and archiving one takes it off the forms but keeps what was filled in. The values are encrypted with each customer's own key.</p>
     <button class="button button-primary" type="button" onclick={() => open(null)}><Plus size={18} aria-hidden="true" /> Add a field</button>
   </div>
   <label class="check small"><input type="checkbox" bind:checked={showArchived} /> Show archived fields</label>

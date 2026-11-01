@@ -47,6 +47,28 @@
 </script>
 
 <div class="names">
+  <section class="section" aria-labelledby="how-title">
+    <h2 id="how-title" class="section-title">How names work</h2>
+    <div class="how">
+      <div>
+        <h3>A name stands for one detail</h3>
+        <p class="small muted">Such as <code>customer.name</code> for the customer's name. Templates are written with names, and each report fills them in with its own customer, project, author and answers.</p>
+      </div>
+      <div>
+        <h3>In text, put it in {"{{ }}"}</h3>
+        <p class="small muted">A text block, heading or caption prints the value: <code>Report for {"{{customer.name}}"}</code>. Type <code>{"{{"}</code> in a field, or open Names in the template editor, to pick one.</p>
+      </div>
+      <div>
+        <h3>In rules, write it as it is</h3>
+        <p class="small muted">Rules and calculated values are expressions, without braces: <code>customer.language == "da"</code> shows something only in Danish reports. Try one below first.</p>
+      </div>
+      <div>
+        <h3>Where the values come from</h3>
+        <p class="small muted">The customer, the project and the people on it; custom fields from the customer's and project's settings; the library from the other tabs here. A signed report keeps the values it was signed with.</p>
+      </div>
+    </div>
+  </section>
+
   <section class="section" aria-labelledby="try-title">
     <h2 id="try-title" class="section-title">Try an expression <Where builder /></h2>
     <TryExpression declarations={declarations(null, names)} {values} tables={shared.tables}
@@ -75,6 +97,20 @@
     display: flex;
     align-items: center;
     gap: var(--space-2);
+  }
+  /* Four short explanations, side by side where they fit. */
+  .how {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: var(--space-3) var(--space-4);
+    margin-top: var(--space-3);
+  }
+  .how h3 {
+    margin: 0 0 var(--space-1);
+    font-size: 14px;
+  }
+  .how p {
+    margin: 0;
   }
   .list {
     display: grid;
