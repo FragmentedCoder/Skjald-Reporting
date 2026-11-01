@@ -19,6 +19,7 @@ import Signpost from "@lucide/svelte/icons/signpost";
 import SquareSplitVertical from "@lucide/svelte/icons/square-split-vertical";
 import Table2 from "@lucide/svelte/icons/table-2";
 import { newId } from "./edit";
+import { docText } from "./text";
 import type { Icon } from "./fieldIcons";
 import type { Block, BlockKind, RichText, Signer } from "./types";
 
@@ -134,6 +135,11 @@ export function blockSummary(block: Block): string {
       return block.caption || BLOCK_TYPES[block.kind].label;
     case "switch":
       return block.value?.trim() ? `By ${block.value.trim()}` : "Switch";
+    case "text": {
+      // Its first words, so texts side by side (a switch's cases) can be told apart.
+      const words = docText(block.content).replace(/\s+/g, " ").trim();
+      return words ? (words.length > 80 ? `${words.slice(0, 79).trimEnd()}…` : words) : "Text";
+    }
     default:
       return BLOCK_TYPES[block.kind].label;
   }

@@ -109,8 +109,8 @@ describe("answers change what's printed", () => {
     expect(critical.errors).toEqual([]);
     expect(printed(critical)).toEqual(["b_crit", "b_crit2"]);
     expect(find(critical.blocks, "b_crit2")).toMatchObject({ text: "Critical" });
-    expect(critical.hidden).toContainEqual({ id: "b_high", reason: "Another case is printed: the answers give “Critical”" });
-    expect(critical.hidden).toContainEqual({ id: "b_other", reason: "Printed when no case matches: the answers give “Critical”" });
+    expect(critical.hidden).toContainEqual({ id: "b_high", reason: "The answers give “Critical”" });
+    expect(critical.hidden).toContainEqual({ id: "b_other", reason: "The answers give “Critical”" });
 
     const low = preview(input(c, { ...c.sample.answers, q_cvss: 2 }));
     expect(low.values.severity).toBe("Low");

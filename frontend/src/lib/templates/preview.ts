@@ -399,11 +399,9 @@ class Worker {
     const given = value === null || value === "" ? "nothing" : `“${String(value)}”`;
     const at = b.cases.findIndex((c) => c.match === value);
     const chosen = value === undefined ? null : at < 0 ? b.otherwise : b.cases[at].blocks;
+    const reason = value === undefined ? "What picks the case can't be worked out" : `The answers give ${given}`;
     for (const list of [...b.cases.map((c) => c.blocks), b.otherwise]) {
-      if (list === chosen) continue;
-      const reason = value === undefined ? "What picks the case can't be worked out"
-        : list === b.otherwise ? `Printed when no case matches: the answers give ${given}` : `Another case is printed: the answers give ${given}`;
-      for (const inner of list) this.hidden.push({ id: inner.id, reason });
+      if (list !== chosen) for (const inner of list) this.hidden.push({ id: inner.id, reason });
     }
     return chosen ?? [];
   }
