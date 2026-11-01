@@ -49,7 +49,7 @@
   const names = $derived(Object.keys(questionNames(question)));
 
   // Other questions with the same label: easy to mix up among many.
-  const twins = $derived(questionsOf(content).filter((q) => q.id !== question.id && q.label.trim().toLowerCase() === question.label.trim().toLowerCase()));
+  const twins = $derived(questionsOf(content).filter((q) => q.id !== question.id && fieldType(q.type).asks && q.label.trim().toLowerCase() === question.label.trim().toLowerCase()));
   // A variable name made of the type's shorthand and the label, such as yn_attacker_ip,
   // offered until the name starts with the shorthand.
   const suggested = $derived.by(() => {
