@@ -291,14 +291,14 @@
   .workspace {
     display: grid;
     grid-template-columns: 210px minmax(0, 1fr) minmax(290px, 380px);
-    grid-template-areas: ". intro ." "palette canvas panel";
+    grid-template-areas: "intro intro intro" "palette canvas panel";
     gap: var(--space-4);
     align-items: start;
     margin-top: var(--space-4);
   }
   .workspace.readonly {
     grid-template-columns: minmax(0, 1fr) minmax(290px, 380px);
-    grid-template-areas: "intro ." "canvas panel";
+    grid-template-areas: "intro intro" "canvas panel";
   }
   .workspace > :global(.palette) {
     grid-area: palette;

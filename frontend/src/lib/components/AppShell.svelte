@@ -570,7 +570,7 @@
     padding: 0 var(--space-2);
   }
   .version {
-    margin: 0 0 var(--space-2);
+    margin: 0 0 var(--space-1);
     padding: 0 var(--space-2);
     overflow: hidden;
     text-overflow: ellipsis;
