@@ -49,6 +49,9 @@ LOCALES: dict[str, dict[str, Any]] = {
                      "Sunday"],
         "decimal": ".",
         "group": ",",
+        # Lengths of time in words, one and several: "3 days 1 hour".
+        "units": {"day": ["day", "days"], "hour": ["hour", "hours"],
+                  "minute": ["minute", "minutes"], "second": ["second", "seconds"]},
     },
     "da": {
         "months": ["januar", "februar", "marts", "april", "maj", "juni", "juli", "august",
@@ -58,6 +61,8 @@ LOCALES: dict[str, dict[str, Any]] = {
         "weekdays": ["mandag", "tirsdag", "onsdag", "torsdag", "fredag", "lørdag", "søndag"],
         "decimal": ",",
         "group": ".",
+        "units": {"day": ["dag", "dage"], "hour": ["time", "timer"],
+                  "minute": ["minut", "minutter"], "second": ["sekund", "sekunder"]},
     },
 }
 

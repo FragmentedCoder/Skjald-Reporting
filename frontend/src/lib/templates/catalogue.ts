@@ -43,6 +43,15 @@ const PARTS: Record<string, string> = {
   ".filled": "is filled in",
   ".printed": "as printed",
   ".count": "how many",
+  ".display_name": "name",
+  ".first_name": "first name",
+  ".middle_name": "middle name",
+  ".last_name": "last name",
+  ".job_title": "job title",
+  ".department": "department",
+  ".company": "company",
+  ".email": "email",
+  ".phone": "phone",
 };
 
 type RawColumn = { key: string; label: string; type: string; settings?: Record<string, unknown> };

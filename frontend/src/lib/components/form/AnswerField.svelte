@@ -7,20 +7,26 @@
   import RichTextEditor from "#lib/components/builder/RichTextEditor.svelte";
   import { checkAnswer, cvssScore } from "#lib/templates/answers.js";
   import { COLUMN_TYPES, settingsOf } from "#lib/templates/fields.js";
+  import { peopleFor, type Person } from "#lib/templates/preview.js";
+  import type { Drawn } from "#lib/templates/signature.js";
   import type { Question, RichText } from "#lib/templates/types.js";
   import SignaturePad from "./SignaturePad.svelte";
 
   // One question as the technician answers it, with its own check as they type. Files,
   // photos and signatures stay in the browser here: uploading them is the report's job.
-  let { question, value = $bindable(), required, hidden, invalid, computed, zone = "Europe/Copenhagen" }: {
+  let { question, value = $bindable(), required, hidden, invalid, computed, checked = false, people = [], zone = "Europe/Copenhagen" }: {
     question: Question;
     value: unknown;
     required: boolean;
     hidden: boolean;
+    /** The answers have been checked: a required question left empty says so, visited or not. */
+    checked?: boolean;
     /** The question's own rule saying the answer isn't valid. */
     invalid: string | null;
     /** A calculated value, worked out. */
     computed: unknown;
+    /** The people a person question can pick. */
+    people?: Person[];
     zone?: string;
   } = $props();
 
@@ -46,7 +52,7 @@
     }
     return checkAnswer(question.type, s, value);
   });
-  const problem = $derived(typeProblem ?? invalid ?? (touched && required && empty ? "This is required." : null));
+  const problem = $derived(typeProblem ?? invalid ?? ((touched || checked) && required && empty ? "This is required." : null));
 
   // Dates are typed in the company's time zone and kept as an instant.
   function toInput(iso: unknown, date: boolean): string {
@@ -138,6 +144,15 @@
             <option value="">Choose…</option>
             {#each options as o (o.value)}<option value={o.value}>{o.label}</option>{/each}
           </select>
+        {:else if question.type === "person"}
+          {@const choices = peopleFor(question, people)}
+          {@const picked = (value as Person | null)?.id ?? ""}
+          <select class="input" aria-labelledby="{id}-label" value={picked}
+            onchange={(e) => (value = choices.find((p) => p.id === e.currentTarget.value) ?? null)}>
+            <option value="">Choose…</option>
+            {#each choices as p (p.id)}<option value={p.id}>{p.display_name}{p.job_title ? `, ${p.job_title}` : ""}</option>{/each}
+            {#if picked && !choices.some((p) => p.id === picked)}<option value={picked}>{(value as Person).display_name}</option>{/if}
+          </select>
         {:else if question.type === "multi_select"}
           <span class="choices">
             {#each options as o (o.value)}
@@ -166,7 +181,7 @@
           {/if}
           <span class="small muted">Here they stay in your browser. In a report they're uploaded, scanned and encrypted{question.type === "photo" ? ", and their location data removed" : ""}.</span>
         {:else if question.type === "signature"}
-          <SignaturePad bind:value={() => (value as string | null) ?? null, (v) => (value = v)} label={question.label} />
+          <SignaturePad bind:value={() => (value as Drawn | null) ?? null, (v) => (value = v)} label={question.label} />
         {:else if question.type === "repeating" || question.type === "table"}
           {@const fixed = question.type === "table" ? ((s.rows ?? []) as { key: string; label: string }[]) : null}
           <div class="grid-wrap">

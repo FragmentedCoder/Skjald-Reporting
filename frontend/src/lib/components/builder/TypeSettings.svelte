@@ -93,6 +93,18 @@
       <option value="date">A date</option>
     </select>
   </div>
+{:else if question.type === "person"}
+  <div class="field">
+    <label for="{id}-who">Picked among</label>
+    <select id="{id}-who" class="input" bind:value={question.settings.who}>
+      <option value="technicians">The company's technicians</option>
+      <option value="reviewers">The company's reviewers</option>
+      <option value="team">The people on the report's project</option>
+      <option value="everyone">Everyone who can sign in</option>
+    </select>
+    <span class="hint">The report keeps the person's name and business details as they were when picked. Here in the builder, the sample
+      report's author and reviewer stand in for the company's people.</span>
+  </div>
 {:else if question.type === "yes_no"}
   <div class="row">
     <div class="field"><label for="{id}-yes">Yes is shown as</label><input id="{id}-yes" class="input" bind:value={question.settings.yes_label} maxlength="50" /></div>

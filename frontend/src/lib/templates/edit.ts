@@ -191,7 +191,8 @@ export interface Usage {
 
 /** Where a question is used: the blocks that print it and the expressions that read it. */
 export function usage(content: TemplateContent, question: Question): Usage {
-  const blocks = blocksOf(content.layout).filter((b) => "question" in b && b.question === question.id);
+  const blocks = blocksOf(content.layout).filter((b) => ("question" in b && b.question === question.id)
+    || (b.kind === "signatures" && b.signers.some((signer) => signer.question === question.id)));
   let expressions = 0;
   if (question.key) {
     const prefix = `answers.${question.key}`;

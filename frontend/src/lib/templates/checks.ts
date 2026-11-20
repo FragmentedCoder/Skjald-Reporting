@@ -9,7 +9,7 @@ import { Engine, ExpressionError, human, unknownName } from "#lib/cel/engine.js"
 import { fieldType, settingsOf } from "./fields";
 import { declarations, ITEM, questionNames } from "./names";
 import { docExpressions, interpolations } from "./text";
-import { questionsOf, type Block, type Problem, type Question, type RichText, type Switch, type TemplateContent } from "./types";
+import { questionsOf, SIGNS, type Block, type Problem, type Question, type RichText, type Switch, type TemplateContent } from "./types";
 
 // Words CEL keeps for itself: answers.<key> can't be read with one of them as key.
 export const RESERVED = new Set([
@@ -18,6 +18,7 @@ export const RESERVED = new Set([
 ]);
 const LISTS = new Set(["repeating", "table"]);
 export const ITEM_OUTSIDE = "item is only there inside a section repeated for each item.";
+const SIGNERS = { technician: "The technician", reviewer: "The reviewer", company: "The company seal" };
 
 const fits = (got: string, expected: string) =>
   got === "dyn" || got === expected || (expected === "list" && got.startsWith("list<"));
@@ -115,6 +116,7 @@ class Checker {
   question(q: Question, seenKeys: Set<string>) {
     this.id(q.id);
     const type = fieldType(q.type);
+    if (!q.label.trim()) this.add(q.id, "label", type.asks ? "Write the question." : "Write the heading.");
     if (type.asks) {
       if (q.key === null) this.add(q.id, "key", "Give the question a variable name.");
       else if (RESERVED.has(q.key)) this.add(q.id, "key", `${q.key} is a reserved word in expressions: choose another variable name.`);
@@ -140,6 +142,17 @@ class Checker {
 
   settings(q: Question) {
     const s = settingsOf(q.type, q.settings);
+    const labels = (list: unknown) => ((list ?? []) as { label: string }[]).map((entry) => entry.label.trim());
+    if (q.type === "dropdown" || q.type === "multi_select") {
+      labels(s.options).forEach((label, i) => !label && this.add(q.id, "settings.options", `Write what choice ${i + 1} is shown as.`));
+    }
+    if (q.type === "yes_no") {
+      for (const [name, word] of [["yes_label", "Yes"], ["no_label", "No"]]) {
+        if (!String(s[name] ?? "").trim()) this.add(q.id, `settings.${name}`, `Write what ${word} is shown as.`);
+      }
+    }
+    if (LISTS.has(q.type)) labels(s.columns).forEach((label, i) => !label && this.add(q.id, "settings.columns", `Give column ${i + 1} a heading.`));
+    if (q.type === "table") labels(s.rows).forEach((label, i) => !label && this.add(q.id, "settings.rows", `Give row ${i + 1} a heading.`));
     if ((q.type === "text" || q.type === "serial") && s.pattern) {
       try {
         RE2JS.compile(String(s.pattern));
@@ -218,6 +231,17 @@ class Checker {
     if (!columns.some((c) => c.key === key)) this.add(element, field, `“${q.label}” has no column ${key}.`);
   }
 
+  /** A signature drawn in the form: its signature pad question is there. */
+  pad(element: string, field: string, questionId: string | null) {
+    if (questionId === null) {
+      this.add(element, field, "Choose the signature pad this signature shows.");
+      return;
+    }
+    const q = this.byId.get(questionId);
+    if (!q) this.add(element, field, "The signature pad this signature shows was removed.");
+    else if (q.type !== "signature") this.add(element, field, `“${q.label}” isn't a signature pad.`);
+  }
+
   /**
    * What picks a switch's case gives text or a whole number, and each case's value is
    * one of those, picked by no other case.
@@ -266,12 +290,14 @@ class Checker {
         this.text(b.id, "title", b.title, item);
         break;
       case "section":
+        if (!b.title.trim()) this.add(b.id, "title", "Give the section a title.");
         this.text(b.id, "title", b.title, item);
         this.rich(b.id, "intro", b.intro ?? null, item);
         this.expr(b.id, "repeat_for", b.repeat_for, "list", outer);
         for (const child of b.blocks) this.block(child, item);
         break;
       case "heading":
+        if (!b.text.trim()) this.add(b.id, "text", "Write the heading.");
         this.text(b.id, "text", b.text, item);
         break;
       case "text":
@@ -327,13 +353,20 @@ class Checker {
       }
       case "sources":
         this.text(b.id, "intro", b.intro, item);
+        b.items.forEach((source, i) => !source.title.trim() && this.add(b.id, `items.${i}.title`, `Give source ${i + 1} a title.`));
         if (b.question !== null) {
           const q = this.chosen(b.id, b.question, "");
           if (q !== null) this.isList(b.id, q);
         }
         break;
       case "signatures":
-        b.signers.forEach((signer, i) => this.text(b.id, `signers.${i}.label`, signer.label, item));
+        b.signers.forEach((signer, i) => {
+          if (signer.role === "pad") this.pad(b.id, `signers.${i}.question`, signer.question ?? null);
+          else if (!SIGNS[this.content.settings.signing].includes(signer.role)) {
+            this.add(b.id, `signers.${i}.role`, `${SIGNERS[signer.role]} doesn't sign this template's reports: change who signs on the Settings tab, or take this signature out.`);
+          }
+          this.text(b.id, `signers.${i}.label`, signer.label, item);
+        });
         break;
       case "columns":
         for (const column of b.columns) for (const child of column) this.block(child, item);
@@ -377,6 +410,7 @@ export function check(content: TemplateContent, options: CheckOptions = {}): Pro
   const seenKeys = new Set<string>();
   for (const step of content.form) {
     checker.id(step.id);
+    if (!step.title.trim()) checker.add(step.id, "title", "Give the step a title.");
     checker.expr(step.id, "visible_when", step.visible_when, "bool");
     for (const q of step.questions) checker.question(q, seenKeys);
   }

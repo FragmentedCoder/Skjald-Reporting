@@ -10,6 +10,7 @@
   import { useDraft } from "#lib/templates/draft.svelte.js";
   import { fieldType, settingsOf } from "#lib/templates/fields.js";
   import { LivePreview } from "#lib/templates/live.svelte.js";
+  import { samplePeople } from "#lib/templates/preview.js";
   import type { Question, TemplateContent } from "#lib/templates/types.js";
 
   // "Try it": the technician's screen for the draft, one step at a time, with the PDF
@@ -33,6 +34,8 @@
   });
 
   const model = $derived(live.model);
+  // Whom person questions offer here: the sample report's author and reviewer.
+  const people = $derived(samplePeople(draft.sampleContext));
   const hidden = $derived(new Set(model?.formHidden ?? []));
   const required = $derived(new Set(model?.formRequired ?? []));
   const invalid = $derived(new Map((model?.invalid ?? []).map((i) => [i.id, i.message])));
@@ -40,8 +43,11 @@
   let current = $state(0);
   const step = $derived(steps[Math.min(current, steps.length - 1)]);
 
+  // A question not answered yet shows what it starts as ("Starts as").
   function answer(q: Question): unknown {
-    return LOCAL.has(q.type) ? local[q.id] : content.sample.answers[q.id];
+    if (LOCAL.has(q.type)) return local[q.id];
+    const kept = content.sample.answers[q.id];
+    return kept === undefined ? model?.defaults[q.id] : kept;
   }
 
   function set(q: Question, value: unknown) {
@@ -50,7 +56,9 @@
       if (blank) delete local[q.id];
       else local[q.id] = value;
     } else if (blank) {
-      delete content.sample.answers[q.id];
+      // Cleared on purpose: one that starts as something stays empty, kept as null.
+      if (q.default?.trim()) content.sample.answers[q.id] = null;
+      else delete content.sample.answers[q.id];
     } else {
       content.sample.answers[q.id] = value;
     }
@@ -109,7 +117,7 @@
         {#each step.questions as q (q.id)}
           {#if !(q.type === "calculated" && !q.settings.show_in_form)}
             <AnswerField question={q} bind:value={() => answer(q), (v) => set(q, v)} required={required.has(q.id)}
-              hidden={hidden.has(q.id)} invalid={invalid.get(q.id) ?? null} computed={q.key ? model?.values[q.key] : undefined} />
+              hidden={hidden.has(q.id)} invalid={invalid.get(q.id) ?? null} computed={q.key ? model?.values[q.key] : undefined} {checked} {people} />
           {/if}
         {:else}
           <p class="small muted">This step has no questions yet.</p>
@@ -152,7 +160,7 @@
     {#if looks.problem}<p class="alert alert-warning small">{looks.problem}</p>{/if}
     {#if live.problem}<p class="alert alert-warning small">{live.problem}</p>{/if}
     {#if live.paged}
-      <PdfPages paged={live.paged} look={looks.look(live.model?.pageTexts)} language={content.settings.language}
+      <PdfPages paged={live.paged} look={looks.look(live.model?.pageTexts)} language={content.settings.language} reportNumber={String(draft.sampleContext.report.number)}
         classification={String(draft.sampleContext.project.classification)} />
     {:else}
       <p class="muted">Working out the pages…</p>

@@ -14,7 +14,7 @@
   import { branding } from "#lib/branding.svelte.js";
   import { PreviewStyle } from "#lib/reportStyles/preview.svelte.js";
   import { templatesApi, type Asset } from "#lib/templates/api.js";
-  import { BLOCK_GROUPS, BLOCK_TYPES, newBlock } from "#lib/templates/blocks.js";
+  import { BLOCK_GROUPS, BLOCK_TYPES, blockSummary, newBlock } from "#lib/templates/blocks.js";
   import { catalogue, type NameEntry } from "#lib/templates/catalogue.js";
   import { useDraft } from "#lib/templates/draft.svelte.js";
   import { settingsOf } from "#lib/templates/fields.js";
@@ -168,6 +168,9 @@
   }
   function removeNow() {
     if (!found) return;
+    const summary = blockSummary(found.block);
+    const kind = BLOCK_TYPES[found.block.kind].label;
+    draft.removing(summary === kind ? `the ${kind.toLowerCase()} block` : `the ${kind.toLowerCase()} “${summary.length > 60 ? `${summary.slice(0, 59)}…` : summary}”`);
     found.list.splice(found.index, 1);
     draft.selection = null;
     confirming = false;
@@ -223,26 +226,25 @@
     <Palette entries={palette} type="blocks" title="Blocks" onadd={add} />
   {/if}
 
-  <section class="canvas" aria-labelledby="layout-title">
-    <div class="intro">
-      <div class="title-line">
-        <h2 id="layout-title" class="section-title">The PDF <Where pdf /></h2>
-        <!-- At the right end: on the pages, which style they're drawn in; then the switch. -->
-        <div class="tools">
-          {#if view === "pages" && live.paged}<StylePicker {looks} />{/if}
-          <div class="views" role="group" aria-label="Show">
-            <button type="button" aria-pressed={view === "blocks"} onclick={() => (view = "blocks")}>Blocks</button>
-            <button type="button" aria-pressed={view === "pages"} onclick={() => (view = "pages")}>Pages</button>
-          </div>
+  <div class="intro">
+    <div class="title-line">
+      <h2 id="layout-title" class="section-title">The PDF <Where pdf /></h2>
+      <!-- At the right end: on the pages, which style they're drawn in; then the switch. -->
+      <div class="tools">
+        {#if view === "pages" && live.paged}<StylePicker {looks} />{/if}
+        <div class="views" role="group" aria-label="Show">
+          <button type="button" aria-pressed={view === "blocks"} onclick={() => (view = "blocks")}>Blocks</button>
+          <button type="button" aria-pressed={view === "pages"} onclick={() => (view = "pages")}>Pages</button>
         </div>
       </div>
-      <p class="small muted">
-        {view === "blocks"
-          ? "Everything here is printed, in this order, for the customer. Drag blocks into place, or click one in the palette."
-          : "What the sample answers print, by the same page rules as the PDF. Click a block to change it, or drag it somewhere else."}
-      </p>
     </div>
-
+    <p class="small muted">
+      {view === "blocks"
+        ? "Everything here is printed, in this order, for the customer. Drag blocks into place, or click one in the palette."
+        : "What the sample answers print, by the same page rules as the PDF. Click a block to change it, or drag it somewhere else."}
+    </p>
+  </div>
+  <section class="canvas" aria-labelledby="layout-title">
     {#if view === "blocks"}
       <BlockList bind:blocks={content.layout} label="Blocks in the PDF" empty="Drag a block here, or click one in the palette."
         selected={selectedId} {hidden} problems={(id) => draft.problemsFor(id).length} readonly={draft.readonly} onselect={select} />
@@ -252,7 +254,7 @@
       {#if live.model?.errors.length}
         <p class="alert alert-warning small">{live.model.errors.length} expression{live.model.errors.length === 1 ? "" : "s"} failed with the sample answers, shown as ⚠ on the pages.</p>
       {/if}
-      <PdfPages paged={live.paged} look={looks.look(live.model?.pageTexts)} language={content.settings.language}
+      <PdfPages paged={live.paged} look={looks.look(live.model?.pageTexts)} language={content.settings.language} reportNumber={String(draft.sampleContext.report.number)}
         classification={String(draft.sampleContext.project.classification)} selected={selectedId} onselect={select}
         onplace={draft.readonly ? undefined : place} />
     {:else}
@@ -287,15 +289,28 @@
 </Dialog>
 
 <style>
+  /* The title and its line over the middle column only, so the palette, the first
+     card and the settings panel start level. */
   .workspace {
     display: grid;
     grid-template-columns: 210px minmax(0, 1fr) minmax(290px, 380px);
+    grid-template-areas: "intro intro intro" "palette canvas panel";
     gap: var(--space-4);
     align-items: start;
     margin-top: var(--space-4);
   }
   .workspace.readonly {
     grid-template-columns: minmax(0, 1fr) minmax(290px, 380px);
+    grid-template-areas: "intro intro" "canvas panel";
+  }
+  .workspace > :global(.palette) {
+    grid-area: palette;
+  }
+  .intro {
+    grid-area: intro;
+  }
+  .canvas {
+    grid-area: canvas;
   }
   .title-line {
     display: flex;
@@ -310,7 +325,7 @@
     gap: var(--space-2);
   }
   .intro p {
-    margin: var(--space-1) 0 var(--space-3);
+    margin: var(--space-1) 0 0;
   }
   .tools {
     display: flex;
@@ -340,6 +355,7 @@
     color: var(--text);
   }
   .panel {
+    grid-area: panel;
     position: sticky;
     top: var(--space-4);
     max-height: calc(100vh - 2 * var(--space-4));
@@ -356,9 +372,13 @@
     border: 0;
   }
   @media (max-width: 1100px) {
-    .workspace,
+    .workspace {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-areas: "palette" "intro" "canvas" "panel";
+    }
     .workspace.readonly {
       grid-template-columns: minmax(0, 1fr);
+      grid-template-areas: "intro" "canvas" "panel";
     }
     .panel {
       position: static;

@@ -73,6 +73,9 @@ def test_a_new_template_starts_with_a_step_and_a_section() -> None:
     ({"form": [{"id": "s_main1", "title": "Step", "questions": [
         {"id": "q_x123", "key": "x", "type": "number", "label": "X",
          "settings": {"whole": True, "colour": "red"}}]}]}, "Extra inputs"),
+    ({"form": [{"id": "s_main1", "title": "Step", "questions": [
+        {"id": "q_x123", "key": "x", "type": "person", "label": "X",
+         "settings": {"who": "strangers"}}]}]}, "Input should be"),
     ({"layout": [{"id": "b_main1", "kind": "marquee"}]}, "does not match any of the expected"),
     ({"layout": [{"id": "B_MAIN", "kind": "page_break"}]}, "pattern"),
     ({"layout": [{"id": "b_switch", "kind": "switch", "value": "answers.seen",

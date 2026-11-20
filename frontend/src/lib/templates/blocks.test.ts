@@ -21,6 +21,17 @@ describe("signers", () => {
   });
 });
 
+describe("a signature pad as a signer", () => {
+  it("names its question, and lets go of it when someone else signs", () => {
+    const signer: Signer = { role: "technician", label: "Technician", style: "handwritten" };
+    changeSigner(signer, "pad");
+    expect(signer).toEqual({ role: "pad", label: "Signature", style: "handwritten", question: null });
+    signer.question = "q_pad1";
+    changeSigner(signer, "company");
+    expect(signer).toEqual({ role: "company", label: "Company seal", style: "stamp" });
+  });
+});
+
 describe("blockSummary", () => {
   it("names a text block by its first words, and a switch by what picks its case", () => {
     expect(blockSummary({ ...newBlock("text"), content: emptyDoc("During the attack on {{company.name}} infrastructure") } as Block)).toBe("During the attack on {{company.name}} infrastructure");

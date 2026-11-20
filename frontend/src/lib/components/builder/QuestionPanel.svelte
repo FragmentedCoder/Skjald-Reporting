@@ -145,8 +145,10 @@
       <RuleField id="{id}-required" label="Required only when" bind:value={question.required_when} kind="condition" {engine} {entries}
         problem={problem("required_when")} hint="Required or not, as set above." />
       {#if own && ["string", "double", "int", "bool", "timestamp"].includes(own)}
-        <RuleField id="{id}-default" label="Starts as" bind:value={question.default} kind="value" expects={own} {engine} {entries}
-          problem={problem("default")} hint="Starts empty." />
+        <RuleField id="{id}-default" label="Starts as" bind:value={question.default} kind="value" expects={own} {engine}
+          entries={entries.filter((e) => e.name !== `answers.${question.key}`)}
+          problem={problem("default")}
+          hint={question.type === "datetime" ? "Starts empty. Add a rule to start it as the day or the moment the report is started." : "Starts empty."} />
         {#if question.default}
           <button class="link-button small clear" type="button" onclick={() => (question.default = null)}>Start empty instead</button>
         {/if}
@@ -167,7 +169,11 @@
     {#if used.blocks.length}
       <p class="small">Printed by {#each used.blocks as b, i (b.id)}{blockName(b.kind, "title" in b ? String(b.title) : undefined)}{i < used.blocks.length - 1 ? ", " : ""}{/each}.</p>
     {:else}
-      <p class="small muted">No block prints this answer. Add one on the Layout tab, or use it in text and rules.</p>
+      <p class="small muted">
+        {question.type === "signature"
+          ? "No block prints this signature. On the Layout tab, add a Signatures block and choose “A signature pad in the form”, or an Answer block."
+          : "No block prints this answer. Add one on the Layout tab, or use it in text and rules."}
+      </p>
     {/if}
     {#if used.expressions}
       <p class="small muted">Read by {used.expressions} rule{used.expressions === 1 ? "" : "s"} or text{used.expressions === 1 ? "" : "s"}.</p>

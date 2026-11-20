@@ -296,8 +296,23 @@ function find(values: Record<string, unknown>, dotted: string): unknown {
 }
 
 /** A CEL value as plain JavaScript: whole numbers as numbers, maps as objects. */
+/** A length of time as plain data (cel-js's own doesn't survive the trip from the worker). */
+export interface Span {
+  "@duration": number;
+}
+
+/** Whether a plain value is a length of time, in seconds. */
+export function isSpan(value: unknown): value is Span {
+  return !!value && typeof value === "object" && typeof (value as Span)["@duration"] === "number" && Object.keys(value).length === 1;
+}
+
+type CelDuration = { seconds: bigint | number; nanos: number; addDuration: unknown };
+const isCelDuration = (value: unknown): value is CelDuration =>
+  !!value && typeof value === "object" && typeof (value as CelDuration).addDuration === "function" && "nanos" in value;
+
 export function plain(value: unknown): unknown {
   if (typeof value === "bigint") return Number(value);
+  if (isCelDuration(value)) return { "@duration": Number(value.seconds) + value.nanos / 1e9 } satisfies Span;
   if (Array.isArray(value)) return value.map(plain);
   if (value instanceof Map) return Object.fromEntries([...value].map(([k, v]) => [String(k), plain(v)]));
   if (value && typeof value === "object" && !(value instanceof Date)) {

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import incident from "../../../../shared/templates/incident.json";
 import { paginate } from "./pages";
-import { preview, sampleContext, type PreviewInput, type Shown } from "./preview";
+import { Engine } from "#lib/cel/engine.js";
+import { peopleFor, preview, printValue, sampleContext, samplePeople, type PreviewInput, type Shown } from "./preview";
 import type { TemplateContent } from "./types";
 
 const content = () => structuredClone(incident) as unknown as TemplateContent;
@@ -123,5 +124,126 @@ describe("answers change what's printed", () => {
     const model = preview(input(c));
     expect(find(model.blocks, "b_broken")).toMatchObject({ text: "⚠ and on" });
     expect(model.errors.map((e) => e.element)).toEqual(["b_broken"]);
+  });
+});
+
+describe("a table's rows, numbered", () => {
+  it("puts a No. column first, the same in every table of those rows", () => {
+    const c = content();
+    c.layout.push(
+      { id: "b_rows1", kind: "table", visible_when: null, question: "q_attackers", caption: "", columns: ["ip"], empty_text: "", row_numbers: true },
+      { id: "b_rows2", kind: "table", visible_when: null, question: "q_attackers", caption: "", columns: ["status"], empty_text: "", row_numbers: true },
+    );
+    const model = preview(input(c));
+    expect(find(model.blocks, "b_rows1")).toMatchObject({ grid: { headers: ["No.", "Address"], rows: [["1", "198.51.100.23"], ["2", "203.0.113.77"], ["3", "2001:db8::5"]] } });
+    expect(find(model.blocks, "b_rows2")).toMatchObject({ grid: { headers: ["No.", "Status"], rows: [["1", "Blocked"], ["2", "Blocked"], ["3", "Monitored"]] } });
+    // Not asked for: as before.
+    expect((find(model.blocks, "b_table") as { grid: { headers: string[] } }).grid.headers).toEqual(["Address", "Sign-in attempts", "Status"]);
+    c.settings.language = "da";
+    expect((find(preview(input(c)).blocks, "b_rows1") as { grid: { headers: string[] } }).grid.headers[0]).toBe("Nr.");
+  });
+});
+
+describe("a person picked from the company", () => {
+  it("offers the sample report's people by what the question asks for, and prints who's picked", () => {
+    const c = content();
+    const people = samplePeople(sampleContext());
+    expect(people.map((p) => [p.id, p.role, p.display_name])).toEqual([["sample-author", "technician", "Freja Holm"], ["sample-reviewer", "reviewer", "Anders Berg"]]);
+    const question = { ...c.form[0].questions[0], id: "q_done1", key: "done_by", type: "person", label: "Procedure performed by", required: false, settings: { who: "technicians" } };
+    expect(peopleFor(question, people).map((p) => p.display_name)).toEqual(["Freja Holm"]);
+    expect(peopleFor({ ...question, settings: { who: "everyone" } }, people)).toHaveLength(2);
+
+    c.form[0].questions.push(question);
+    c.layout.push(
+      { id: "b_done", kind: "answer", visible_when: null, question: "q_done1", show_label: true },
+      { id: "b_donetext", kind: "heading", visible_when: null, text: '{{answers.done_by.filled ? answers.done_by.display_name + ", " + answers.done_by.job_title : "Nobody yet"}}' },
+    );
+    const before = preview(input(c));
+    expect(before.errors).toEqual([]);
+    expect(find(before.blocks, "b_donetext")).toMatchObject({ text: "Nobody yet" });
+    const after = preview(input(c, { ...c.sample.answers, q_done1: people[0] }));
+    expect(find(after.blocks, "b_done")).toMatchObject({ label: "Procedure performed by", text: "Freja Holm" });
+    expect(find(after.blocks, "b_donetext")).toMatchObject({ text: `Freja Holm, ${people[0].job_title}` });
+  });
+});
+
+describe("signature pads", () => {
+  it("draws a pad's strokes where it signs, and says so where it isn't signed", () => {
+    const c = content();
+    c.form[0].questions.push({ ...c.form[0].questions[0], id: "q_pad1", key: "witness", type: "signature", label: "Witness", required: false, settings: {} });
+    c.layout.push(
+      { id: "b_pads", kind: "signatures", visible_when: null, layout: "row", show_date: true,
+        signers: [{ role: "pad", label: "Witness", style: "handwritten", question: "q_pad1" }, { role: "technician", label: "Technician", style: "handwritten" }] },
+      { id: "b_padanswer", kind: "answer", visible_when: null, question: "q_pad1", show_label: true },
+      { id: "b_padtext", kind: "heading", visible_when: null, text: '{{answers.witness.filled ? "Signed" : "Not yet"}}' },
+    );
+    const empty = preview(input(c));
+    expect(find(empty.blocks, "b_pads")).toMatchObject({ signers: [{ role: "pad", strokes: null }, { role: "technician" }] });
+    expect(find(empty.blocks, "b_padanswer")).toMatchObject({ text: "Not signed" });
+    expect(find(empty.blocks, "b_padtext")).toMatchObject({ text: "Not yet" });
+
+    const strokes = [[10, 20, 30, 40], [50, 60]];
+    const signed = preview(input(c, { ...c.sample.answers, q_pad1: { strokes } }));
+    expect(find(signed.blocks, "b_pads")).toMatchObject({ signers: [{ role: "pad", strokes }, { role: "technician" }] });
+    expect(find(signed.blocks, "b_padanswer")).toMatchObject({ text: null, strokes });
+    expect(find(signed.blocks, "b_padtext")).toMatchObject({ text: "Signed" });
+  });
+});
+
+describe("what questions start as", () => {
+  const started = "2026-11-20T13:47:31Z";
+  const withDefaults = () => {
+    const c = content();
+    const q = (id: string, key: string, type: string, rule: string, settings: Record<string, unknown> = {}) =>
+      ({ ...c.form[0].questions[0], id, key, type, label: key, required: false, default: rule, settings });
+    c.form[0].questions.push(
+      q("q_day1", "day", "datetime", "report.started", { mode: "date" }),
+      q("q_when", "moment", "datetime", "report.started", { mode: "datetime" }),
+      q("q_who1", "who", "text", "author.display_name"),
+    );
+    c.layout.push({ id: "b_start", kind: "heading", visible_when: null, text: "{{answers.day}} / {{answers.moment}} / {{answers.who}}" });
+    return c;
+  };
+  const run = (c: TemplateContent, answers: Record<string, unknown>) => {
+    const context = sampleContext();
+    context.report.started = started;
+    return preview({ content: c, answers, context, assets: {}, timezone: "Europe/Copenhagen" });
+  };
+
+  it("gives a question not answered yet its start: a date question the day, a date and time question the minute", () => {
+    const c = withDefaults();
+    const model = run(c, c.sample.answers);
+    expect(model.errors).toEqual([]);
+    expect(model.defaults).toEqual({ q_day1: "2026-11-19T23:00:00.000Z", q_when: "2026-11-20T13:47:00.000Z", q_who1: "Freja Holm" });
+    expect(find(model.blocks, "b_start")).toMatchObject({ text: "20 November 2026 / 20 November 2026, 14:47 / Freja Holm" });
+  });
+
+  it("leaves answered questions, and ones cleared on purpose, as they are", () => {
+    const c = withDefaults();
+    const model = run(c, { ...c.sample.answers, q_day1: "2026-10-01T22:00:00.000Z", q_who1: null });
+    expect(model.defaults).toEqual({ q_when: "2026-11-20T13:47:00.000Z" });
+    expect(model.values.who).toBeNull();
+  });
+});
+
+describe("printValue", () => {
+  const engine = new Engine({ "project.start_date": "timestamp", "project.end_date": "timestamp" }, {});
+  const values = { project: { start_date: "2026-11-01T00:00:00+01:00", end_date: "2026-11-20T00:00:00+01:00" } };
+  const print = (expr: string, language = "en") => printValue(engine.evaluate(expr, values), language, "Europe/Copenhagen");
+
+  it("prints a length of time in words", () => {
+    expect(print('duration("72h")')).toBe("3 days");
+    expect(print('duration("72h")', "da")).toBe("3 dage");
+    expect(print('duration("90m") + duration("1.5s")')).toBe("1 hour 30 minutes 1.5 seconds");
+    expect(print('duration("90m") + duration("1.5s")', "da")).toBe("1 time 30 minutter 1,5 sekunder");
+    expect(print("project.end_date - project.start_date")).toBe("19 days");
+    expect(print("project.start_date - project.end_date")).toBe("-19 days");
+    expect(print('duration("0s")')).toBe("0 minutes");
+  });
+
+  it("prints a moment at midnight as a date alone", () => {
+    expect(print("project.start_date")).toBe("1 November 2026");
+    expect(print('project.start_date + duration("9h")')).toBe("1 November 2026, 09:00");
+    expect(print("project.start_date", "da")).toBe("1 november 2026");
   });
 });

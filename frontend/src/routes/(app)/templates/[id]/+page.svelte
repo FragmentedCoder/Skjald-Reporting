@@ -88,9 +88,9 @@
   const look = dragLook<Item>((q) => ("palette" in q ? q.label : `${fieldType(q.type).label}: ${q.label}`));
   // Each step's list: what the drag library is given.
   function zoneOf(step: Step) {
-    const options = { items: itemsOf(step), type: "questions", flipDurationMs: 150, dragDisabled: draft.readonly,
-      dropTargetStyle: { outline: "2px dashed var(--link)", outlineOffset: "2px" }, transformDraggedElement: look, ...DRAG_OPTIONS, hooked: hooks.hooked };
-    return options;
+    hooks.watch();
+    return { items: itemsOf(step), type: "questions", flipDurationMs: 150, dragDisabled: draft.readonly,
+      dropTargetStyle: { outline: "2px dashed var(--link)", outlineOffset: "2px" }, transformDraggedElement: look, ...DRAG_OPTIONS };
   }
 
   function consider(step: Step, event: CustomEvent<DndEvent<Item>>) {
@@ -132,6 +132,7 @@
 
   function removeQuestion(step: Step, question: Question) {
     const remove = () => {
+      draft.removing(`“${question.label}”`);
       step.questions = step.questions.filter((q) => q.id !== question.id);
       draft.selection = { kind: "step", id: step.id };
     };
@@ -172,6 +173,7 @@
     if (!where || where.question || content.form.length === 1) return;
     const { step, stepIndex } = where;
     const remove = () => {
+      draft.removing(`the step “${step.title}”${step.questions.length ? " and its questions" : ""}`);
       content.form.splice(stepIndex, 1);
       draft.selection = null;
     };
@@ -213,15 +215,14 @@
     <Palette entries={palette} type="questions" title="Field types" onadd={add} />
   {/if}
 
+  <div class="intro">
+    <h2 id="form-title" class="section-title">The form <Where form /></h2>
+    <p class="small muted">
+      What the technician fills in, one step at a time: {content.form.length} step{content.form.length === 1 ? "" : "s"}, {total} question{total === 1 ? "" : "s"}.
+      Nothing is printed unless a block on the Layout tab, or a text, uses it.
+    </p>
+  </div>
   <section class="canvas" aria-labelledby="form-title">
-    <div class="intro">
-      <h2 id="form-title" class="section-title">The form <Where form /></h2>
-      <p class="small muted">
-        What the technician fills in, one step at a time: {content.form.length} step{content.form.length === 1 ? "" : "s"}, {total} question{total === 1 ? "" : "s"}.
-        Nothing is printed unless a block on the Layout tab, or a text, uses it.
-      </p>
-    </div>
-
     {#each content.form as step, s (step.id)}
       {@const stepProblems = draft.problemsFor(step.id).length}
       <article class="step" class:selected={selection?.id === step.id}>
@@ -302,18 +303,31 @@
 </Dialog>
 
 <style>
+  /* The title and its line over the middle column only, so the palette, the first
+     card and the settings panel start level. */
   .workspace {
     display: grid;
     grid-template-columns: 210px minmax(0, 1fr) minmax(290px, 360px);
+    grid-template-areas: "intro intro intro" "palette canvas panel";
     gap: var(--space-4);
     align-items: start;
     margin-top: var(--space-4);
   }
   .workspace.readonly {
     grid-template-columns: minmax(0, 1fr) minmax(290px, 360px);
+    grid-template-areas: "intro intro" "canvas panel";
+  }
+  .workspace > :global(.palette) {
+    grid-area: palette;
+  }
+  .intro {
+    grid-area: intro;
+  }
+  .canvas {
+    grid-area: canvas;
   }
   .intro p {
-    margin: var(--space-1) 0 var(--space-3);
+    margin: var(--space-1) 0 0;
   }
   .section-title {
     display: flex;
@@ -446,6 +460,7 @@
     text-align: center;
   }
   .panel {
+    grid-area: panel;
     position: sticky;
     top: var(--space-4);
     max-height: calc(100vh - 2 * var(--space-4));
@@ -462,9 +477,13 @@
     border: 0;
   }
   @media (max-width: 1100px) {
-    .workspace,
+    .workspace {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-areas: "palette" "intro" "canvas" "panel";
+    }
     .workspace.readonly {
       grid-template-columns: minmax(0, 1fr);
+      grid-template-areas: "intro" "canvas" "panel";
     }
     .panel {
       position: static;

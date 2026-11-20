@@ -54,9 +54,14 @@
       <legend>Who signs</legend>
       <label class="check"><input type="radio" name="signing" value="technician" bind:group={settings.signing} /> The technician</label>
       <label class="check"><input type="radio" name="signing" value="technician_reviewer" bind:group={settings.signing} /> The technician, then the reviewer</label>
-      <label class="check"><input type="radio" name="signing" value="company" bind:group={settings.signing} /> The company seal</label>
+      <label class="check"><input type="radio" name="signing" value="technician_company" bind:group={settings.signing} /> The technician, then the company seal</label>
+      <label class="check"><input type="radio" name="signing" value="technician_reviewer_company" bind:group={settings.signing} /> The technician, then the reviewer, then the company seal</label>
+      <label class="check"><input type="radio" name="signing" value="company" bind:group={settings.signing} /> The company seal alone</label>
     </fieldset>
-    <p class="small muted">The Signatures block on the Layout tab sets how each signature looks on the page.</p>
+    <p class="small muted">These are the digital signatures every finished report gets: each person signs as themselves, after confirming it's them,
+      and the company seal is added by Skjald. A report isn't final until all of them have signed, in this order. The Signatures block on the
+      Layout tab sets where each one shows on the page and how it looks; it can only show those who sign here. A signature pad question is
+      something else: a signature drawn in the form by someone who isn't a user of Skjald, such as the customer's witness.</p>
   </section>
 
   <section class="section">

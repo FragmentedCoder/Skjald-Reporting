@@ -61,7 +61,18 @@ export interface FixedValue {
   value: Literal;
 }
 
-export type ValueRule = IfValue | SwitchValue | FixedValue;
+/** The same as another name's value, such as when the report was started. */
+export interface NameValue {
+  kind: "name";
+  name: string;
+}
+
+export type ValueRule = IfValue | SwitchValue | FixedValue | NameValue;
+
+/** Whether a name of one shape can stand in for a value of another: numbers for numbers, else the same. */
+export function fitsShape(name: Shape, result: Shape): boolean {
+  return name === result || (result === "number" && name === "whole");
+}
 
 /** The kind of value a name holds, as the editors offer comparisons for it. */
 export type Shape = "text" | "number" | "whole" | "bool" | "date" | "texts" | "rows" | "other";
@@ -213,6 +224,8 @@ export function valueToCel(rule: ValueRule, result: Shape, shapes: Record<string
   switch (rule.kind) {
     case "fixed":
       return literal(rule.value, result);
+    case "name":
+      return rule.name;
     case "if": {
       let text = literal(rule.otherwise, result);
       for (const branch of [...rule.branches].reverse()) {
@@ -452,6 +465,8 @@ export function valueFromCel(expr: string, result: Shape, shapes: Record<string,
 function valueFrom(node: Node, shapes: Record<string, Shape>): ValueRule | null {
   const fixed = valueOf(node);
   if (fixed !== undefined) return { kind: "fixed", value: fixed };
+  const name = nameOf(node);
+  if (name !== null) return name in shapes ? { kind: "name", name } : null;
   if (node.op === "?:") {
     const branches: IfValue["branches"] = [];
     let current: unknown = node;
