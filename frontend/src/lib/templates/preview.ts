@@ -210,6 +210,12 @@ export function printValue(value: unknown, language: string, zone: string): stri
 interface Scope {
   engine: Engine;
   values: Record<string, unknown>;
+  /**
+   * Inside a repeated section: which repetition, as "~0", "~1" (and "~0~2" inside one in
+   * another). It ends the ID of everything printed there, so each printed block has an
+   * ID of its own; the part before the first ~ is the layout's block.
+   */
+  suffix?: string;
 }
 
 class Worker {
@@ -377,15 +383,15 @@ class Worker {
       const items = Array.isArray(list) ? list : [];
       if (!items.length) this.hidden.push({ id: b.id, reason: "Repeated for each item, and there are none" });
       return items.flatMap((entry, i) => {
-        const inner: Scope = { engine: this.itemEngine, values: { ...scope.values, item: entry } };
-        return this.section(inner, b, `${b.id}~${i}`, true);
+        const inner: Scope = { engine: this.itemEngine, values: { ...scope.values, item: entry }, suffix: `${scope.suffix ?? ""}~${i}` };
+        return this.section(inner, b, `${b.id}${inner.suffix}`, true);
       });
     }
     if (!this.shows(scope, b.id, b.visible_when)) {
       this.hidden.push({ id: b.id, reason: b.kind === "section" ? "Section hidden by its rule, with what's in it" : "Hidden by its rule" });
       return [];
     }
-    const id = b.id;
+    const id = `${b.id}${scope.suffix ?? ""}`;
     switch (b.kind) {
       case "section":
         return this.section(scope, b, id, item);

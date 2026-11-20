@@ -336,7 +336,7 @@
     </aside>
   {:else if b.kind === "severity_summary"}
     <figure class="severity">
-      <div class="counts">{#each b.counts as c (c.level)}<div class="count"><span class="n">{c.count}</span><span>{c.level}</span></div>{/each}</div>
+      <div class="counts">{#each b.counts as c, i (i)}<div class="count"><span class="n">{c.count}</span><span>{c.level}</span></div>{/each}</div>
       {#if b.caption}<figcaption>{b.caption}</figcaption>{/if}
     </figure>
   {:else if b.kind === "sources"}

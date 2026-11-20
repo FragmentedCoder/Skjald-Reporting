@@ -94,6 +94,28 @@ describe("answers change what's printed", () => {
     const repeated = model.blocks.filter((b) => b.id.startsWith("b_each~"));
     expect(repeated.map((b) => b.kind === "section" && b.title)).toEqual(["Address 198.51.100.23", "Address 203.0.113.77", "Address 2001:db8::5"]);
     expect(repeated.map((b) => b.kind === "section" && b.blocks.length)).toEqual([1, 1, 0]);
+    // What each repetition prints has an ID of its own, ending as its section's does.
+    expect(repeated.flatMap((b) => (b.kind === "section" ? b.blocks.map((inner) => inner.id) : []))).toEqual(["b_eachtxt~0", "b_eachtxt~1"]);
+  });
+
+  it("gives everything printed an ID of its own, however sections repeat and nest", () => {
+    const c = content();
+    const heading = (id: string) => ({ id, kind: "heading" as const, visible_when: null, text: "{{item.ip}}" });
+    const repeat = (id: string, blocks: TemplateContent["layout"]) => ({ id, kind: "section" as const, visible_when: null, title: "{{item.ip}}", intro: null, new_page: false,
+      numbered: true, landscape: false, repeat_for: "answers.attackers", blocks });
+    c.layout.push(repeat("b_outer", [heading("b_inhead"), { id: "b_incols", kind: "columns", visible_when: null, columns: [[heading("b_incol1")], [heading("b_incol2")]] },
+      repeat("b_inner", [heading("b_deep")])]));
+    const ids: string[] = [];
+    const walk = (blocks: Shown[]) => blocks.forEach((b) => {
+      ids.push(b.id);
+      if (b.kind === "section") walk(b.blocks);
+      if (b.kind === "columns") b.columns.forEach(walk);
+    });
+    const model = preview(input(c));
+    walk(model.blocks);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toContain("b_deep~2~1");
+    expect(paginate(model.blocks).pages.flatMap((p) => p.items.map((i) => i.block.id)).filter((id, i, list) => list.indexOf(id) !== i)).toEqual([]);
   });
 
   it("prints the first case of a switch with the value, else its otherwise", () => {
