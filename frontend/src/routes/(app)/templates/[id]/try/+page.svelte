@@ -160,7 +160,7 @@
     {#if looks.problem}<p class="alert alert-warning small">{looks.problem}</p>{/if}
     {#if live.problem}<p class="alert alert-warning small">{live.problem}</p>{/if}
     {#if live.paged}
-      <PdfPages paged={live.paged} look={looks.look(live.model?.pageTexts)} language={content.settings.language}
+      <PdfPages paged={live.paged} look={looks.look(live.model?.pageTexts)} language={content.settings.language} reportNumber={String(draft.sampleContext.report.number)}
         classification={String(draft.sampleContext.project.classification)} />
     {:else}
       <p class="muted">Working out the pages…</p>

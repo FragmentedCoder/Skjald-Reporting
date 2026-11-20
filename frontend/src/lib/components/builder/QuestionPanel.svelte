@@ -145,7 +145,8 @@
       <RuleField id="{id}-required" label="Required only when" bind:value={question.required_when} kind="condition" {engine} {entries}
         problem={problem("required_when")} hint="Required or not, as set above." />
       {#if own && ["string", "double", "int", "bool", "timestamp"].includes(own)}
-        <RuleField id="{id}-default" label="Starts as" bind:value={question.default} kind="value" expects={own} {engine} {entries}
+        <RuleField id="{id}-default" label="Starts as" bind:value={question.default} kind="value" expects={own} {engine}
+          entries={entries.filter((e) => e.name !== `answers.${question.key}`)}
           problem={problem("default")}
           hint={question.type === "datetime" ? "Starts empty. Add a rule to start it as the day or the moment the report is started." : "Starts empty."} />
         {#if question.default}

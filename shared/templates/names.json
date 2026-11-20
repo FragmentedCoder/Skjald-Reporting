@@ -61,7 +61,7 @@
         {"name": "report.number", "type": "string", "description": "The report's number.", "example": "INC-2026-0142"},
         {"name": "report.revision", "type": "int", "description": "The revision: 1, then 2 for the first correction, and so on.", "example": 1},
         {"name": "report.date", "type": "timestamp", "description": "When the report was signed, or today while it's a draft.", "example": "2026-10-24T09:30:00Z"},
-        {"name": "report.started", "type": "timestamp", "description": "When the report was started: the moment a question can start as.", "example": "2026-10-21T08:05:00Z"}
+        {"name": "report.started", "type": "timestamp", "description": "When the report was started.", "example": "2026-10-21T08:05:00Z"}
       ]
     },
     {
