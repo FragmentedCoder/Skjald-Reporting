@@ -17,6 +17,7 @@ export type Capability =
   | "fill_in_reports"
   | "review_and_countersign"
   | "build_templates"
+  | "delete_templates"
   | "edit_library"
   | "lock_library_entries"
   | "check_signed_reports"
@@ -36,7 +37,7 @@ export const ROLES: { role: Role; name: string; description: string }[] = [
     name: "Manager",
     description:
       "Runs customers and projects: assigns people, and chooses each project's responsible " +
-      "technician, reviewer and team. No admin panel.",
+      "technician, reviewer and team. Deletes retired templates. No admin panel.",
   },
   {
     role: "report_designer",

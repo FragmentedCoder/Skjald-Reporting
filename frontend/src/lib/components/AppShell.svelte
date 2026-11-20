@@ -91,6 +91,8 @@
   const full = $derived(customer?.visibility === "full");
   const showAdmin = $derived(can(current, "administer") || can(current, "read_audit_log"));
   const builds = $derived(can(current, "build_templates"));
+  // Managers see the templates too, to delete retired ones.
+  const templates = $derived(builds || can(current, "delete_templates"));
   const shares = $derived(can(current, "edit_library"));
   const styles = $derived(can(current, "edit_styles"));
   const sees = $derived(current.user.roles.length > 0);
@@ -360,9 +362,9 @@
           </div>
         {/if}
 
-        {#if builds || shares || styles}
+        {#if templates || shares || styles}
           <ul class="items divided">
-            {#if builds}
+            {#if templates}
               <li>{@render link({ href: resolve("/(app)/templates"), label: "Templates", icon: LayoutTemplate,
                 current: path.startsWith("/templates") })}</li>
             {/if}
