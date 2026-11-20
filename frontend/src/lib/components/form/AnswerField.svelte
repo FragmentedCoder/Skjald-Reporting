@@ -12,11 +12,13 @@
 
   // One question as the technician answers it, with its own check as they type. Files,
   // photos and signatures stay in the browser here: uploading them is the report's job.
-  let { question, value = $bindable(), required, hidden, invalid, computed, zone = "Europe/Copenhagen" }: {
+  let { question, value = $bindable(), required, hidden, invalid, computed, checked = false, zone = "Europe/Copenhagen" }: {
     question: Question;
     value: unknown;
     required: boolean;
     hidden: boolean;
+    /** The answers have been checked: a required question left empty says so, visited or not. */
+    checked?: boolean;
     /** The question's own rule saying the answer isn't valid. */
     invalid: string | null;
     /** A calculated value, worked out. */
@@ -46,7 +48,7 @@
     }
     return checkAnswer(question.type, s, value);
   });
-  const problem = $derived(typeProblem ?? invalid ?? (touched && required && empty ? "This is required." : null));
+  const problem = $derived(typeProblem ?? invalid ?? ((touched || checked) && required && empty ? "This is required." : null));
 
   // Dates are typed in the company's time zone and kept as an instant.
   function toInput(iso: unknown, date: boolean): string {
