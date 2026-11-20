@@ -161,15 +161,15 @@
         </p>
       </div>
       <div class="actions">
-        <button class="button button-secondary" type="button" aria-expanded={namesOpen} aria-controls="names-drawer"
-          title="Every name this template can read, to look up and insert" onclick={() => (namesOpen = !namesOpen)}>
-          <Braces size={16} aria-hidden="true" /> Names
-        </button>
         {#if !draft.readonly}
           <a class="problems" href="#problems" class:none={count === 0}>
             <Pill tone={count ? "warning" : "ok"} text={count ? `${count} problem${count === 1 ? "" : "s"}` : "No problems"} />
           </a>
         {/if}
+        <button class="button button-secondary" type="button" aria-expanded={namesOpen} aria-controls="names-drawer"
+          title="Every name this template can read, to look up and insert" onclick={() => (namesOpen = !namesOpen)}>
+          <Braces size={16} aria-hidden="true" /> Names
+        </button>
         {#if draft.readonly}
           <button class="button button-primary" type="button" onclick={edit}>Edit</button>
         {:else}
