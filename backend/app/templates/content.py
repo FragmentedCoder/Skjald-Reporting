@@ -61,11 +61,22 @@ def _unique(values: list[Any]) -> list[Any]:
     return values
 
 
+# Who signs a report under each signing setting, in order.
+SIGNS: dict[str, tuple[str, ...]] = {
+    "company": ("company",),
+    "technician": ("technician",),
+    "technician_reviewer": ("technician", "reviewer"),
+    "technician_company": ("technician", "company"),
+    "technician_reviewer_company": ("technician", "reviewer", "company"),
+}
+
+
 class Settings(Strict):
     # Reports are numbered <prefix>-<year>-<n>, such as INC-2026-0142.
     prefix: str = Field(default="REP", pattern=r"^[A-Z]{2,6}$")
     language: Literal["da", "en"] = "en"
-    signing: Literal["company", "technician", "technician_reviewer"] = "technician"
+    signing: Literal["company", "technician", "technician_reviewer", "technician_company",
+                     "technician_reviewer_company"] = "technician"
     review: Literal["mandatory", "optional"] = "optional"
     delivery: list[Literal["download", "email", "protected_pdf"]] = Field(
         default=["download"], min_length=1)
@@ -231,9 +242,14 @@ class Sources(BlockBase):
 
 
 class Signer(Strict):
-    role: Literal["technician", "reviewer", "company"]
+    # Someone who signs the report digitally, as the template's signing setting says, or
+    # "pad": a signature drawn in the form, on a signature pad question (someone who
+    # isn't a user of Skjald, such as the customer's witness).
+    role: Literal["technician", "reviewer", "company", "pad"]
     label: Line
     style: Literal["handwritten", "stamp"] = "handwritten"
+    # The signature pad question, for a pad.
+    question: Id | None = None
 
 
 class Signatures(BlockBase):

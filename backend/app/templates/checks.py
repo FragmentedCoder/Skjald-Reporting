@@ -20,6 +20,7 @@ import re2
 from app.cel import Engine, ExpressionError
 from app.cel.engine import human, unknown_name
 from app.templates.content import (
+    SIGNS,
     Answer,
     Block,
     Callout,
@@ -51,6 +52,7 @@ RESERVED = frozenset({
 })
 LISTS = ("repeating", "table")
 ITEM_OUTSIDE = "item is only there inside a section repeated for each item."
+SIGNERS = {"technician": "The technician", "reviewer": "The reviewer", "company": "The company seal"}
 
 
 @dataclass(frozen=True)
@@ -269,6 +271,17 @@ class _Checker:
         if key not in [c["key"] for c in q.settings["columns"]]:
             self.add(element, field_, f"“{q.label}” has no column {key}.")
 
+    def pad(self, element: str, field_: str, question_id: str | None) -> None:
+        """A signature drawn in the form: its signature pad question is there."""
+        if question_id is None:
+            self.add(element, field_, "Choose the signature pad this signature shows.")
+            return
+        q = self.by_id.get(question_id)
+        if q is None:
+            self.add(element, field_, "The signature pad this signature shows was removed.")
+        elif q.type != "signature":
+            self.add(element, field_, f"“{q.label}” isn't a signature pad.")
+
     def switched(self, b: Switch, *, item: bool) -> None:
         """What picks a switch's case gives text or a whole number, and each case's
         value is one of those, picked by no other case."""
@@ -385,7 +398,14 @@ class _Checker:
                 if q is not None:
                     self.is_list(b.id, q)
         elif isinstance(b, Signatures):
+            signs = SIGNS[self.content.settings.signing]
             for i, signer in enumerate(b.signers):
+                if signer.role == "pad":
+                    self.pad(b.id, f"signers.{i}.question", signer.question)
+                elif signer.role not in signs:
+                    self.add(b.id, f"signers.{i}.role",
+                             f"{SIGNERS[signer.role]} doesn't sign this template's reports: "
+                             "change who signs on the Settings tab, or take this signature out.")
                 self.text(b.id, f"signers.{i}.label", signer.label, item=item)
         elif isinstance(b, Columns):
             for column in b.columns:

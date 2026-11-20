@@ -9,7 +9,7 @@ import { Engine, ExpressionError, human, unknownName } from "#lib/cel/engine.js"
 import { fieldType, settingsOf } from "./fields";
 import { declarations, ITEM, questionNames } from "./names";
 import { docExpressions, interpolations } from "./text";
-import { questionsOf, type Block, type Problem, type Question, type RichText, type Switch, type TemplateContent } from "./types";
+import { questionsOf, SIGNS, type Block, type Problem, type Question, type RichText, type Switch, type TemplateContent } from "./types";
 
 // Words CEL keeps for itself: answers.<key> can't be read with one of them as key.
 export const RESERVED = new Set([
@@ -18,6 +18,7 @@ export const RESERVED = new Set([
 ]);
 const LISTS = new Set(["repeating", "table"]);
 export const ITEM_OUTSIDE = "item is only there inside a section repeated for each item.";
+const SIGNERS = { technician: "The technician", reviewer: "The reviewer", company: "The company seal" };
 
 const fits = (got: string, expected: string) =>
   got === "dyn" || got === expected || (expected === "list" && got.startsWith("list<"));
@@ -230,6 +231,17 @@ class Checker {
     if (!columns.some((c) => c.key === key)) this.add(element, field, `“${q.label}” has no column ${key}.`);
   }
 
+  /** A signature drawn in the form: its signature pad question is there. */
+  pad(element: string, field: string, questionId: string | null) {
+    if (questionId === null) {
+      this.add(element, field, "Choose the signature pad this signature shows.");
+      return;
+    }
+    const q = this.byId.get(questionId);
+    if (!q) this.add(element, field, "The signature pad this signature shows was removed.");
+    else if (q.type !== "signature") this.add(element, field, `“${q.label}” isn't a signature pad.`);
+  }
+
   /**
    * What picks a switch's case gives text or a whole number, and each case's value is
    * one of those, picked by no other case.
@@ -348,7 +360,13 @@ class Checker {
         }
         break;
       case "signatures":
-        b.signers.forEach((signer, i) => this.text(b.id, `signers.${i}.label`, signer.label, item));
+        b.signers.forEach((signer, i) => {
+          if (signer.role === "pad") this.pad(b.id, `signers.${i}.question`, signer.question ?? null);
+          else if (!SIGNS[this.content.settings.signing].includes(signer.role)) {
+            this.add(b.id, `signers.${i}.role`, `${SIGNERS[signer.role]} doesn't sign this template's reports: change who signs on the Settings tab, or take this signature out.`);
+          }
+          this.text(b.id, `signers.${i}.label`, signer.label, item);
+        });
         break;
       case "columns":
         for (const column of b.columns) for (const child of column) this.block(child, item);

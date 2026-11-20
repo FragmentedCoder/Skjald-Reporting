@@ -19,7 +19,7 @@ export interface RichNode {
 export interface Settings {
   prefix: string;
   language: "da" | "en";
-  signing: "company" | "technician" | "technician_reviewer";
+  signing: "company" | "technician" | "technician_reviewer" | "technician_company" | "technician_reviewer_company";
   review: "mandatory" | "optional";
   delivery: ("download" | "email" | "protected_pdf")[];
   styles: ("company" | "customer")[];
@@ -147,10 +147,22 @@ export interface Sources extends BlockBase {
   question: Id | null;
 }
 
+/** Who signs a report under each signing setting, in order. */
+export const SIGNS: Record<Settings["signing"], ("technician" | "reviewer" | "company")[]> = {
+  company: ["company"],
+  technician: ["technician"],
+  technician_reviewer: ["technician", "reviewer"],
+  technician_company: ["technician", "company"],
+  technician_reviewer_company: ["technician", "reviewer", "company"],
+};
+
 export interface Signer {
-  role: "technician" | "reviewer" | "company";
+  /** Someone who signs the report digitally, or "pad": a signature drawn in the form. */
+  role: "technician" | "reviewer" | "company" | "pad";
   label: string;
   style: "handwritten" | "stamp";
+  /** The signature pad question, for a pad. */
+  question?: Id | null;
 }
 
 export interface Signatures extends BlockBase {

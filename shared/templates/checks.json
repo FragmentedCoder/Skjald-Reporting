@@ -1470,6 +1470,11 @@
         },
         {
           "element": "b_sign1",
+          "field": "signers.1.role",
+          "message": "The company seal doesn't sign this template's reports: change who signs on the Settings tab, or take this signature out."
+        },
+        {
+          "element": "b_sign1",
           "field": "signers.1.label",
           "message": "author on its own isn't a value: use one name inside it, such as author.company."
         },
@@ -2162,6 +2167,167 @@
           "element": "b_srcs1",
           "field": "items.0.title",
           "message": "Give source 1 a title."
+        }
+      ]
+    },
+    {
+      "name": "Signatures: who signs, and signature pads",
+      "content": {
+        "schema": 1,
+        "settings": {
+          "prefix": "REP",
+          "language": "en",
+          "signing": "technician_company",
+          "review": "optional",
+          "delivery": [
+            "download"
+          ],
+          "styles": [
+            "company",
+            "customer"
+          ],
+          "customer_background": true
+        },
+        "form": [
+          {
+            "id": "s_main1",
+            "title": "Step",
+            "help": "",
+            "visible_when": null,
+            "questions": [
+              {
+                "id": "q_title",
+                "key": "title",
+                "type": "text",
+                "label": "Title",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "max_length": 500,
+                  "pattern": null,
+                  "pattern_message": "",
+                  "placeholder": ""
+                }
+              },
+              {
+                "id": "q_sign1",
+                "key": "witness",
+                "type": "signature",
+                "label": "Witness",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {}
+              }
+            ]
+          }
+        ],
+        "layout": [
+          {
+            "id": "b_sign1",
+            "visible_when": null,
+            "kind": "signatures",
+            "signers": [
+              {
+                "role": "technician",
+                "label": "Technician",
+                "style": "handwritten",
+                "question": null
+              },
+              {
+                "role": "reviewer",
+                "label": "Reviewer",
+                "style": "handwritten",
+                "question": null
+              },
+              {
+                "role": "company",
+                "label": "Seal",
+                "style": "stamp",
+                "question": null
+              },
+              {
+                "role": "pad",
+                "label": "Witness for {{answers.nope}}",
+                "style": "handwritten",
+                "question": "q_sign1"
+              }
+            ],
+            "layout": "row",
+            "show_date": true
+          },
+          {
+            "id": "b_sign2",
+            "visible_when": null,
+            "kind": "signatures",
+            "signers": [
+              {
+                "role": "pad",
+                "label": "A",
+                "style": "handwritten",
+                "question": null
+              },
+              {
+                "role": "pad",
+                "label": "B",
+                "style": "handwritten",
+                "question": "q_gone1"
+              },
+              {
+                "role": "pad",
+                "label": "C",
+                "style": "handwritten",
+                "question": "q_title"
+              }
+            ],
+            "layout": "row",
+            "show_date": true
+          }
+        ],
+        "sample": {
+          "answers": {}
+        }
+      },
+      "answers": {
+        "answers.title": "string",
+        "answers.witness.filled": "bool"
+      },
+      "problems": [
+        {
+          "element": "b_sign1",
+          "field": "signers.1.role",
+          "message": "The reviewer doesn't sign this template's reports: change who signs on the Settings tab, or take this signature out."
+        },
+        {
+          "element": "b_sign1",
+          "field": "signers.3.label",
+          "message": "answers.nope isn't a name this template has."
+        },
+        {
+          "element": "b_sign2",
+          "field": "signers.0.question",
+          "message": "Choose the signature pad this signature shows."
+        },
+        {
+          "element": "b_sign2",
+          "field": "signers.1.question",
+          "message": "The signature pad this signature shows was removed."
+        },
+        {
+          "element": "b_sign2",
+          "field": "signers.2.question",
+          "message": "“Title” isn't a signature pad."
         }
       ]
     }
