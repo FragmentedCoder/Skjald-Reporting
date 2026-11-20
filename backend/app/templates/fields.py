@@ -27,7 +27,10 @@ class Strict(BaseModel):
 
 class Option(Strict):
     value: str = Field(min_length=1, max_length=200)
-    label: str = Field(min_length=1, max_length=200)
+    # What a designer is halfway through typing may be empty in a draft: the checks
+    # (app/templates/checks.py) ask for it before publishing. The same goes for the
+    # other labels here.
+    label: str = Field(max_length=200)
 
 
 def _unique_options(options: list[Option]) -> list[Option]:
@@ -68,8 +71,8 @@ class DateTimeSettings(Strict):
 
 
 class YesNoSettings(Strict):
-    yes_label: str = Field(default="Yes", min_length=1, max_length=50)
-    no_label: str = Field(default="No", min_length=1, max_length=50)
+    yes_label: str = Field(default="Yes", max_length=50)
+    no_label: str = Field(default="No", max_length=50)
 
 
 class ChoiceSettings(Strict):
@@ -125,7 +128,7 @@ COLUMN_TYPES = ("text", "number", "yes_no", "dropdown", "datetime", "ip", "hostn
 
 class Column(Strict):
     key: str = Field(pattern=KEY_PATTERN)
-    label: str = Field(min_length=1, max_length=200)
+    label: str = Field(max_length=200)
     type: Literal["text", "number", "yes_no", "dropdown", "datetime", "ip", "hostname", "mac",
                   "serial", "email", "phone"]
     required: bool = False
@@ -139,7 +142,7 @@ class Column(Strict):
 
 class Row(Strict):
     key: str = Field(pattern=KEY_PATTERN)
-    label: str = Field(min_length=1, max_length=200)
+    label: str = Field(max_length=200)
 
 
 class RepeatingSettings(Strict):

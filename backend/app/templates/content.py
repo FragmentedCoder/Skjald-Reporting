@@ -83,7 +83,8 @@ class Question(Strict):
     # The variable name; headings have none.
     key: Key | None = None
     type: str
-    label: str = Field(min_length=1, max_length=300)
+    # Empty while it's being typed; the checks ask for it (as for the titles below).
+    label: str = Field(max_length=300)
     help: str = Field(default="", max_length=2000)
     required: bool = False
     required_when: Expr | None = None
@@ -108,7 +109,7 @@ class Question(Strict):
 
 class Step(Strict):
     id: Id
-    title: str = Field(min_length=1, max_length=200)
+    title: str = Field(max_length=200)
     help: str = Field(default="", max_length=2000)
     visible_when: Expr | None = None
     questions: list[Question] = Field(default_factory=list, max_length=300)
@@ -143,7 +144,7 @@ class Contents(BlockBase):
 
 class Section(BlockBase):
     kind: Literal["section"]
-    title: str = Field(min_length=1, max_length=300)
+    title: str = Field(max_length=300)
     intro: RichText | None = None
     new_page: bool = True
     numbered: bool = True
@@ -156,7 +157,7 @@ class Section(BlockBase):
 
 class Heading(BlockBase):
     kind: Literal["heading"]
-    text: str = Field(min_length=1, max_length=300)
+    text: str = Field(max_length=300)
 
 
 class TextBlock(BlockBase):
@@ -217,7 +218,7 @@ class SeveritySummary(BlockBase):
 
 
 class Source(Strict):
-    title: str = Field(min_length=1, max_length=500)
+    title: str = Field(max_length=500)
     link: str = Field(default="", max_length=2000)
 
 

@@ -141,6 +141,9 @@ class _Checker:
     def question(self, q: Question, seen_keys: set[str]) -> None:
         self.id(q.id)
         field_type = FIELD_TYPES[q.type]
+        if not q.label.strip():
+            self.add(q.id, "label",
+                     "Write the question." if field_type.asks else "Write the heading.")
         if field_type.asks:
             if q.key is None:
                 self.add(q.id, "key", "Give the question a variable name.")
@@ -171,6 +174,22 @@ class _Checker:
 
     def settings(self, q: Question) -> None:
         s = q.settings
+        if q.type in ("dropdown", "multi_select"):
+            for i, option in enumerate(s["options"]):
+                if not option["label"].strip():
+                    self.add(q.id, "settings.options", f"Write what option {i + 1} is shown as.")
+        if q.type == "yes_no":
+            for name, word in (("yes_label", "Yes"), ("no_label", "No")):
+                if not s[name].strip():
+                    self.add(q.id, f"settings.{name}", f"Write what {word} is shown as.")
+        if q.type in LISTS:
+            for i, column in enumerate(s["columns"]):
+                if not column["label"].strip():
+                    self.add(q.id, "settings.columns", f"Give column {i + 1} a heading.")
+        if q.type == "table":
+            for i, row in enumerate(s["rows"]):
+                if not row["label"].strip():
+                    self.add(q.id, "settings.rows", f"Give row {i + 1} a heading.")
         if q.type in ("text", "serial") and s.get("pattern"):
             try:
                 re2.compile(s["pattern"])
@@ -298,12 +317,16 @@ class _Checker:
         elif isinstance(b, Contents):
             self.text(b.id, "title", b.title, item=item)
         elif isinstance(b, Section):
+            if not b.title.strip():
+                self.add(b.id, "title", "Give the section a title.")
             self.text(b.id, "title", b.title, item=item)
             self.rich(b.id, "intro", b.intro, item=item)
             self.expr(b.id, "repeat_for", b.repeat_for, "list", item=outer)
             for child in b.blocks:
                 self.block(child, item=item)
         elif isinstance(b, HeadingBlock):
+            if not b.text.strip():
+                self.add(b.id, "text", "Write the heading.")
             self.text(b.id, "text", b.text, item=item)
         elif isinstance(b, TextBlock):
             self.rich(b.id, "content", b.content, item=item)
@@ -354,6 +377,9 @@ class _Checker:
             self.text(b.id, "caption", b.caption, item=item)
         elif isinstance(b, Sources):
             self.text(b.id, "intro", b.intro, item=item)
+            for i, source in enumerate(b.items):
+                if not source.title.strip():
+                    self.add(b.id, f"items.{i}.title", f"Give source {i + 1} a title.")
             if b.question is not None:
                 q = self.chosen(b.id, b.question, "")
                 if q is not None:
@@ -394,6 +420,8 @@ def check(
     seen_keys: set[str] = set()
     for step in content.form:
         checker.id(step.id)
+        if not step.title.strip():
+            checker.add(step.id, "title", "Give the step a title.")
         checker.expr(step.id, "visible_when", step.visible_when, "bool")
         for q in step.questions:
             checker.question(q, seen_keys)

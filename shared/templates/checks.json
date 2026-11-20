@@ -1875,6 +1875,295 @@
           "message": "item is only there inside a section repeated for each item."
         }
       ]
+    },
+    {
+      "name": "Text left empty while typing",
+      "content": {
+        "schema": 1,
+        "settings": {
+          "prefix": "REP",
+          "language": "en",
+          "signing": "technician",
+          "review": "optional",
+          "delivery": [
+            "download"
+          ],
+          "styles": [
+            "company",
+            "customer"
+          ],
+          "customer_background": true
+        },
+        "form": [
+          {
+            "id": "s_main1",
+            "title": "",
+            "help": "",
+            "visible_when": null,
+            "questions": [
+              {
+                "id": "q_text1",
+                "key": "a",
+                "type": "text",
+                "label": "  ",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "max_length": 500,
+                  "pattern": null,
+                  "pattern_message": "",
+                  "placeholder": ""
+                }
+              },
+              {
+                "id": "q_head1",
+                "key": null,
+                "type": "heading",
+                "label": "",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {}
+              },
+              {
+                "id": "q_drop1",
+                "key": "kind",
+                "type": "dropdown",
+                "label": "Kind",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "options": [
+                    {
+                      "value": "a",
+                      "label": ""
+                    },
+                    {
+                      "value": "b",
+                      "label": "B"
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "q_yesno",
+                "key": "ok",
+                "type": "yes_no",
+                "label": "Fine?",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "yes_label": "",
+                  "no_label": "No"
+                }
+              },
+              {
+                "id": "q_rows1",
+                "key": "rows",
+                "type": "repeating",
+                "label": "Rows",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "columns": [
+                    {
+                      "key": "x",
+                      "label": "X",
+                      "type": "text",
+                      "required": false,
+                      "settings": {
+                        "max_length": 500,
+                        "pattern": null,
+                        "pattern_message": "",
+                        "placeholder": ""
+                      }
+                    },
+                    {
+                      "key": "y",
+                      "label": "",
+                      "type": "text",
+                      "required": false,
+                      "settings": {
+                        "max_length": 500,
+                        "pattern": null,
+                        "pattern_message": "",
+                        "placeholder": ""
+                      }
+                    }
+                  ],
+                  "min_rows": 0,
+                  "max_rows": 100
+                }
+              },
+              {
+                "id": "q_table",
+                "key": "grid",
+                "type": "table",
+                "label": "Grid",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "rows": [
+                    {
+                      "key": "r",
+                      "label": ""
+                    }
+                  ],
+                  "columns": [
+                    {
+                      "key": "x",
+                      "label": "X",
+                      "type": "text",
+                      "required": false,
+                      "settings": {
+                        "max_length": 500,
+                        "pattern": null,
+                        "pattern_message": "",
+                        "placeholder": ""
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ],
+        "layout": [
+          {
+            "id": "b_sect1",
+            "visible_when": null,
+            "kind": "section",
+            "title": "",
+            "intro": null,
+            "new_page": true,
+            "numbered": true,
+            "landscape": false,
+            "repeat_for": null,
+            "blocks": [
+              {
+                "id": "b_head1",
+                "visible_when": null,
+                "kind": "heading",
+                "text": ""
+              }
+            ]
+          },
+          {
+            "id": "b_srcs1",
+            "visible_when": null,
+            "kind": "sources",
+            "intro": "",
+            "items": [
+              {
+                "title": "",
+                "link": ""
+              },
+              {
+                "title": "NIS2",
+                "link": ""
+              }
+            ],
+            "question": null
+          }
+        ],
+        "sample": {
+          "answers": {}
+        }
+      },
+      "answers": {
+        "answers.a": "string",
+        "answers.grid": "list<map<string, dyn>>",
+        "answers.kind": "string",
+        "answers.ok": "bool",
+        "answers.rows": "list<map<string, dyn>>"
+      },
+      "problems": [
+        {
+          "element": "s_main1",
+          "field": "title",
+          "message": "Give the step a title."
+        },
+        {
+          "element": "q_text1",
+          "field": "label",
+          "message": "Write the question."
+        },
+        {
+          "element": "q_head1",
+          "field": "label",
+          "message": "Write the heading."
+        },
+        {
+          "element": "q_drop1",
+          "field": "settings.options",
+          "message": "Write what option 1 is shown as."
+        },
+        {
+          "element": "q_yesno",
+          "field": "settings.yes_label",
+          "message": "Write what Yes is shown as."
+        },
+        {
+          "element": "q_rows1",
+          "field": "settings.columns",
+          "message": "Give column 2 a heading."
+        },
+        {
+          "element": "q_table",
+          "field": "settings.rows",
+          "message": "Give row 1 a heading."
+        },
+        {
+          "element": "b_sect1",
+          "field": "title",
+          "message": "Give the section a title."
+        },
+        {
+          "element": "b_head1",
+          "field": "text",
+          "message": "Write the heading."
+        },
+        {
+          "element": "b_srcs1",
+          "field": "items.0.title",
+          "message": "Give source 1 a title."
+        }
+      ]
     }
   ]
 }

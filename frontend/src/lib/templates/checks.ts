@@ -115,6 +115,7 @@ class Checker {
   question(q: Question, seenKeys: Set<string>) {
     this.id(q.id);
     const type = fieldType(q.type);
+    if (!q.label.trim()) this.add(q.id, "label", type.asks ? "Write the question." : "Write the heading.");
     if (type.asks) {
       if (q.key === null) this.add(q.id, "key", "Give the question a variable name.");
       else if (RESERVED.has(q.key)) this.add(q.id, "key", `${q.key} is a reserved word in expressions: choose another variable name.`);
@@ -140,6 +141,17 @@ class Checker {
 
   settings(q: Question) {
     const s = settingsOf(q.type, q.settings);
+    const labels = (list: unknown) => ((list ?? []) as { label: string }[]).map((entry) => entry.label.trim());
+    if (q.type === "dropdown" || q.type === "multi_select") {
+      labels(s.options).forEach((label, i) => !label && this.add(q.id, "settings.options", `Write what option ${i + 1} is shown as.`));
+    }
+    if (q.type === "yes_no") {
+      for (const [name, word] of [["yes_label", "Yes"], ["no_label", "No"]]) {
+        if (!String(s[name] ?? "").trim()) this.add(q.id, `settings.${name}`, `Write what ${word} is shown as.`);
+      }
+    }
+    if (LISTS.has(q.type)) labels(s.columns).forEach((label, i) => !label && this.add(q.id, "settings.columns", `Give column ${i + 1} a heading.`));
+    if (q.type === "table") labels(s.rows).forEach((label, i) => !label && this.add(q.id, "settings.rows", `Give row ${i + 1} a heading.`));
     if ((q.type === "text" || q.type === "serial") && s.pattern) {
       try {
         RE2JS.compile(String(s.pattern));
@@ -266,12 +278,14 @@ class Checker {
         this.text(b.id, "title", b.title, item);
         break;
       case "section":
+        if (!b.title.trim()) this.add(b.id, "title", "Give the section a title.");
         this.text(b.id, "title", b.title, item);
         this.rich(b.id, "intro", b.intro ?? null, item);
         this.expr(b.id, "repeat_for", b.repeat_for, "list", outer);
         for (const child of b.blocks) this.block(child, item);
         break;
       case "heading":
+        if (!b.text.trim()) this.add(b.id, "text", "Write the heading.");
         this.text(b.id, "text", b.text, item);
         break;
       case "text":
@@ -327,6 +341,7 @@ class Checker {
       }
       case "sources":
         this.text(b.id, "intro", b.intro, item);
+        b.items.forEach((source, i) => !source.title.trim() && this.add(b.id, `items.${i}.title`, `Give source ${i + 1} a title.`));
         if (b.question !== null) {
           const q = this.chosen(b.id, b.question, "");
           if (q !== null) this.isList(b.id, q);
@@ -377,6 +392,7 @@ export function check(content: TemplateContent, options: CheckOptions = {}): Pro
   const seenKeys = new Set<string>();
   for (const step of content.form) {
     checker.id(step.id);
+    if (!step.title.trim()) checker.add(step.id, "title", "Give the step a title.");
     checker.expr(step.id, "visible_when", step.visible_when, "bool");
     for (const q of step.questions) checker.question(q, seenKeys);
   }
