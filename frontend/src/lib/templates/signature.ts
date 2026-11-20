@@ -30,3 +30,25 @@ export function strokePath(strokes: number[][]): string {
     })
     .join("");
 }
+
+/**
+ * The part of the sheet the strokes are on, with a little room around, as an SVG view
+ * box: a signature drawn small, or in a corner, still fills its place on the page.
+ */
+export function strokeBox(strokes: number[][]): string {
+  let [left, top, right, bottom]: number[] = [PAD.width, PAD.height, 0, 0];
+  for (const stroke of strokes) {
+    for (let i = 0; i < stroke.length; i += 2) {
+      left = Math.min(left, stroke[i]);
+      right = Math.max(right, stroke[i]);
+      top = Math.min(top, stroke[i + 1]);
+      bottom = Math.max(bottom, stroke[i + 1]);
+    }
+  }
+  const room = 6;
+  const x = Math.max(0, Math.min(left, PAD.width) - room);
+  const y = Math.max(0, Math.min(top, PAD.height) - room);
+  const width = Math.max(room * 2, Math.min(right, PAD.width) + room - x);
+  const height = Math.max(room * 2, Math.min(bottom, PAD.height) + room - y);
+  return [x, y, width, height].map((n) => Math.round(n * 10) / 10).join(" ");
+}

@@ -25,7 +25,7 @@
   import { colourOf, TONE_NAMES, type Element, type PageName } from "#lib/reportStyles/resolve.js";
   import type { Paged, Placed } from "#lib/templates/pages.js";
   import type { Grid, Shown } from "#lib/templates/preview.js";
-  import { PAD, strokePath } from "#lib/templates/signature.js";
+  import { strokeBox, strokePath } from "#lib/templates/signature.js";
   import RichView from "./RichView.svelte";
 
   // The PDF's pages, as A4 sheets that scale with the space they have. The page rules
@@ -262,8 +262,9 @@
 </script>
 
 {#snippet drawing(strokes: number[][])}
-  <svg class="drawing" viewBox="0 0 {PAD.width} {PAD.height}" role="img" aria-label={language === "da" ? "Underskrift" : "Signature"}>
-    <path d={strokePath(strokes)} fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+  <svg class="drawing" viewBox={strokeBox(strokes)} preserveAspectRatio="xMinYMid meet" role="img" aria-label={language === "da" ? "Underskrift" : "Signature"}>
+    <!-- The line keeps its width however much the drawing is enlarged. -->
+    <path d={strokePath(strokes)} fill="none" stroke="currentColor" stroke-width="1.4" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" />
   </svg>
 {/snippet}
 
@@ -817,8 +818,8 @@
     font-family: inherit;
   }
   .drawing {
+    width: 100%;
     height: 100%;
-    aspect-ratio: 3 / 1;
   }
   .hand .unsigned {
     align-self: end;
