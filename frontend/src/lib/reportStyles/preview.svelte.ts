@@ -40,11 +40,12 @@ export class PreviewStyle {
     this.style = id === null ? null : await stylesApi.get(id);
   }
 
-  look(filled: Record<string, string> | undefined): PageLook {
+  /** The pages' look; a template can leave "Made with Skjald" off its own reports. */
+  look(filled: Record<string, string> | undefined, madeWith = true): PageLook {
     return lookOf(this.resolved, {
       image: imageOf(this.style),
       logos: { company: branding.current.logo_url, customer: null },
-      madeWith: branding.current.made_with_skjald,
+      madeWith: branding.current.made_with_skjald && madeWith,
       texts: filled,
     });
   }

@@ -84,6 +84,10 @@ class Settings(Strict):
         default=["company", "customer"], min_length=1)
     # Whether reports print on the customer's report background, if it has one.
     customer_background: bool = True
+    # Whether reports carry the small "Made with Skjald" line. It prints only where the
+    # company's branding has it on too (Admin, Branding); off here takes it off this
+    # template's reports alone.
+    made_with_skjald: bool = True
 
     _delivery = field_validator("delivery")(_unique)
     _styles = field_validator("styles")(_unique)

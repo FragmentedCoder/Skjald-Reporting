@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { branding } from "#lib/branding.svelte.js";
   import Where from "#lib/components/builder/Where.svelte";
   import { useDraft } from "#lib/templates/draft.svelte.js";
   import type { Settings, TemplateContent } from "#lib/templates/types.js";
@@ -82,18 +83,29 @@
       <label class="check"><input type="checkbox" checked={settings.styles.includes("company")} onchange={(e) => toggle("styles", "company", e.currentTarget.checked)} /> The company brand</label>
       <label class="check"><input type="checkbox" checked={settings.styles.includes("customer")} onchange={(e) => toggle("styles", "customer", e.currentTarget.checked)} /> The customer's own style, where it has one</label>
     </fieldset>
-    <label class="check"><input type="checkbox" bind:checked={settings.customer_background} /> Print on the customer's report background, where it has one</label>
-    <p class="small muted">A customer without a background gets plain pages.</p>
+    <fieldset class="choices">
+      <legend>On the pages</legend>
+      <label class="check"><input type="checkbox" bind:checked={settings.customer_background} /> Print on the customer's report background, where it has one</label>
+      <span class="small muted under">A customer without a background gets plain pages.</span>
+      <label class="check"><input type="checkbox" checked={branding.current.made_with_skjald && (settings.made_with_skjald ?? true)} disabled={!branding.current.made_with_skjald}
+        onchange={(e) => (settings.made_with_skjald = e.currentTarget.checked)} /> Print “Made with Skjald” at the foot of each page</label>
+      <span class="small muted under">
+        {branding.current.made_with_skjald
+          ? "A small line under the page's text. Off here takes it off this template's reports alone."
+          : "An Administrator has turned the line off for every report (Admin, Branding)."}
+      </span>
+    </fieldset>
   </section>
 </fieldset>
 
 <style>
-  /* Two columns of settings where the window is wide enough. */
+  /* Two columns of settings where the window is wide enough; the boxes side by side are
+     as tall as each other. */
   .settings {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 520px), 1fr));
-    gap: var(--space-2);
-    align-items: start;
+    gap: var(--space-4);
+    align-items: stretch;
     margin: var(--space-4) 0 0;
     padding: 0;
     border: 0;
@@ -112,6 +124,10 @@
     margin: 0 0 var(--space-3);
     padding: 0;
     border: 0;
+  }
+  /* What a checkbox means, under its words. */
+  .under {
+    margin: 0 0 var(--space-2) 30px;
   }
   legend {
     margin-bottom: var(--space-1);

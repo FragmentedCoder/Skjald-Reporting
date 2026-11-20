@@ -96,6 +96,11 @@ def test_structure_is_checked_strictly(parts: dict[str, Any], message: str) -> N
         TemplateContent.model_validate(parts)
 
 
+def test_a_template_carries_made_with_skjald_unless_it_says_not() -> None:
+    assert content().settings.made_with_skjald is True
+    assert content(settings={"made_with_skjald": False}).dump()["settings"]["made_with_skjald"] is False
+
+
 def test_settings_are_filled_in_with_their_defaults() -> None:
     parsed = content(form=[{"id": "s_main1", "title": "Step", "questions": [
         {"id": "q_x123", "key": "x", "type": "number", "label": "X"},

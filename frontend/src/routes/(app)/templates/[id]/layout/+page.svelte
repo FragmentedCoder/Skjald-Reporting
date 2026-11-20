@@ -254,7 +254,7 @@
       {#if live.model?.errors.length}
         <p class="alert alert-warning small">{live.model.errors.length} expression{live.model.errors.length === 1 ? "" : "s"} failed with the sample answers, shown as ⚠ on the pages.</p>
       {/if}
-      <PdfPages paged={live.paged} look={looks.look(live.model?.pageTexts)} language={content.settings.language} reportNumber={String(draft.sampleContext.report.number)}
+      <PdfPages paged={live.paged} look={looks.look(live.model?.pageTexts, content.settings.made_with_skjald ?? true)} language={content.settings.language} reportNumber={String(draft.sampleContext.report.number)}
         classification={String(draft.sampleContext.project.classification)} selected={selectedId} onselect={select}
         onplace={draft.readonly ? undefined : place} />
     {:else}
