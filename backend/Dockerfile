@@ -6,7 +6,7 @@ RUN CGO_ENABLED=0 go install -trimpath \
       -ldflags "-s -w -X github.com/rclone/rclone/fs.Version=v1.76.0" \
       github.com/rclone/rclone@v1.76.0
 
-FROM python:3.13-slim AS base
+FROM python:3.15-slim AS base
 
 # Debian's fixes since the image was made (zlib1g for CVE-2026-85091 among them), as
 # the Caddy image takes Alpine's; the image scan in CI keeps watch. Then backups:
