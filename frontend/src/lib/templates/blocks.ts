@@ -73,7 +73,7 @@ export function newBlock(kind: BlockKind, nested = false): Block {
     case "answer":
       return { ...base, kind, question: null, show_label: true };
     case "table":
-      return { ...base, kind, question: null, caption: "", columns: null, empty_text: "No rows." };
+      return { ...base, kind, question: null, caption: "", columns: null, empty_text: "No rows.", row_numbers: false };
     case "image":
       return { ...base, kind, source: "template", asset: null, question: null, caption: "", width: "full" };
     case "gallery":

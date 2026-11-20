@@ -127,6 +127,23 @@ describe("answers change what's printed", () => {
   });
 });
 
+describe("a table's rows, numbered", () => {
+  it("puts a No. column first, the same in every table of those rows", () => {
+    const c = content();
+    c.layout.push(
+      { id: "b_rows1", kind: "table", visible_when: null, question: "q_attackers", caption: "", columns: ["ip"], empty_text: "", row_numbers: true },
+      { id: "b_rows2", kind: "table", visible_when: null, question: "q_attackers", caption: "", columns: ["status"], empty_text: "", row_numbers: true },
+    );
+    const model = preview(input(c));
+    expect(find(model.blocks, "b_rows1")).toMatchObject({ grid: { headers: ["No.", "Address"], rows: [["1", "198.51.100.23"], ["2", "203.0.113.77"], ["3", "2001:db8::5"]] } });
+    expect(find(model.blocks, "b_rows2")).toMatchObject({ grid: { headers: ["No.", "Status"], rows: [["1", "Blocked"], ["2", "Blocked"], ["3", "Monitored"]] } });
+    // Not asked for: as before.
+    expect((find(model.blocks, "b_table") as { grid: { headers: string[] } }).grid.headers).toEqual(["Address", "Sign-in attempts", "Status"]);
+    c.settings.language = "da";
+    expect((find(preview(input(c)).blocks, "b_rows1") as { grid: { headers: string[] } }).grid.headers[0]).toBe("Nr.");
+  });
+});
+
 describe("a person picked from the company", () => {
   it("offers the sample report's people by what the question asks for, and prints who's picked", () => {
     const c = content();

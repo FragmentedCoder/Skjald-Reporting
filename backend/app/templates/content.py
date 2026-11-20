@@ -189,6 +189,9 @@ class Table(BlockBase):
     # Which columns, in what order; all of them when not set.
     columns: list[Key] | None = Field(default=None, max_length=20)
     empty_text: Line = "No rows."
+    # A first column numbering the rows (1, 2, 3), so a row can be found again in
+    # another table of the same rows.
+    row_numbers: bool = False
 
 
 class Image(BlockBase):

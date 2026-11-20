@@ -203,6 +203,8 @@
         {#if problem("columns")}<p class="small error">{problem("columns")}</p>{/if}
       </fieldset>
     {/if}
+    <label class="check"><input type="checkbox" checked={block.row_numbers ?? false} onchange={(e) => block.kind === "table" && (block.row_numbers = e.currentTarget.checked)} /> Number the rows</label>
+    <span class="hint">A “No.” column first: 1, 2, 3. Two tables of the same rows then share the numbers, so a row is found again by its number.</span>
     {@render text("caption", "Caption", block.caption, (v) => block.kind === "table" && (block.caption = v), "Printed as “Table 1. …”, numbered for you.")}
     {@render text("empty_text", "When there are no rows", block.empty_text, (v) => block.kind === "table" && (block.empty_text = v))}
   {:else if block.kind === "image"}

@@ -94,7 +94,7 @@ Each block has its own settings, all printed in the PDF:
 | Block | Settings |
 | --- | --- |
 | Section | Title, an introduction under the heading, start on a new page, numbered or not |
-| Table | Rows from a repeating group, caption (numbered "Table 1"), which columns and in what order, text for no rows |
+| Table | Rows from a repeating group, caption (numbered "Table 1"), which columns and in what order, text for no rows, and optionally a first "No." column numbering the rows, so two tables of the same rows share a reference |
 | Image | A file uploaded with the template or a technician's photo, caption (numbered "Figure 1"), width; at most about 40% of the page height |
 | Callout | A named tone from the style (Info, Note, Warning, Critical, Success), or a custom colour; the text colour is picked for contrast and the builder warns below 4.5:1 |
 | Sources | Sources every report gets, plus the technician's own; printed as a numbered list |

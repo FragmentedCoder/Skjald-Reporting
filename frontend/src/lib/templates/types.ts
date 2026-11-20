@@ -103,6 +103,8 @@ export interface Table extends BlockBase {
   caption: string;
   columns: string[] | null;
   empty_text: string;
+  /** A first column numbering the rows, to find a row again in another table of them. */
+  row_numbers?: boolean;
 }
 
 export interface Image extends BlockBase {

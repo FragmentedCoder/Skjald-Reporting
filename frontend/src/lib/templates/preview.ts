@@ -349,21 +349,22 @@ class Worker {
     return String(value);
   }
 
-  grid(question: Question, keys: string[] | null): Grid {
+  /** A repeating group's or table's rows as printed; with numbers, a first column counts them. */
+  grid(question: Question, keys: string[] | null, numbers = false): Grid {
     const s = settingsOf(question.type, question.settings);
     type Col = { key: string; label: string; type: string; settings?: Record<string, unknown> };
     const all = s.columns as Col[];
     const columns = keys ? keys.map((k) => all.find((c) => c.key === k)).filter((c): c is Col => !!c) : all;
     const raw = this.input.answers[question.id];
     const rows = Array.isArray(raw) ? (raw as Record<string, unknown>[]) : [];
-    if (question.type === "table") {
-      const fixed = s.rows as { key: string; label: string }[];
-      return {
-        headers: ["", ...columns.map((c) => c.label)],
-        rows: fixed.map((row, i) => [row.label, ...columns.map((c) => this.cell(c, rows[i]?.[c.key]))]),
-      };
-    }
-    return { headers: columns.map((c) => c.label), rows: rows.map((row) => columns.map((c) => this.cell(c, row[c.key]))) };
+    const grid: Grid = question.type === "table"
+      ? {
+          headers: ["", ...columns.map((c) => c.label)],
+          rows: (s.rows as { key: string; label: string }[]).map((row, i) => [row.label, ...columns.map((c) => this.cell(c, rows[i]?.[c.key]))]),
+        }
+      : { headers: columns.map((c) => c.label), rows: rows.map((row) => columns.map((c) => this.cell(c, row[c.key]))) };
+    if (!numbers) return grid;
+    return { headers: [this.language === "da" ? "Nr." : "No.", ...grid.headers], rows: grid.rows.map((row, i) => [String(i + 1), ...row]) };
   }
 
   blocks(scope: Scope, blocks: Block[], item: boolean): Shown[] {
@@ -406,7 +407,7 @@ class Worker {
       case "table": {
         const q = b.question ? this.byId.get(b.question) : undefined;
         if (!q || !(q.type === "repeating" || q.type === "table")) return [];
-        return [{ kind: "table", id, caption: this.text(scope, id, b.caption), grid: this.grid(q, b.columns), emptyText: this.text(scope, id, b.empty_text) }];
+        return [{ kind: "table", id, caption: this.text(scope, id, b.caption), grid: this.grid(q, b.columns, b.row_numbers ?? false), emptyText: this.text(scope, id, b.empty_text) }];
       }
       case "image": {
         const asset = b.source === "template" && b.asset ? this.input.assets[b.asset] : undefined;
