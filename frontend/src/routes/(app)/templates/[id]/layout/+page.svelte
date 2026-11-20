@@ -14,7 +14,7 @@
   import { branding } from "#lib/branding.svelte.js";
   import { PreviewStyle } from "#lib/reportStyles/preview.svelte.js";
   import { templatesApi, type Asset } from "#lib/templates/api.js";
-  import { BLOCK_GROUPS, BLOCK_TYPES, newBlock } from "#lib/templates/blocks.js";
+  import { BLOCK_GROUPS, BLOCK_TYPES, blockSummary, newBlock } from "#lib/templates/blocks.js";
   import { catalogue, type NameEntry } from "#lib/templates/catalogue.js";
   import { useDraft } from "#lib/templates/draft.svelte.js";
   import { settingsOf } from "#lib/templates/fields.js";
@@ -168,6 +168,9 @@
   }
   function removeNow() {
     if (!found) return;
+    const summary = blockSummary(found.block);
+    const kind = BLOCK_TYPES[found.block.kind].label;
+    draft.removing(summary === kind ? `the ${kind.toLowerCase()} block` : `the ${kind.toLowerCase()} “${summary.length > 60 ? `${summary.slice(0, 59)}…` : summary}”`);
     found.list.splice(found.index, 1);
     draft.selection = null;
     confirming = false;

@@ -5,9 +5,12 @@
   import Braces from "@lucide/svelte/icons/braces";
   import ChevronLeft from "@lucide/svelte/icons/chevron-left";
   import Pencil from "@lucide/svelte/icons/pencil";
+  import Redo2 from "@lucide/svelte/icons/redo-2";
+  import Undo2 from "@lucide/svelte/icons/undo-2";
   import { untrack, type Snippet } from "svelte";
   import { ApiError, sessionGone } from "#lib/api.js";
   import { pageTitle } from "#lib/branding.svelte.js";
+  import { undoes } from "#lib/components/builder/keys.js";
   import NamesDrawer from "#lib/components/builder/NamesDrawer.svelte";
   import Dialog from "#lib/components/Dialog.svelte";
   import Pill from "#lib/components/Pill.svelte";
@@ -56,6 +59,22 @@
     }
     if (!to?.url.pathname.startsWith(base)) void draft.save();
   });
+
+  // Ctrl+Z takes back the last change to the template, on any tab; with Shift (or
+  // Ctrl+Y) it's put back. A field being typed in undoes its own typing.
+  function keydown(event: KeyboardEvent) {
+    const wanted = undoes(event);
+    if (!wanted || draft.readonly || !draft.content) return;
+    event.preventDefault();
+    step(wanted === "redo");
+  }
+
+  function step(again: boolean) {
+    if (again ? !draft.canRedo : !draft.canUndo) return;
+    draft.undo(again);
+    toast(again ? "Put the change back." : "Took back the last change.", "info",
+      { key: "template-removed", lifetime: 6000, action: { label: again ? "Undo" : "Redo", run: () => step(!again) } });
+  }
 
   // The Names drawer, open beside any tab.
   let namesOpen = $state(false);
@@ -124,7 +143,7 @@
 
 <svelte:head><title>{pageTitle(draft.template?.name ?? "Template")}</title></svelte:head>
 
-<svelte:window onbeforeunload={(event) => { if (draft.unsaved) event.preventDefault(); }} />
+<svelte:window onbeforeunload={(event) => { if (draft.unsaved) event.preventDefault(); }} onkeydown={keydown} />
 
 <main class="page-content builder" class:names-open={namesOpen}>
   <a class="back small" href={resolve("/(app)/templates")}><ChevronLeft size={16} aria-hidden="true" /> Templates</a>
@@ -157,6 +176,12 @@
             {#if draft.template.latest_version !== null}
               <span class="muted">· Version {draft.template.latest_version} is the one in use.</span>
             {/if}
+            <span class="steps">
+              <button class="icon-button" type="button" aria-label="Undo the last change" title="Undo (Ctrl+Z)" aria-keyshortcuts="Control+Z"
+                disabled={!draft.canUndo} onclick={() => step(false)}><Undo2 size={16} aria-hidden="true" /></button>
+              <button class="icon-button" type="button" aria-label="Redo the change" title="Redo (Ctrl+Shift+Z)" aria-keyshortcuts="Control+Shift+Z"
+                disabled={!draft.canRedo} onclick={() => step(true)}><Redo2 size={16} aria-hidden="true" /></button>
+            </span>
           {/if}
         </p>
       </div>
@@ -304,6 +329,13 @@
     align-items: center;
     gap: var(--space-2);
     margin: 0;
+  }
+  .steps {
+    display: inline-flex;
+  }
+  .steps .icon-button:disabled {
+    opacity: 0.35;
+    cursor: default;
   }
   .actions {
     display: flex;

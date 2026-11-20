@@ -132,6 +132,7 @@
 
   function removeQuestion(step: Step, question: Question) {
     const remove = () => {
+      draft.removing(`“${question.label}”`);
       step.questions = step.questions.filter((q) => q.id !== question.id);
       draft.selection = { kind: "step", id: step.id };
     };
@@ -172,6 +173,7 @@
     if (!where || where.question || content.form.length === 1) return;
     const { step, stepIndex } = where;
     const remove = () => {
+      draft.removing(`the step “${step.title}”${step.questions.length ? " and its questions" : ""}`);
       content.form.splice(stepIndex, 1);
       draft.selection = null;
     };
