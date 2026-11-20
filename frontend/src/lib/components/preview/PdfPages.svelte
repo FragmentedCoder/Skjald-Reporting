@@ -25,6 +25,7 @@
   import { colourOf, TONE_NAMES, type Element, type PageName } from "#lib/reportStyles/resolve.js";
   import type { Paged, Placed } from "#lib/templates/pages.js";
   import type { Grid, Shown } from "#lib/templates/preview.js";
+  import { PAD, strokePath } from "#lib/templates/signature.js";
   import RichView from "./RichView.svelte";
 
   // The PDF's pages, as A4 sheets that scale with the space they have. The page rules
@@ -260,6 +261,12 @@
   }
 </script>
 
+{#snippet drawing(strokes: number[][])}
+  <svg class="drawing" viewBox="0 0 {PAD.width} {PAD.height}" role="img" aria-label={language === "da" ? "Underskrift" : "Signature"}>
+    <path d={strokePath(strokes)} fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+  </svg>
+{/snippet}
+
 {#snippet grid(g: Grid, empty = "")}
   {#if g.rows.length}
     <table>
@@ -300,7 +307,7 @@
   {:else if b.kind === "answer"}
     <div class="answer">
       {#if b.label}<p class="question">{b.label}</p>{/if}
-      {#if b.rich}<RichView nodes={b.rich.content} />{:else if b.rows}{@render grid(b.rows)}{:else}<p>{b.text || "—"}</p>{/if}
+      {#if b.rich}<RichView nodes={b.rich.content} />{:else if b.rows}{@render grid(b.rows)}{:else if b.strokes}<div class="hand drawn">{@render drawing(b.strokes)}</div>{:else}<p>{b.text || "—"}</p>{/if}
     </div>
   {:else if b.kind === "table"}
     <figure class="grid-figure">
@@ -339,9 +346,14 @@
   {:else if b.kind === "signatures"}
     <div class="signatures {b.layout}">
       {#each b.signers as signer, i (i)}
-        {@const name = signer.role === "company" ? company : SAMPLE_SIGNERS[signer.role]}
+        {@const name = signer.role === "pad" ? "" : signer.role === "company" ? company : SAMPLE_SIGNERS[signer.role]}
         <figure class="signature">
-          {#if signer.style === "stamp"}
+          {#if signer.role === "pad"}
+            <!-- Drawn in the form: the drawing, or an empty line saying it isn't signed. -->
+            <div class="hand drawn">
+              {#if signer.strokes}{@render drawing(signer.strokes)}{:else}<span class="unsigned">{language === "da" ? "Ikke underskrevet" : "Not signed"}</span>{/if}
+            </div>
+          {:else if signer.style === "stamp"}
             <div class="stamp">
               {#if look.logos.company}<img src={look.logos.company} alt="" />{/if}
               <span><strong>{name}</strong>{language === "da" ? "Digitalt underskrevet" : "Digitally signed"}</span>
@@ -349,11 +361,17 @@
           {:else}
             <div class="hand"><span>{name}</span></div>
           {/if}
-          <figcaption><strong>{signer.label}</strong>{name}{b.showDate ? ` · ${language === "da" ? "underskrevet" : "signed"} ${signedOn}` : ""}</figcaption>
+          {#if signer.role === "pad"}
+            <figcaption><strong>{signer.label}</strong>{signer.strokes && b.showDate ? `${language === "da" ? "Underskrevet" : "Signed"} ${signedOn}` : ""}</figcaption>
+          {:else}
+            <figcaption><strong>{signer.label}</strong>{name}{b.showDate ? ` · ${language === "da" ? "underskrevet" : "signed"} ${signedOn}` : ""}</figcaption>
+          {/if}
         </figure>
       {/each}
     </div>
-    <p class="sample-note">Sample signatures. In the PDF each one is a digital signature that can be checked.</p>
+    {#if b.signers.some((signer) => signer.role !== "pad")}
+      <p class="sample-note">Sample signatures. In the PDF each one is a digital signature that can be checked.</p>
+    {/if}
   {:else if b.kind === "columns"}
     <div class="columns">
       {#each b.columns as column, i (i)}<div class="column">{#each column as inner (inner.id)}{@render item(inner, null)}{/each}</div>{/each}
@@ -792,6 +810,25 @@
   }
   .hand span {
     font-size: 2.2em;
+  }
+  /* A signature drawn on a signature pad, or where one will be. */
+  .hand.drawn {
+    padding-left: 0;
+    font-family: inherit;
+  }
+  .drawing {
+    height: 100%;
+    aspect-ratio: 3 / 1;
+  }
+  .hand .unsigned {
+    align-self: end;
+    padding: 0 0 0.3em 0.4em;
+    color: var(--text-soft);
+    font-size: 0.85em;
+  }
+  .answer .hand.drawn {
+    width: 12em;
+    border-bottom: 0;
   }
   /* The company seal: a double frame in the style's link colour, with the logo. */
   .stamp {

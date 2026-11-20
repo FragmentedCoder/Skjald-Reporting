@@ -168,7 +168,11 @@
     {#if used.blocks.length}
       <p class="small">Printed by {#each used.blocks as b, i (b.id)}{blockName(b.kind, "title" in b ? String(b.title) : undefined)}{i < used.blocks.length - 1 ? ", " : ""}{/each}.</p>
     {:else}
-      <p class="small muted">No block prints this answer. Add one on the Layout tab, or use it in text and rules.</p>
+      <p class="small muted">
+        {question.type === "signature"
+          ? "No block prints this signature. On the Layout tab, add a Signatures block and choose “A signature pad in the form”, or an Answer block."
+          : "No block prints this answer. Add one on the Layout tab, or use it in text and rules."}
+      </p>
     {/if}
     {#if used.expressions}
       <p class="small muted">Read by {used.expressions} rule{used.expressions === 1 ? "" : "s"} or text{used.expressions === 1 ? "" : "s"}.</p>

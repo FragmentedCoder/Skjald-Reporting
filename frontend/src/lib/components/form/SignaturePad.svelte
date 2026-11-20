@@ -1,61 +1,70 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { drawn, PAD, type Drawn } from "#lib/templates/signature.js";
 
-  // A signature drawn on screen with a finger, pen or mouse; kept as a PNG data URL.
-  let { value = $bindable(), label }: { value: string | null; label: string } = $props();
+  // A signature drawn on screen with a finger, pen or mouse; kept as its strokes
+  // (templates/signature.ts), which the PDF draws as lines.
+  let { value = $bindable(), label }: { value: Drawn | null; label: string } = $props();
 
   let canvas = $state<HTMLCanvasElement>();
-  let drawing = false;
+  let stroke: number[] | null = null;
 
-  onMount(() => {
-    const context = canvas?.getContext("2d");
-    if (!canvas || !context) return;
-    context.lineWidth = 2;
-    context.lineCap = "round";
-    context.strokeStyle = "#0F1B2D";
-    if (value) {
-      const image = new Image();
-      image.onload = () => context.drawImage(image, 0, 0);
-      image.src = value;
+  function pen(): CanvasRenderingContext2D | null {
+    const context = canvas?.getContext("2d") ?? null;
+    if (context) Object.assign(context, { lineWidth: 2, lineCap: "round", lineJoin: "round", strokeStyle: "#0F1B2D" });
+    return context;
+  }
+
+  // What's kept is drawn again whenever it changes from elsewhere: on coming back to
+  // the step, or when the answers are cleared.
+  $effect(() => {
+    const strokes = drawn(value) ?? [];
+    const context = pen();
+    if (!context || stroke) return;
+    context.clearRect(0, 0, PAD.width, PAD.height);
+    for (const points of strokes) {
+      context.beginPath();
+      context.moveTo(points[0], points[1]);
+      for (let i = 2; i < points.length; i += 2) context.lineTo(points[i], points[i + 1]);
+      if (points.length === 2) context.lineTo(points[0] + 0.1, points[1]);
+      context.stroke();
     }
   });
 
   function point(event: PointerEvent): [number, number] {
     const box = (event.currentTarget as HTMLCanvasElement).getBoundingClientRect();
-    return [((event.clientX - box.left) / box.width) * 600, ((event.clientY - box.top) / box.height) * 200];
+    const at = (n: number) => Math.round(n * 10) / 10;
+    return [at(((event.clientX - box.left) / box.width) * PAD.width), at(((event.clientY - box.top) / box.height) * PAD.height)];
   }
 
   function down(event: PointerEvent) {
-    const context = canvas?.getContext("2d");
+    const context = pen();
     if (!context) return;
-    drawing = true;
     canvas?.setPointerCapture(event.pointerId);
+    stroke = point(event);
     context.beginPath();
-    context.moveTo(...point(event));
+    context.moveTo(stroke[0], stroke[1]);
   }
 
   function move(event: PointerEvent) {
-    if (!drawing) return;
-    const context = canvas?.getContext("2d");
-    context?.lineTo(...point(event));
+    if (!stroke) return;
+    const [x, y] = point(event);
+    stroke.push(x, y);
+    const context = pen();
+    context?.lineTo(x, y);
     context?.stroke();
   }
 
   function up() {
-    if (!drawing) return;
-    drawing = false;
-    value = canvas?.toDataURL("image/png") ?? null;
-  }
-
-  function clear() {
-    canvas?.getContext("2d")?.clearRect(0, 0, 600, 200);
-    value = null;
+    if (!stroke) return;
+    const done = stroke;
+    stroke = null;
+    value = { strokes: [...(drawn(value) ?? []), done] };
   }
 </script>
 
 <div class="pad">
-  <canvas bind:this={canvas} width="600" height="200" aria-label={label} onpointerdown={down} onpointermove={move} onpointerup={up} onpointerleave={up}></canvas>
-  <button class="link-button small" type="button" onclick={clear}>Clear</button>
+  <canvas bind:this={canvas} width={PAD.width} height={PAD.height} aria-label={label} onpointerdown={down} onpointermove={move} onpointerup={up} onpointerleave={up}></canvas>
+  <button class="link-button small" type="button" onclick={() => (value = null)}>Clear</button>
 </div>
 
 <style>

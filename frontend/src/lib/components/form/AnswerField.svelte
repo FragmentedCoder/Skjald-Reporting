@@ -7,6 +7,7 @@
   import RichTextEditor from "#lib/components/builder/RichTextEditor.svelte";
   import { checkAnswer, cvssScore } from "#lib/templates/answers.js";
   import { COLUMN_TYPES, settingsOf } from "#lib/templates/fields.js";
+  import type { Drawn } from "#lib/templates/signature.js";
   import type { Question, RichText } from "#lib/templates/types.js";
   import SignaturePad from "./SignaturePad.svelte";
 
@@ -168,7 +169,7 @@
           {/if}
           <span class="small muted">Here they stay in your browser. In a report they're uploaded, scanned and encrypted{question.type === "photo" ? ", and their location data removed" : ""}.</span>
         {:else if question.type === "signature"}
-          <SignaturePad bind:value={() => (value as string | null) ?? null, (v) => (value = v)} label={question.label} />
+          <SignaturePad bind:value={() => (value as Drawn | null) ?? null, (v) => (value = v)} label={question.label} />
         {:else if question.type === "repeating" || question.type === "table"}
           {@const fixed = question.type === "table" ? ((s.rows ?? []) as { key: string; label: string }[]) : null}
           <div class="grid-wrap">

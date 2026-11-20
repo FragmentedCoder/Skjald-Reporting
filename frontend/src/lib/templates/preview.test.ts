@@ -127,6 +127,29 @@ describe("answers change what's printed", () => {
   });
 });
 
+describe("signature pads", () => {
+  it("draws a pad's strokes where it signs, and says so where it isn't signed", () => {
+    const c = content();
+    c.form[0].questions.push({ ...c.form[0].questions[0], id: "q_pad1", key: "witness", type: "signature", label: "Witness", required: false, settings: {} });
+    c.layout.push(
+      { id: "b_pads", kind: "signatures", visible_when: null, layout: "row", show_date: true,
+        signers: [{ role: "pad", label: "Witness", style: "handwritten", question: "q_pad1" }, { role: "technician", label: "Technician", style: "handwritten" }] },
+      { id: "b_padanswer", kind: "answer", visible_when: null, question: "q_pad1", show_label: true },
+      { id: "b_padtext", kind: "heading", visible_when: null, text: '{{answers.witness.filled ? "Signed" : "Not yet"}}' },
+    );
+    const empty = preview(input(c));
+    expect(find(empty.blocks, "b_pads")).toMatchObject({ signers: [{ role: "pad", strokes: null }, { role: "technician" }] });
+    expect(find(empty.blocks, "b_padanswer")).toMatchObject({ text: "Not signed" });
+    expect(find(empty.blocks, "b_padtext")).toMatchObject({ text: "Not yet" });
+
+    const strokes = [[10, 20, 30, 40], [50, 60]];
+    const signed = preview(input(c, { ...c.sample.answers, q_pad1: { strokes } }));
+    expect(find(signed.blocks, "b_pads")).toMatchObject({ signers: [{ role: "pad", strokes }, { role: "technician" }] });
+    expect(find(signed.blocks, "b_padanswer")).toMatchObject({ text: null, strokes });
+    expect(find(signed.blocks, "b_padtext")).toMatchObject({ text: "Signed" });
+  });
+});
+
 describe("what questions start as", () => {
   const started = "2026-11-20T13:47:31Z";
   const withDefaults = () => {

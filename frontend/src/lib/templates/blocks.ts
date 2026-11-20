@@ -100,20 +100,24 @@ export const SIGNERS: Record<Signer["role"], Omit<Signer, "role">> = {
   technician: { label: "Technician", style: "handwritten" },
   reviewer: { label: "Reviewer", style: "handwritten" },
   company: { label: "Company seal", style: "stamp" },
+  pad: { label: "Signature", style: "handwritten" },
 };
 
 /** Another signature for a block: the first kind of signer it doesn't have yet. */
 export function nextSigner(signers: Signer[]): Signer {
   const role = (Object.keys(SIGNERS) as Signer["role"][]).find((r) => !signers.some((s) => s.role === r)) ?? "reviewer";
-  return { role, ...SIGNERS[role] };
+  return { role, ...SIGNERS[role], ...(role === "pad" ? { question: null } : {}) };
 }
 
 /** Another signer for a signature: its label and look follow, unless the designer changed them. */
 export function changeSigner(signer: Signer, role: Signer["role"]): void {
   const before = SIGNERS[signer.role];
   if (!signer.label.trim() || signer.label === before.label) signer.label = SIGNERS[role].label;
-  if (signer.style === before.style) signer.style = SIGNERS[role].style;
+  if (signer.style === before.style || role === "pad") signer.style = SIGNERS[role].style;
   signer.role = role;
+  // Only a signature pad names a question.
+  if (role === "pad") signer.question ??= null;
+  else delete signer.question;
 }
 
 /** A short description of a block, for its card. */

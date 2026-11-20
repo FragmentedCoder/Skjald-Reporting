@@ -11,6 +11,7 @@ import { formatNumber } from "#lib/cel/numbers.js";
 import { fieldType, settingsOf } from "./fields";
 import { CONTEXT_GROUPS, declarations, ITEM } from "./names";
 import { printed } from "./secrets";
+import { drawn } from "./signature";
 import { docText, interpolations } from "./text";
 import { questionsOf, type Block, type Id, type Question, type RichNode, type RichText, type Signer, type TemplateContent, type Tone } from "./types";
 
@@ -34,14 +35,14 @@ export type Shown =
   | { kind: "section"; id: Id; title: string; intro: RichText | null; newPage: boolean; numbered: boolean; landscape: boolean; blocks: Shown[] }
   | { kind: "heading"; id: Id; text: string }
   | { kind: "text"; id: Id; content: RichText }
-  | { kind: "answer"; id: Id; label: string | null; text: string | null; rich: RichText | null; rows: Grid | null }
+  | { kind: "answer"; id: Id; label: string | null; text: string | null; rich: RichText | null; rows: Grid | null; strokes?: number[][] }
   | { kind: "table"; id: Id; caption: string; grid: Grid; emptyText: string }
   | { kind: "image"; id: Id; url: string | null; caption: string; width: string; ratio: number }
   | { kind: "gallery"; id: Id; urls: string[]; caption: string; perRow: number }
   | { kind: "callout"; id: Id; tone: Tone; colour: string | null; title: string; content: RichText }
   | { kind: "severity_summary"; id: Id; caption: string; counts: { level: string; count: number }[] }
   | { kind: "sources"; id: Id; intro: string; items: { title: string; link: string }[] }
-  | { kind: "signatures"; id: Id; signers: Signer[]; layout: "row" | "stack"; showDate: boolean }
+  | { kind: "signatures"; id: Id; signers: ShownSigner[]; layout: "row" | "stack"; showDate: boolean }
   | { kind: "columns"; id: Id; columns: Shown[][] }
   | { kind: "page_break"; id: Id };
 
@@ -49,6 +50,9 @@ export interface Grid {
   headers: string[];
   rows: string[][];
 }
+
+/** A signature as it's drawn: one from a signature pad with its strokes, or null while it isn't signed. */
+export type ShownSigner = Signer & { strokes?: number[][] | null };
 
 export interface PreviewModel {
   blocks: Shown[];
@@ -102,7 +106,7 @@ export function answerValue(question: Question, raw: unknown): unknown {
       return { filled: count > 0, count };
     }
     case "signature":
-      return { filled: Boolean(raw) };
+      return { filled: drawn(raw) !== null };
     case "cvss": {
       const value = (raw ?? {}) as { vector?: string; score?: number; severity?: string };
       return { vector: value.vector ?? "", score: Number(value.score ?? 0), severity: value.severity ?? "" };
@@ -200,6 +204,11 @@ class Worker {
     this.byId = new Map(questionsOf(input.content).map((q) => [q.id, q]));
   }
 
+  /** What's printed where a signature pad isn't signed. */
+  get unsigned(): string {
+    return this.language === "da" ? "Ikke underskrevet" : "Not signed";
+  }
+
   run(scope: Scope, element: Id, expr: string): unknown {
     try {
       return scope.engine.evaluateRaw(expr, scope.values);
@@ -247,11 +256,12 @@ class Worker {
   }
 
   /** An answer as the PDF prints it. */
-  answer(question: Question, raw: unknown): { text: string | null; rich: RichText | null; rows: Grid | null } {
+  answer(question: Question, raw: unknown): { text: string | null; rich: RichText | null; rows: Grid | null; strokes?: number[][] } {
     const s = settingsOf(question.type, question.settings);
     const locale = LOCALES[this.language] ?? LOCALES.en;
     const none = { text: null, rich: null, rows: null };
     if (raw === null || raw === undefined || raw === "") {
+      if (question.type === "signature") return { ...none, text: this.unsigned };
       if (question.type !== "calculated") return { ...none, text: "" };
     }
     switch (question.type) {
@@ -284,9 +294,12 @@ class Worker {
       case "repeating":
       case "table":
         return { ...none, rows: this.grid(question, null) };
+      case "signature": {
+        const strokes = drawn(raw);
+        return strokes ? { ...none, strokes } : { ...none, text: this.unsigned };
+      }
       case "photo":
       case "file":
-      case "signature":
         return { ...none, text: Array.isArray(raw) ? `${raw.length} ${question.type === "photo" ? "photo" : "file"}${raw.length === 1 ? "" : "s"}` : "" };
       default:
         return { ...none, text: printValue(raw, this.language, this.zone) };
@@ -406,7 +419,11 @@ class Worker {
         return [{ kind: "sources", id, intro: this.text(scope, id, b.intro), items }];
       }
       case "signatures":
-        return [{ kind: "signatures", id, signers: b.signers.map((s) => ({ ...s, label: this.text(scope, id, s.label) })), layout: b.layout, showDate: b.show_date }];
+        return [{ kind: "signatures", id, layout: b.layout, showDate: b.show_date, signers: b.signers.map((s) => ({
+          ...s, label: this.text(scope, id, s.label),
+          // A signature pad's drawing, or null while it isn't signed.
+          ...(s.role === "pad" ? { strokes: drawn(s.question ? this.input.answers[s.question] : null) } : {}),
+        })) }];
       case "columns":
         return [{ kind: "columns", id, columns: b.columns.map((column) => this.blocks(scope, column, item)) }];
       case "page_break":
