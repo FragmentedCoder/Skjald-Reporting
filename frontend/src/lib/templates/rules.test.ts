@@ -117,6 +117,12 @@ describe("values", () => {
     expect(valueFromCel(cel, shape, SHAPES)).toEqual(rule);
   });
 
+  it("reads another name's value, as a date question starting when the report is started does", () => {
+    expect(valueToCel({ kind: "name", name: "answers.status" }, "text", SHAPES)).toBe("answers.status");
+    expect(valueFromCel("answers.status", "text", SHAPES)).toEqual({ kind: "name", name: "answers.status" });
+    expect(valueFromCel("answers.nothing_here", "text", SHAPES)).toBeNull();
+  });
+
   it("leaves other expressions as text", () => {
     expect(valueFromCel('format_date(answers.detected, "d MMMM")', "text", SHAPES)).toBeNull();
     expect(valueFromCel('answers.found ? answers.title : "none"', "text", SHAPES)).toBeNull();

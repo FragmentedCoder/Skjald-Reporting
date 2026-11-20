@@ -146,7 +146,8 @@
         problem={problem("required_when")} hint="Required or not, as set above." />
       {#if own && ["string", "double", "int", "bool", "timestamp"].includes(own)}
         <RuleField id="{id}-default" label="Starts as" bind:value={question.default} kind="value" expects={own} {engine} {entries}
-          problem={problem("default")} hint="Starts empty." />
+          problem={problem("default")}
+          hint={question.type === "datetime" ? "Starts empty. Add a rule to start it as the day or the moment the report is started." : "Starts empty."} />
         {#if question.default}
           <button class="link-button small clear" type="button" onclick={() => (question.default = null)}>Start empty instead</button>
         {/if}
