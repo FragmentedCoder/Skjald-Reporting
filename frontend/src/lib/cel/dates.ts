@@ -10,6 +10,8 @@ export interface Locale {
   weekdays: string[];
   decimal: string;
   group: string;
+  /** Lengths of time in words: one and several of each. */
+  units: Record<"day" | "hour" | "minute" | "second", string[]>;
 }
 
 interface Wall {
@@ -170,4 +172,31 @@ export function formatDate(moment: Date, pattern: string, zone: string, locale: 
     }
   }
   return out;
+}
+
+/** Whether a moment is midnight where the report is written: a date with no time of day. */
+export function isMidnight(moment: Date, zone: string): boolean {
+  const w = wallAt(moment.getTime(), zone);
+  return w.hour === 0 && w.minute === 0 && w.second === 0;
+}
+
+/**
+ * A length of time in words, largest unit first, leaving out what's nothing: "3 days
+ * 1 hour", "90 minutes" as "1 hour 30 minutes", "1.5 seconds". Seconds show only when
+ * there are some; nothing at all is "0 minutes".
+ */
+export function formatDuration(seconds: number, locale: Locale): string {
+  const total = Math.abs(seconds);
+  const whole = Math.floor(total);
+  const parts: [number, keyof Locale["units"]][] = [
+    [Math.floor(whole / 86_400), "day"],
+    [Math.floor((whole % 86_400) / 3600), "hour"],
+    [Math.floor((whole % 3600) / 60), "minute"],
+    [Math.round(((whole % 60) + (total - whole)) * 1000) / 1000, "second"],
+  ];
+  const words = parts
+    .filter(([n]) => n !== 0)
+    .map(([n, unit]) => `${String(n).replace(".", locale.decimal)} ${locale.units[unit][n === 1 ? 0 : 1]}`);
+  if (!words.length) return `0 ${locale.units.minute[1]}`;
+  return `${seconds < 0 ? "-" : ""}${words.join(" ")}`;
 }

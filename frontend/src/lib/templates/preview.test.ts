@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import incident from "../../../../shared/templates/incident.json";
 import { paginate } from "./pages";
-import { preview, sampleContext, type PreviewInput, type Shown } from "./preview";
+import { Engine } from "#lib/cel/engine.js";
+import { preview, printValue, sampleContext, type PreviewInput, type Shown } from "./preview";
 import type { TemplateContent } from "./types";
 
 const content = () => structuredClone(incident) as unknown as TemplateContent;
@@ -123,5 +124,27 @@ describe("answers change what's printed", () => {
     const model = preview(input(c));
     expect(find(model.blocks, "b_broken")).toMatchObject({ text: "⚠ and on" });
     expect(model.errors.map((e) => e.element)).toEqual(["b_broken"]);
+  });
+});
+
+describe("printValue", () => {
+  const engine = new Engine({ "project.start_date": "timestamp", "project.end_date": "timestamp" }, {});
+  const values = { project: { start_date: "2026-11-01T00:00:00+01:00", end_date: "2026-11-20T00:00:00+01:00" } };
+  const print = (expr: string, language = "en") => printValue(engine.evaluate(expr, values), language, "Europe/Copenhagen");
+
+  it("prints a length of time in words", () => {
+    expect(print('duration("72h")')).toBe("3 days");
+    expect(print('duration("72h")', "da")).toBe("3 dage");
+    expect(print('duration("90m") + duration("1.5s")')).toBe("1 hour 30 minutes 1.5 seconds");
+    expect(print('duration("90m") + duration("1.5s")', "da")).toBe("1 time 30 minutter 1,5 sekunder");
+    expect(print("project.end_date - project.start_date")).toBe("19 days");
+    expect(print("project.start_date - project.end_date")).toBe("-19 days");
+    expect(print('duration("0s")')).toBe("0 minutes");
+  });
+
+  it("prints a moment at midnight as a date alone", () => {
+    expect(print("project.start_date")).toBe("1 November 2026");
+    expect(print('project.start_date + duration("9h")')).toBe("1 November 2026, 09:00");
+    expect(print("project.start_date", "da")).toBe("1 november 2026");
   });
 });

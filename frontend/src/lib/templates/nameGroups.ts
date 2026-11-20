@@ -3,7 +3,9 @@
 // page what's there now (current.ts). The Database page, a template's Data tab and
 // the editor's Names drawer show the same lists.
 
-import { human, plain } from "#lib/cel/engine.js";
+import { formatDuration } from "#lib/cel/dates.js";
+import { human, isSpan, plain } from "#lib/cel/engine.js";
+import { LOCALES } from "#lib/cel/library.js";
 import { entryName, type LibraryEntry, type TableValue } from "#lib/library.js";
 import { rowNames, type NameEntry } from "./catalogue";
 import { CONTEXT_GROUPS } from "./names";
@@ -40,6 +42,7 @@ export function shown(value: unknown): string {
   const v = plain(value);
   if (v === null || v === undefined || v === "") return "—";
   if (v instanceof Date) return v.toISOString().replace(".000Z", "Z");
+  if (isSpan(v)) return formatDuration(v["@duration"], LOCALES.en);
   return typeof v === "string" ? `"${v}"` : JSON.stringify(v);
 }
 

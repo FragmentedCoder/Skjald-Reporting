@@ -294,14 +294,16 @@
       "short_months": ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
       "weekdays": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
       "decimal": ".",
-      "group": ","
+      "group": ",",
+      "units": {"day": ["day", "days"], "hour": ["hour", "hours"], "minute": ["minute", "minutes"], "second": ["second", "seconds"]}
     },
     "da": {
       "months": ["januar", "februar", "marts", "april", "maj", "juni", "juli", "august", "september", "oktober", "november", "december"],
       "short_months": ["jan.", "feb.", "mar.", "apr.", "maj", "jun.", "jul.", "aug.", "sep.", "okt.", "nov.", "dec."],
       "weekdays": ["mandag", "tirsdag", "onsdag", "torsdag", "fredag", "lørdag", "søndag"],
       "decimal": ",",
-      "group": "."
+      "group": ".",
+      "units": {"day": ["dag", "dage"], "hour": ["time", "timer"], "minute": ["minut", "minutter"], "second": ["sekund", "sekunder"]}
     }
   }
 }

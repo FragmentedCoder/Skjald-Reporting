@@ -4,8 +4,8 @@
 // answers; it runs in the expression worker, which stops it if it takes too long.
 // Phase 3's renderer does the same work on the server for the real PDF.
 
-import { Engine, ExpressionError, plain, type EngineOptions } from "#lib/cel/engine.js";
-import { formatDate } from "#lib/cel/dates.js";
+import { Engine, ExpressionError, isSpan, plain, type EngineOptions } from "#lib/cel/engine.js";
+import { formatDate, formatDuration, isMidnight } from "#lib/cel/dates.js";
 import { LOCALES, type Table as LookupTable } from "#lib/cel/library.js";
 import { formatNumber } from "#lib/cel/numbers.js";
 import { fieldType, settingsOf } from "./fields";
@@ -149,8 +149,11 @@ export function printValue(value: unknown, language: string, zone: string): stri
   if (typeof value === "boolean") return language === "da" ? (value ? "Ja" : "Nej") : value ? "Yes" : "No";
   if (typeof value === "number") return Number.isInteger(value) ? String(value) : String(value).replace(".", locale.decimal);
   if (typeof value === "bigint") return value.toString();
-  if (value instanceof Date) return formatDate(value, "d MMMM yyyy, HH:mm", zone, locale);
+  // A moment at midnight is a date with no time of day (a date question's answer, a
+  // project's dates): the time is left out.
+  if (value instanceof Date) return formatDate(value, isMidnight(value, zone) ? "d MMMM yyyy" : "d MMMM yyyy, HH:mm", zone, locale);
   if (Array.isArray(value)) return value.map((v) => printValue(v, language, zone)).join(", ");
+  if (isSpan(value)) return formatDuration(value["@duration"], locale);
   if (typeof value === "object") return "";
   return String(value);
 }
