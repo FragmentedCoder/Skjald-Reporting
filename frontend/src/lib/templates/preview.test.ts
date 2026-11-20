@@ -127,6 +127,42 @@ describe("answers change what's printed", () => {
   });
 });
 
+describe("what questions start as", () => {
+  const started = "2026-11-20T13:47:31Z";
+  const withDefaults = () => {
+    const c = content();
+    const q = (id: string, key: string, type: string, rule: string, settings: Record<string, unknown> = {}) =>
+      ({ ...c.form[0].questions[0], id, key, type, label: key, required: false, default: rule, settings });
+    c.form[0].questions.push(
+      q("q_day1", "day", "datetime", "report.started", { mode: "date" }),
+      q("q_when", "moment", "datetime", "report.started", { mode: "datetime" }),
+      q("q_who1", "who", "text", "author.display_name"),
+    );
+    c.layout.push({ id: "b_start", kind: "heading", visible_when: null, text: "{{answers.day}} / {{answers.moment}} / {{answers.who}}" });
+    return c;
+  };
+  const run = (c: TemplateContent, answers: Record<string, unknown>) => {
+    const context = sampleContext();
+    context.report.started = started;
+    return preview({ content: c, answers, context, assets: {}, timezone: "Europe/Copenhagen" });
+  };
+
+  it("gives a question not answered yet its start: a date question the day, a date and time question the minute", () => {
+    const c = withDefaults();
+    const model = run(c, c.sample.answers);
+    expect(model.errors).toEqual([]);
+    expect(model.defaults).toEqual({ q_day1: "2026-11-19T23:00:00.000Z", q_when: "2026-11-20T13:47:00.000Z", q_who1: "Freja Holm" });
+    expect(find(model.blocks, "b_start")).toMatchObject({ text: "20 November 2026 / 20 November 2026, 14:47 / Freja Holm" });
+  });
+
+  it("leaves answered questions, and ones cleared on purpose, as they are", () => {
+    const c = withDefaults();
+    const model = run(c, { ...c.sample.answers, q_day1: "2026-10-01T22:00:00.000Z", q_who1: null });
+    expect(model.defaults).toEqual({ q_when: "2026-11-20T13:47:00.000Z" });
+    expect(model.values.who).toBeNull();
+  });
+});
+
 describe("printValue", () => {
   const engine = new Engine({ "project.start_date": "timestamp", "project.end_date": "timestamp" }, {});
   const values = { project: { start_date: "2026-11-01T00:00:00+01:00", end_date: "2026-11-20T00:00:00+01:00" } };

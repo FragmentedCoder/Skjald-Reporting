@@ -5,7 +5,7 @@
 // Phase 3's renderer does the same work on the server for the real PDF.
 
 import { Engine, ExpressionError, isSpan, plain, type EngineOptions } from "#lib/cel/engine.js";
-import { formatDate, formatDuration, isMidnight } from "#lib/cel/dates.js";
+import { formatDate, formatDuration, isMidnight, startOfDay } from "#lib/cel/dates.js";
 import { LOCALES, type Table as LookupTable } from "#lib/cel/library.js";
 import { formatNumber } from "#lib/cel/numbers.js";
 import { fieldType, settingsOf } from "./fields";
@@ -58,6 +58,8 @@ export interface PreviewModel {
   errors: { element: Id; message: string }[];
   /** The values expressions read: answers by variable name, calculated ones included. */
   values: Record<string, unknown>;
+  /** What questions not answered yet start as ("Starts as"), by question ID, as answers are kept. */
+  defaults: Record<Id, unknown>;
   /** Questions and steps the form hides, and those it requires, for "Try it". */
   formHidden: Id[];
   formRequired: Id[];
@@ -111,6 +113,24 @@ export function answerValue(question: Question, raw: unknown): unknown {
     default:
       return raw ?? null;
   }
+}
+
+/**
+ * What a question starts as, from what its rule gives, kept as its answers are: a date
+ * question takes the day (midnight where the report is written), a date and time
+ * question the minute. Nothing (null) when the rule gives nothing the question holds.
+ */
+export function startValue(question: Question, value: unknown, zone: string): unknown {
+  const settings = settingsOf(question.type, question.settings);
+  if (value === null || value === undefined || value === "") return null;
+  if (question.type === "datetime") {
+    if (!(value instanceof Date) || Number.isNaN(value.getTime())) return null;
+    const moment = settings.mode === "date" ? startOfDay(value, zone) : new Date(Math.floor(value.getTime() / 60_000) * 60_000);
+    return moment.toISOString();
+  }
+  if (question.type === "number") return typeof value === "number" ? (settings.whole ? Math.trunc(value) : value) : null;
+  if (question.type === "yes_no") return typeof value === "boolean" ? value : null;
+  return typeof value === "string" ? value : null;
 }
 
 /** The order calculated values are worked out in: each after the ones it reads. */
@@ -431,6 +451,20 @@ export function preview(input: PreviewInput): PreviewModel {
   for (const q of questions) if (q.key && q.type !== "calculated") answers[q.key] = answerValue(q, input.answers[q.id]);
   const values: Record<string, unknown> = { ...input.context, ...(input.library?.values ?? {}), answers };
   const errors: PreviewModel["errors"] = [];
+  // A question not answered yet starts as its rule says, in the form's order (one cleared
+  // on purpose is kept as null, and stays empty).
+  const defaults: PreviewModel["defaults"] = {};
+  for (const q of questions) {
+    if (!q.key || q.type === "calculated" || !q.default?.trim() || input.answers[q.id] !== undefined) continue;
+    try {
+      const start = startValue(q, plain(engine.evaluateRaw(q.default, values)), input.timezone ?? "Europe/Copenhagen");
+      if (start === null) continue;
+      defaults[q.id] = start;
+      answers[q.key] = answerValue(q, start);
+    } catch (error) {
+      errors.push({ element: q.id, message: error instanceof ExpressionError ? error.message : String(error) });
+    }
+  }
   for (const q of calculationOrder(questions, engine)) {
     try {
       answers[q.key as string] = engine.evaluateRaw(q.value ?? "", values);
@@ -467,6 +501,7 @@ export function preview(input: PreviewInput): PreviewModel {
     hidden: worker.hidden,
     errors: worker.errors,
     values: plain(answers) as Record<string, unknown>,
+    defaults,
     formHidden,
     formRequired,
     invalid,

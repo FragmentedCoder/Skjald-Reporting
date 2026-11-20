@@ -40,8 +40,11 @@
   let current = $state(0);
   const step = $derived(steps[Math.min(current, steps.length - 1)]);
 
+  // A question not answered yet shows what it starts as ("Starts as").
   function answer(q: Question): unknown {
-    return LOCAL.has(q.type) ? local[q.id] : content.sample.answers[q.id];
+    if (LOCAL.has(q.type)) return local[q.id];
+    const kept = content.sample.answers[q.id];
+    return kept === undefined ? model?.defaults[q.id] : kept;
   }
 
   function set(q: Question, value: unknown) {
@@ -50,7 +53,9 @@
       if (blank) delete local[q.id];
       else local[q.id] = value;
     } else if (blank) {
-      delete content.sample.answers[q.id];
+      // Cleared on purpose: one that starts as something stays empty, kept as null.
+      if (q.default?.trim()) content.sample.answers[q.id] = null;
+      else delete content.sample.answers[q.id];
     } else {
       content.sample.answers[q.id] = value;
     }

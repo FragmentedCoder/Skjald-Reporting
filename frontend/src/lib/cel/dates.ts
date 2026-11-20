@@ -174,6 +174,12 @@ export function formatDate(moment: Date, pattern: string, zone: string, locale: 
   return out;
 }
 
+/** Midnight, where the report is written, of the day a moment falls on. */
+export function startOfDay(moment: Date, zone: string): Date {
+  const w = wallAt(moment.getTime(), zone);
+  return new Date(instantOf({ ...w, hour: 0, minute: 0, second: 0 }, zone));
+}
+
 /** Whether a moment is midnight where the report is written: a date with no time of day. */
 export function isMidnight(moment: Date, zone: string): boolean {
   const w = wallAt(moment.getTime(), zone);
@@ -199,4 +205,9 @@ export function formatDuration(seconds: number, locale: Locale): string {
     .map(([n, unit]) => `${String(n).replace(".", locale.decimal)} ${locale.units[unit][n === 1 ? 0 : 1]}`);
   if (!words.length) return `0 ${locale.units.minute[1]}`;
   return `${seconds < 0 ? "-" : ""}${words.join(" ")}`;
+}
+
+/** This minute, as answers keep moments. */
+export function thisMinute(): string {
+  return new Date(Math.floor(Date.now() / 60_000) * 60_000).toISOString();
 }

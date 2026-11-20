@@ -6,6 +6,7 @@
 
 import { getContext, setContext } from "svelte";
 import { ApiError } from "#lib/api.js";
+import { thisMinute } from "#lib/cel/dates.js";
 import { customFieldsApi, customLabels, customNames, sampleCustom, type CustomField } from "#lib/customFields.js";
 import { libraryApi, libraryLabels, libraryNames, libraryValues, type LibraryEntry } from "#lib/library.js";
 import { toast } from "#lib/toast.svelte.js";
@@ -56,6 +57,8 @@ export class Draft {
   #undone: string[] = [];
   #changedAt = 0;
   #stepping = false;
+  // When this look at the template began: the sample report's start, to the minute.
+  #started = thisMinute();
   #saveTimer: ReturnType<typeof setTimeout> | undefined;
   #checkTimer: ReturnType<typeof setTimeout> | undefined;
   #saving: Promise<void> | null = null;
@@ -86,11 +89,13 @@ export class Draft {
   /**
    * The sample context, custom fields' examples included. The sample report is this
    * template's: titled with its name (a report's title until the technician changes
-   * it) and numbered with its prefix.
+   * it), numbered with its prefix, and started now, so a question that starts as the
+   * moment the report is started shows today.
    */
   get sampleContext(): Record<string, Record<string, unknown>> {
     const fields = $state.snapshot(this.customFields) as CustomField[];
     const context = sampleContext({ customer: sampleCustom(fields, "customer"), project: sampleCustom(fields, "project") });
+    context.report.started = this.#started;
     if (this.template) context.report.title = this.template.name;
     if (this.content) context.report.number = String(context.report.number).replace(/^[A-Z]+/, this.content.settings.prefix);
     return context;
