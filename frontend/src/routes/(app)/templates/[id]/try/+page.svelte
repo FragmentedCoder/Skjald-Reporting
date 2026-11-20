@@ -10,6 +10,7 @@
   import { useDraft } from "#lib/templates/draft.svelte.js";
   import { fieldType, settingsOf } from "#lib/templates/fields.js";
   import { LivePreview } from "#lib/templates/live.svelte.js";
+  import { samplePeople } from "#lib/templates/preview.js";
   import type { Question, TemplateContent } from "#lib/templates/types.js";
 
   // "Try it": the technician's screen for the draft, one step at a time, with the PDF
@@ -33,6 +34,8 @@
   });
 
   const model = $derived(live.model);
+  // Whom person questions offer here: the sample report's author and reviewer.
+  const people = $derived(samplePeople(draft.sampleContext));
   const hidden = $derived(new Set(model?.formHidden ?? []));
   const required = $derived(new Set(model?.formRequired ?? []));
   const invalid = $derived(new Map((model?.invalid ?? []).map((i) => [i.id, i.message])));
@@ -114,7 +117,7 @@
         {#each step.questions as q (q.id)}
           {#if !(q.type === "calculated" && !q.settings.show_in_form)}
             <AnswerField question={q} bind:value={() => answer(q), (v) => set(q, v)} required={required.has(q.id)}
-              hidden={hidden.has(q.id)} invalid={invalid.get(q.id) ?? null} computed={q.key ? model?.values[q.key] : undefined} {checked} />
+              hidden={hidden.has(q.id)} invalid={invalid.get(q.id) ?? null} computed={q.key ? model?.values[q.key] : undefined} {checked} {people} />
           {/if}
         {:else}
           <p class="small muted">This step has no questions yet.</p>

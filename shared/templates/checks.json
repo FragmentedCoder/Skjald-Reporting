@@ -2330,6 +2330,122 @@
           "message": "“Title” isn't a signature pad."
         }
       ]
+    },
+    {
+      "name": "A person picked from the company",
+      "content": {
+        "schema": 1,
+        "settings": {
+          "prefix": "REP",
+          "language": "en",
+          "signing": "technician",
+          "review": "optional",
+          "delivery": [
+            "download"
+          ],
+          "styles": [
+            "company",
+            "customer"
+          ],
+          "customer_background": true
+        },
+        "form": [
+          {
+            "id": "s_main1",
+            "title": "Step",
+            "help": "",
+            "visible_when": null,
+            "questions": [
+              {
+                "id": "q_done1",
+                "key": "done_by",
+                "type": "person",
+                "label": "Procedure performed by",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": "answers.done_by.filled || true",
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "who": "technicians"
+                }
+              },
+              {
+                "id": "q_seen1",
+                "key": "seen_by",
+                "type": "person",
+                "label": "Witnessed by",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": "author.display_name",
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "who": "everyone"
+                }
+              }
+            ]
+          }
+        ],
+        "layout": [
+          {
+            "id": "b_ans1",
+            "visible_when": null,
+            "kind": "answer",
+            "question": "q_done1",
+            "show_label": true
+          },
+          {
+            "id": "b_head1",
+            "visible_when": "answers.seen_by.filled",
+            "kind": "heading",
+            "text": "By {{answers.done_by.display_name}}, {{answers.done_by.job_title}} ({{answers.done_by.nickname}})"
+          }
+        ],
+        "sample": {
+          "answers": {}
+        }
+      },
+      "answers": {
+        "answers.done_by.company": "string",
+        "answers.done_by.department": "string",
+        "answers.done_by.display_name": "string",
+        "answers.done_by.email": "string",
+        "answers.done_by.filled": "bool",
+        "answers.done_by.first_name": "string",
+        "answers.done_by.job_title": "string",
+        "answers.done_by.last_name": "string",
+        "answers.done_by.middle_name": "string",
+        "answers.done_by.phone": "string",
+        "answers.seen_by.company": "string",
+        "answers.seen_by.department": "string",
+        "answers.seen_by.display_name": "string",
+        "answers.seen_by.email": "string",
+        "answers.seen_by.filled": "bool",
+        "answers.seen_by.first_name": "string",
+        "answers.seen_by.job_title": "string",
+        "answers.seen_by.last_name": "string",
+        "answers.seen_by.middle_name": "string",
+        "answers.seen_by.phone": "string"
+      },
+      "problems": [
+        {
+          "element": "q_seen1",
+          "field": "default",
+          "message": "This kind of question can't have a default."
+        },
+        {
+          "element": "b_head1",
+          "field": "text",
+          "message": "answers.done_by.nickname isn't a name this template has."
+        }
+      ]
     }
   ]
 }

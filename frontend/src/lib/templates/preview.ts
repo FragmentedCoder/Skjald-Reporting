@@ -8,7 +8,7 @@ import { Engine, ExpressionError, isSpan, plain, type EngineOptions } from "#lib
 import { formatDate, formatDuration, isMidnight, startOfDay } from "#lib/cel/dates.js";
 import { LOCALES, type Table as LookupTable } from "#lib/cel/library.js";
 import { formatNumber } from "#lib/cel/numbers.js";
-import { fieldType, settingsOf } from "./fields";
+import { fieldType, PERSON_PARTS, settingsOf } from "./fields";
 import { CONTEXT_GROUPS, declarations, ITEM } from "./names";
 import { printed } from "./secrets";
 import { drawn } from "./signature";
@@ -88,6 +88,25 @@ export function sampleContext(custom: { customer?: Record<string, unknown>; proj
   return context;
 }
 
+/** Someone a person question can pick: their business details, as author and reviewer have them. */
+export type Person = { id: string; role: "technician" | "reviewer" } & Record<(typeof PERSON_PARTS)[number], string>;
+
+/**
+ * The people a person question offers in the builder: the sample report's author (a
+ * technician) and reviewer. In a report they're the company's own people.
+ */
+export function samplePeople(context: Record<string, Record<string, unknown>>): Person[] {
+  const one = (id: string, role: Person["role"], from: Record<string, unknown> = {}) =>
+    ({ id, role, ...Object.fromEntries(PERSON_PARTS.map((part) => [part, String(from[part] ?? "")])) }) as Person;
+  return [one("sample-author", "technician", context.author), one("sample-reviewer", "reviewer", context.reviewer)].filter((p) => p.display_name);
+}
+
+/** The people a person question lets the technician pick among. */
+export function peopleFor(question: Question, people: Person[]): Person[] {
+  const who = settingsOf(question.type, question.settings).who;
+  return people.filter((p) => (who === "technicians" ? p.role === "technician" : who === "reviewers" ? p.role === "reviewer" : true));
+}
+
 // Answers as expressions read them
 
 /** One answer as expressions see it: a secret only as it prints, a photo only whether there is one. */
@@ -107,6 +126,12 @@ export function answerValue(question: Question, raw: unknown): unknown {
     }
     case "signature":
       return { filled: drawn(raw) !== null };
+    case "person": {
+      // The person as they were when picked: their details, each text.
+      const picked = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+      const parts = Object.fromEntries(PERSON_PARTS.map((part) => [part, typeof picked[part] === "string" ? picked[part] : ""]));
+      return { filled: parts.display_name !== "", ...parts };
+    }
     case "cvss": {
       const value = (raw ?? {}) as { vector?: string; score?: number; severity?: string };
       return { vector: value.vector ?? "", score: Number(value.score ?? 0), severity: value.severity ?? "" };
@@ -294,6 +319,8 @@ class Worker {
       case "repeating":
       case "table":
         return { ...none, rows: this.grid(question, null) };
+      case "person":
+        return { ...none, text: String((raw as { display_name?: unknown }).display_name ?? "") };
       case "signature": {
         const strokes = drawn(raw);
         return strokes ? { ...none, strokes } : { ...none, text: this.unsigned };

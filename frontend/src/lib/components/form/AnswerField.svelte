@@ -7,13 +7,14 @@
   import RichTextEditor from "#lib/components/builder/RichTextEditor.svelte";
   import { checkAnswer, cvssScore } from "#lib/templates/answers.js";
   import { COLUMN_TYPES, settingsOf } from "#lib/templates/fields.js";
+  import { peopleFor, type Person } from "#lib/templates/preview.js";
   import type { Drawn } from "#lib/templates/signature.js";
   import type { Question, RichText } from "#lib/templates/types.js";
   import SignaturePad from "./SignaturePad.svelte";
 
   // One question as the technician answers it, with its own check as they type. Files,
   // photos and signatures stay in the browser here: uploading them is the report's job.
-  let { question, value = $bindable(), required, hidden, invalid, computed, checked = false, zone = "Europe/Copenhagen" }: {
+  let { question, value = $bindable(), required, hidden, invalid, computed, checked = false, people = [], zone = "Europe/Copenhagen" }: {
     question: Question;
     value: unknown;
     required: boolean;
@@ -24,6 +25,8 @@
     invalid: string | null;
     /** A calculated value, worked out. */
     computed: unknown;
+    /** The people a person question can pick. */
+    people?: Person[];
     zone?: string;
   } = $props();
 
@@ -140,6 +143,15 @@
           <select class="input" aria-labelledby="{id}-label" value={String(value ?? "")} onchange={(e) => (value = e.currentTarget.value || null)}>
             <option value="">Choose…</option>
             {#each options as o (o.value)}<option value={o.value}>{o.label}</option>{/each}
+          </select>
+        {:else if question.type === "person"}
+          {@const choices = peopleFor(question, people)}
+          {@const picked = (value as Person | null)?.id ?? ""}
+          <select class="input" aria-labelledby="{id}-label" value={picked}
+            onchange={(e) => (value = choices.find((p) => p.id === e.currentTarget.value) ?? null)}>
+            <option value="">Choose…</option>
+            {#each choices as p (p.id)}<option value={p.id}>{p.display_name}{p.job_title ? `, ${p.job_title}` : ""}</option>{/each}
+            {#if picked && !choices.some((p) => p.id === picked)}<option value={picked}>{(value as Person).display_name}</option>{/if}
           </select>
         {:else if question.type === "multi_select"}
           <span class="choices">

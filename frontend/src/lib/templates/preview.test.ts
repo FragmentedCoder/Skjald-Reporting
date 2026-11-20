@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import incident from "../../../../shared/templates/incident.json";
 import { paginate } from "./pages";
 import { Engine } from "#lib/cel/engine.js";
-import { preview, printValue, sampleContext, type PreviewInput, type Shown } from "./preview";
+import { peopleFor, preview, printValue, sampleContext, samplePeople, type PreviewInput, type Shown } from "./preview";
 import type { TemplateContent } from "./types";
 
 const content = () => structuredClone(incident) as unknown as TemplateContent;
@@ -124,6 +124,29 @@ describe("answers change what's printed", () => {
     const model = preview(input(c));
     expect(find(model.blocks, "b_broken")).toMatchObject({ text: "⚠ and on" });
     expect(model.errors.map((e) => e.element)).toEqual(["b_broken"]);
+  });
+});
+
+describe("a person picked from the company", () => {
+  it("offers the sample report's people by what the question asks for, and prints who's picked", () => {
+    const c = content();
+    const people = samplePeople(sampleContext());
+    expect(people.map((p) => [p.id, p.role, p.display_name])).toEqual([["sample-author", "technician", "Freja Holm"], ["sample-reviewer", "reviewer", "Anders Berg"]]);
+    const question = { ...c.form[0].questions[0], id: "q_done1", key: "done_by", type: "person", label: "Procedure performed by", required: false, settings: { who: "technicians" } };
+    expect(peopleFor(question, people).map((p) => p.display_name)).toEqual(["Freja Holm"]);
+    expect(peopleFor({ ...question, settings: { who: "everyone" } }, people)).toHaveLength(2);
+
+    c.form[0].questions.push(question);
+    c.layout.push(
+      { id: "b_done", kind: "answer", visible_when: null, question: "q_done1", show_label: true },
+      { id: "b_donetext", kind: "heading", visible_when: null, text: '{{answers.done_by.filled ? answers.done_by.display_name + ", " + answers.done_by.job_title : "Nobody yet"}}' },
+    );
+    const before = preview(input(c));
+    expect(before.errors).toEqual([]);
+    expect(find(before.blocks, "b_donetext")).toMatchObject({ text: "Nobody yet" });
+    const after = preview(input(c, { ...c.sample.answers, q_done1: people[0] }));
+    expect(find(after.blocks, "b_done")).toMatchObject({ label: "Procedure performed by", text: "Freja Holm" });
+    expect(find(after.blocks, "b_donetext")).toMatchObject({ text: `Freja Holm, ${people[0].job_title}` });
   });
 });
 

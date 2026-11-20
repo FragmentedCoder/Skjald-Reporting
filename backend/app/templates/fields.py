@@ -156,6 +156,18 @@ class TableSettings(Strict):
     columns: list[Column] = Field(min_length=1, max_length=20)
 
 
+class PersonSettings(Strict):
+    # Whom the technician picks among: the company's technicians or reviewers, the
+    # people on the report's project, or everyone who can sign in.
+    who: Literal["technicians", "reviewers", "team", "everyone"] = "technicians"
+
+
+# What a picked person gives expressions, as author and reviewer do: their business
+# details as they were when picked, never anything private.
+PERSON_PARTS = ("display_name", "first_name", "middle_name", "last_name", "job_title",
+                "department", "company", "email", "phone")
+
+
 class CalculatedSettings(Strict):
     result: Literal["text", "number", "whole", "yes_no", "date"] = "text"
     show_in_form: bool = True
@@ -199,6 +211,8 @@ FIELD_TYPES: dict[str, FieldType] = {
     "photo": FieldType(PhotoSettings, lambda _s: {".filled": "bool", ".count": "int"}),
     "barcode": FieldType(BarcodeSettings, _one("string")),
     "signature": FieldType(NoSettings, lambda _s: {".filled": "bool"}),
+    "person": FieldType(PersonSettings, lambda _s: {
+        ".filled": "bool", **{f".{part}": "string" for part in PERSON_PARTS}}),
     "repeating": FieldType(RepeatingSettings, _one("list<map<string, dyn>>")),
     "table": FieldType(TableSettings, _one("list<map<string, dyn>>")),
     "calculated": FieldType(CalculatedSettings, lambda s: {"": _RESULT_TYPES[s.result]}),
