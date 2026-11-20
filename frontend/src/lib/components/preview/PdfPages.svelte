@@ -864,8 +864,11 @@
     color: var(--text-soft);
     font-size: 0.85em;
   }
+  /* A label is printed whole, on as many lines as it takes. */
   .signature figcaption strong {
+    overflow: visible;
     color: var(--text-ink);
+    white-space: normal;
   }
   .sample-note {
     margin-top: 0.8em;
