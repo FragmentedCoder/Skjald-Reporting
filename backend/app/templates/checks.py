@@ -180,7 +180,7 @@ class _Checker:
         if q.type in ("dropdown", "multi_select"):
             for i, option in enumerate(s["options"]):
                 if not option["label"].strip():
-                    self.add(q.id, "settings.options", f"Write what option {i + 1} is shown as.")
+                    self.add(q.id, "settings.options", f"Write what choice {i + 1} is shown as.")
         if q.type == "yes_no":
             for name, word in (("yes_label", "Yes"), ("no_label", "No")):
                 if not s[name].strip():

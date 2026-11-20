@@ -2136,7 +2136,7 @@
         {
           "element": "q_drop1",
           "field": "settings.options",
-          "message": "Write what option 1 is shown as."
+          "message": "Write what choice 1 is shown as."
         },
         {
           "element": "q_yesno",

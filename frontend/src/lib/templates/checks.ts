@@ -144,7 +144,7 @@ class Checker {
     const s = settingsOf(q.type, q.settings);
     const labels = (list: unknown) => ((list ?? []) as { label: string }[]).map((entry) => entry.label.trim());
     if (q.type === "dropdown" || q.type === "multi_select") {
-      labels(s.options).forEach((label, i) => !label && this.add(q.id, "settings.options", `Write what option ${i + 1} is shown as.`));
+      labels(s.options).forEach((label, i) => !label && this.add(q.id, "settings.options", `Write what choice ${i + 1} is shown as.`));
     }
     if (q.type === "yes_no") {
       for (const [name, word] of [["yes_label", "Yes"], ["no_label", "No"]]) {
