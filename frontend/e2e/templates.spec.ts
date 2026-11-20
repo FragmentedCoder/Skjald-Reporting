@@ -462,13 +462,13 @@ test("a designer drags blocks in the outline and on the pages", async ({ browser
   await page.keyboard.press("Delete");
   await expect(page.getByRole("button", { name: /^Heading: / })).toHaveCount(0);
 
-  // A clicked cover goes first. On the pages it sits right under the title, and
+  // A clicked cover goes first, titled with the template's own name. On the pages it sits right under the title, and
   // the signatures look as in the design.
   await blocks.getByRole("button", { name: /^Cover/ }).click();
   await expect(outline.locator(":scope > li").first()).toContainText("Cover");
   await page.getByRole("button", { name: "Pages", exact: true }).click();
   const first = page.getByRole("region", { name: /^Page 1 of / });
-  await expect(first.getByRole("heading", { name: "Security incident report" })).toBeVisible();
+  await expect(first.getByRole("heading", { name: "Server room handover" })).toBeVisible();
   const intro = await page.locator(".workspace > .intro").boundingBox();
   const sheet = await first.boundingBox();
   expect(sheet!.y - (intro!.y + intro!.height)).toBeLessThan(40);

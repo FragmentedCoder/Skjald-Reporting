@@ -70,10 +70,17 @@ export class Draft {
     return { ...libraryLabels(this.library), ...customLabels(this.customFields) };
   }
 
-  /** The sample context, custom fields' examples included. */
+  /**
+   * The sample context, custom fields' examples included. The sample report is this
+   * template's: titled with its name (a report's title until the technician changes
+   * it) and numbered with its prefix.
+   */
   get sampleContext(): Record<string, Record<string, unknown>> {
     const fields = $state.snapshot(this.customFields) as CustomField[];
-    return sampleContext({ customer: sampleCustom(fields, "customer"), project: sampleCustom(fields, "project") });
+    const context = sampleContext({ customer: sampleCustom(fields, "customer"), project: sampleCustom(fields, "project") });
+    if (this.template) context.report.title = this.template.name;
+    if (this.content) context.report.number = String(context.report.number).replace(/^[A-Z]+/, this.content.settings.prefix);
+    return context;
   }
 
   /** The library as the preview reads it. */
