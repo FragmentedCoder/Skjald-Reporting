@@ -35,7 +35,11 @@ export class Covers {
         : template.latest_version !== null ? (await templatesApi.version(template.id, template.latest_version)).content : null;
       if (!content) return null;
       const shared = await this.#sharedData();
-      const input: PreviewInput = { content, answers: content.sample.answers, assets: {}, timezone: branding.current.time_zone, pageTexts, ...shared };
+      // The sample report is this template's: titled with its name, numbered with its prefix.
+      const sample = shared.context.report as Record<string, unknown>;
+      const report = { ...sample, title: template.name, number: String(sample.number).replace(/^[A-Z]+/, content.settings.prefix) };
+      const input: PreviewInput = { content, answers: content.sample.answers, assets: {}, timezone: branding.current.time_zone, pageTexts,
+        library: shared.library, context: { ...shared.context, report } };
       const [result] = await this.#client.run(SETUP, {}, [{ kind: "preview", input }]);
       if (!result.ok) return null;
       const paged = paginate((result.value as PreviewModel).blocks);
