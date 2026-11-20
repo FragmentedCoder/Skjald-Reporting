@@ -52,7 +52,8 @@ RESERVED = frozenset({
 })
 LISTS = ("repeating", "table")
 ITEM_OUTSIDE = "item is only there inside a section repeated for each item."
-SIGNERS = {"technician": "The technician", "reviewer": "The reviewer", "company": "The company seal"}
+SIGNERS = {"technician": "The technician", "reviewer": "The reviewer",
+           "company": "The company seal"}
 
 
 @dataclass(frozen=True)
