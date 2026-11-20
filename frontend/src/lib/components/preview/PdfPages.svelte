@@ -112,9 +112,9 @@
   });
   // Each page's list: what the drag library is given.
   function zoneOf(p: number) {
-    const options = { items: entriesOf(p), type: onplace ? "blocks" : "pages", dragDisabled: !onplace, dropFromOthersDisabled: !onplace,
-      flipDurationMs: 150, dropTargetClasses: ["dropping"], dropTargetStyle: {}, transformDraggedElement: carried, ...DRAG_OPTIONS, hooked: hooks.hooked };
-    return options;
+    hooks.watch();
+    return { items: entriesOf(p), type: onplace ? "blocks" : "pages", dragDisabled: !onplace, dropFromOthersDisabled: !onplace,
+      flipDurationMs: 150, dropTargetClasses: ["dropping"], dropTargetStyle: {}, transformDraggedElement: carried, ...DRAG_OPTIONS };
   }
 
   function finalize(p: number, event: CustomEvent<DndEvent<Entry>>) {

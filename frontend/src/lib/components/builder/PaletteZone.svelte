@@ -35,8 +35,11 @@
   }
 
   const hooks = new Hooks();
-  const zone = $derived({ items, type, dropFromOthersDisabled: true, flipDurationMs: 120, dropTargetStyle: {},
-    transformDraggedElement: dragLook<Dragged>((e) => e.label), ...DRAG_OPTIONS, hooked: hooks.hooked });
+  const look = dragLook<Dragged>((e) => e.label);
+  const zone = $derived.by(() => {
+    hooks.watch();
+    return { items, type, dropFromOthersDisabled: true, flipDurationMs: 120, dropTargetStyle: {}, transformDraggedElement: look, ...DRAG_OPTIONS };
+  });
 </script>
 
 <ul class="entries" use:dndzone={zone} onconsider={consider} onfinalize={finalize}>
