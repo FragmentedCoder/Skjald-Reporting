@@ -269,9 +269,9 @@ def problems(content: StyleContent, *, timezone: str,
     for page, where in PAGE_NAMES.items():
         design = getattr(content.pages, page)
         for number, element in enumerate(design.elements if design else [], start=1):
-            if element.kind != "text":
-                continue
-            for part in interpolations(element.text):
+            # Text elements print theirs; another kind's is checked all the same, so
+            # nothing unread is kept in a style.
+            for part in interpolations(element.text or ""):
                 if not part.closed:
                     found.append(f"Element {number} on {where}: a {{{{ has no }}}} to close it.")
                     continue

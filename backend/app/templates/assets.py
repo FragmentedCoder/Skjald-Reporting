@@ -66,5 +66,10 @@ def clean_asset(raw: bytes) -> CleanAsset:
         image.convert("RGB").save(out, format="JPEG", quality=90, optimize=True)
     else:
         image.convert("RGBA").save(out, format="PNG", optimize=True)
+    # Held to the limit as kept, not only as sent: a PNG of few colours grows when it's
+    # written anew, and a picture kept larger than this couldn't be imported elsewhere.
+    if len(out.getvalue()) > MAX_UPLOAD_BYTES:
+        raise AssetRejected("The image is larger than 4 MB once Skjald has cleaned it: use a "
+                            "smaller picture, or a JPEG.")
     return CleanAsset(out.getvalue(), "image/jpeg" if photo else "image/png",
                       image.width, image.height)
