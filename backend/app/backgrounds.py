@@ -71,11 +71,14 @@ def _page_from_picture(raw: bytes) -> str:
                 raise BackgroundRejected("Use an A4 PDF, or a PNG, JPEG or SVG picture of a page.")
             opened.load()
             picture = ImageOps.exif_transpose(opened).convert("RGB")
+    except BackgroundRejected:
+        raise
     except Image.DecompressionBombError as exc:
         # Above app.images.MAX_PIXELS: refused from the header, before it's decoded.
         raise BackgroundRejected(
             "The picture has more than 40 million pixels. Use a smaller one.") from exc
-    except (UnidentifiedImageError, OSError) as exc:
+    # ValueError: Pillow's word for a PNG whose packed text unpacks too large.
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
         raise BackgroundRejected("That file isn't a picture Skjald can use.") from exc
     if abs(picture.height / picture.width - A4_RATIO) > 0.03:
         raise BackgroundRejected("The picture must have an A4 page's proportions (210 × 297).")

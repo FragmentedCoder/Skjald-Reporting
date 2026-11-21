@@ -56,10 +56,13 @@ def clean_image(raw: bytes, *, max_size: tuple[int, int]) -> bytes:
             opened.load()
             # Turn it the way the camera meant before the EXIF data is dropped.
             image = ImageOps.exif_transpose(opened).convert("RGBA")
+    except ImageRejected:
+        raise
     except Image.DecompressionBombError as exc:
         raise ImageRejected(
             "The image has more than 40 million pixels. Use a smaller one.") from exc
-    except (UnidentifiedImageError, OSError) as exc:
+    # ValueError: Pillow's word for a PNG whose packed text unpacks too large.
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
         raise ImageRejected("That file isn't an image Skjald can use.") from exc
     image.thumbnail(max_size)
     out = io.BytesIO()

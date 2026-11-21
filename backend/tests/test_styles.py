@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import io
 import json
+import struct
+import zlib
 from pathlib import Path
 from typing import Any
 
@@ -246,6 +248,41 @@ def test_images_and_artwork(client, designer, session, monkeypatch) -> None:
     art = {"artwork": {"first": done["pages"][0], "other": done["pages"][1]}}
     assert save(client, headers, latest, content=art).status_code == 200
     assert "style.picture_added" in actions(session, "style.")
+
+
+def test_pictures_that_cant_be_read_or_sized_are_refused(client, designer, customer) -> None:
+    """Each of these was an HTTP 500: Pillow raises a plain ValueError for a PNG whose
+    packed text unpacks to more than it allows, and an SVG's size can be any number."""
+    _, headers = designer
+    octets = {**headers, "Content-Type": "application/octet-stream"}
+    style = client.post(STYLES, headers=headers, json={"name": "Nordlys brand"}).json()
+    page = picture(210, 297)
+    text = b"Comment\0\0" + zlib.compress(b"a" * (2 * 1024 * 1024))
+    chunk = (struct.pack(">I", len(text)) + b"zTXt" + text
+             + struct.pack(">I", zlib.crc32(b"zTXt" + text)))
+    at = page.index(b"IDAT") - 4
+    packed = page[:at] + chunk + page[at:]
+    assert len(packed) < 4096
+    for answer in (
+        post_file(client, headers, style["id"], packed),
+        post_file(client, headers, style["id"], packed, use="artwork"),
+        client.put(f"/api/customers/{customer['id']}/background", content=packed,
+                   headers=octets),
+        client.put("/api/account/avatar", content=packed, headers=octets),
+    ):
+        assert answer.status_code == 400
+        assert "Skjald can use" in answer.json()["detail"]
+
+    endless = (b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1e30 1.414e30">'
+               b'<rect width="1" height="1"/></svg>')
+    for answer in (
+        post_file(client, headers, style["id"], endless),
+        post_file(client, headers, style["id"], endless, use="artwork"),
+        client.put(f"/api/customers/{customer['id']}/background", content=endless,
+                   headers=octets),
+    ):
+        assert answer.status_code == 400
+        assert "too large" in answer.json()["detail"]
 
 
 def test_customer_styles_are_sealed_and_go_with_the_customer(client, designer, customer,

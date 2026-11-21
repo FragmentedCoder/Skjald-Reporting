@@ -11,6 +11,7 @@ data. The cleaned file is what gets stored and printed.
 
 from __future__ import annotations
 
+import math
 import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
@@ -23,6 +24,9 @@ XLINK = "http://www.w3.org/1999/xlink"
 MAX_BYTES = 2 * 1024 * 1024
 MAX_ELEMENTS = 20_000
 MAX_DEPTH = 50
+# The longest a side may be, in the picture's own units: far beyond any real artwork
+# (an A0 sheet in thousandths of a millimetre is 1,189,000), and a number that can be kept.
+MAX_SIDE = 10_000_000
 
 ELEMENTS = frozenset({
     "svg", "g", "defs", "title", "desc", "symbol", "use", "path", "rect", "circle", "ellipse",
@@ -118,18 +122,25 @@ def _clean(element: ET.Element, depth: int, count: list[int]) -> ET.Element | No
 
 
 def _size(root: ET.Element) -> tuple[int, int]:
+    found: tuple[float, float] | None = None
     view_box = root.get("viewBox", "").replace(",", " ").split()
     if len(view_box) == 4:
         try:
             width, height = float(view_box[2]), float(view_box[3])
             if width > 0 and height > 0:
-                return max(1, round(width)), max(1, round(height))
+                found = width, height
         except ValueError:
             pass
     sizes = [_LENGTH.match(root.get(name, "")) for name in ("width", "height")]
-    if sizes[0] and sizes[1]:
-        return max(1, round(float(sizes[0].group(1)))), max(1, round(float(sizes[1].group(1))))
-    raise SvgRejected("The SVG needs a viewBox, or a width and height, so it can be sized.")
+    if found is None and sizes[0] and sizes[1]:
+        found = float(sizes[0].group(1)), float(sizes[1].group(1))
+    if found is None:
+        raise SvgRejected("The SVG needs a viewBox, or a width and height, so it can be sized.")
+    # float() reads "inf" and "1e999" as infinity, and takes any number of digits.
+    if not all(math.isfinite(side) and side <= MAX_SIDE for side in found):
+        raise SvgRejected("The SVG's size is too large for Skjald to use: its viewBox, or its "
+                          f"width and height, can be at most {MAX_SIDE:,} across.")
+    return max(1, round(found[0])), max(1, round(found[1]))
 
 
 def clean_svg(raw: bytes, max_bytes: int = MAX_BYTES) -> CleanSvg:

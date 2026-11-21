@@ -97,7 +97,14 @@ def accept_artwork(db: Session, style: Style, raw: bytes, user_id: int | None) -
 
 def accept_image(db: Session, style: Style, raw: bytes, user_id: int | None) -> str:
     """An image for a page design; AssetRejected says why one can't be used."""
-    clean = clean_asset(raw)
+    try:
+        clean = clean_asset(raw)
+    except AssetRejected:
+        raise
+    except ValueError as exc:
+        # Pillow's word for a PNG whose packed text unpacks too large, which clean_asset
+        # lets through.
+        raise AssetRejected("That file isn't an image Skjald can use.") from exc
     return store(db, style, clean.data, clean.content_type, clean.width, clean.height, user_id)
 
 
