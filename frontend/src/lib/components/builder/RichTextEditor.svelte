@@ -86,9 +86,10 @@
     });
     editor.on("blur", () => (typed = null));
     // A name picked in the Names drawer goes where the caret was, as a name chip.
+    // (Not in a technician's own answer, which holds no names.)
     editor.on("focus", () => {
       letGo();
-      letGo = claimNames({ label, insert: (name) => void editor?.chain().focus().insertContent({ type: "variable", attrs: { expr: name } }).run() });
+      if (names && element) letGo = claimNames({ element, label, insert: (name) => void editor?.chain().focus().insertContent({ type: "variable", attrs: { expr: name } }).run() });
     });
     written = JSON.stringify(editor.getJSON());
     return () => {

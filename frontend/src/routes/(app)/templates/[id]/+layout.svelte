@@ -17,6 +17,7 @@
   import { dateTime, time } from "#lib/format.js";
   import { templatesApi, type Changes } from "#lib/templates/api.js";
   import { Draft, shareDraft } from "#lib/templates/draft.svelte.js";
+  import { movedOn } from "#lib/templates/nameTarget.svelte.js";
   import { toast } from "#lib/toast.svelte.js";
 
   // A template's builder: its header (name, whether the draft is saved, its
@@ -28,6 +29,8 @@
 
   const id = $derived(Number(page.params.id));
   const base = $derived(resolve("/(app)/templates/[id]", { id: String(id) }));
+  // Whether this tab shows the list of problems, for the header's link to it.
+  const listed = $derived(page.url.pathname === base || page.url.pathname === resolve("/(app)/templates/[id]/layout", { id: String(id) }));
   const tabs = $derived([
     { href: base, label: "Questions" },
     { href: resolve("/(app)/templates/[id]/layout", { id: String(id) }), label: "Layout" },
@@ -144,6 +147,8 @@
 <svelte:head><title>{pageTitle(draft.template?.name ?? "Template")}</title></svelte:head>
 
 <svelte:window onbeforeunload={(event) => { if (draft.unsaved) event.preventDefault(); }} onkeydown={keydown} />
+<!-- A name picked in the Names drawer goes into the field last written in: not once the designer writes elsewhere. -->
+<svelte:document onfocusin={(event) => movedOn(event.target)} />
 
 <main class="page-content builder" class:names-open={namesOpen}>
   <a class="back small" href={resolve("/(app)/templates")}><ChevronLeft size={16} aria-hidden="true" /> Templates</a>
@@ -187,7 +192,9 @@
       </div>
       <div class="actions">
         {#if !draft.readonly}
-          <a class="problems" href="#problems" class:none={count === 0}>
+          <!-- The list of problems is on the Questions and Layout tabs: from the others the link goes to Questions. -->
+          <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- base comes from resolve(); the rest is the list's place on the page -->
+          <a class="problems" href={listed ? "#problems" : `${base}#problems`} class:none={count === 0}>
             <Pill tone={count ? "warning" : "ok"} text={count ? `${count} problem${count === 1 ? "" : "s"}` : "No problems"} />
           </a>
         {/if}

@@ -70,6 +70,7 @@
     const field = input;
     letGo();
     letGo = claimNames({
+      element: field,
       label: field.labels?.[0]?.textContent?.trim() || label || "the field",
       insert: (name) => {
         const caret = field.selectionStart ?? value.length;

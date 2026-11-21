@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { untrack } from "svelte";
+  import { onDestroy, tick, untrack } from "svelte";
   import { Engine, ExpressionError, human } from "#lib/cel/engine.js";
   import { shapes as shapesOf, type Choice, type NameEntry } from "#lib/templates/catalogue.js";
   import {
@@ -13,6 +13,7 @@
     type Group,
     type ValueRule,
   } from "#lib/templates/rules.js";
+  import { claimNames } from "#lib/templates/nameTarget.svelte.js";
   import ConditionEditor from "./ConditionEditor.svelte";
   import ValueEditor from "./ValueEditor.svelte";
 
@@ -131,6 +132,27 @@
     written = null;
     value = null;
   }
+
+  // A name picked in the Names drawer goes into the rule being written as text, bare
+  // (answers.cvss), where the caret was.
+  let letGo = () => {};
+  onDestroy(() => letGo());
+  function claim(field: HTMLTextAreaElement) {
+    letGo();
+    letGo = claimNames({
+      element: field,
+      label: label.toLowerCase(),
+      insert: (name) => {
+        const [from, to] = [field.selectionStart, field.selectionEnd];
+        value = `${field.value.slice(0, from)}${name}${field.value.slice(to)}`;
+        written = value;
+        void tick().then(() => {
+          field.focus();
+          field.setSelectionRange(from + name.length, from + name.length);
+        });
+      },
+    });
+  }
 </script>
 
 <div class="rule" role="group" aria-labelledby="{id}-label">
@@ -159,7 +181,8 @@
   {:else}
     <textarea id="{id}-text" class="input mono" rows="3" maxlength="10000" spellcheck="false" autocomplete="off" aria-labelledby="{id}-label"
       aria-invalid={shown ? "true" : undefined}
-      value={value ?? ""} oninput={(e) => { value = e.currentTarget.value === "" ? null : e.currentTarget.value; written = value; }}></textarea>
+      value={value ?? ""} oninput={(e) => { value = e.currentTarget.value === "" ? null : e.currentTarget.value; written = value; }}
+      onfocus={(e) => claim(e.currentTarget)}></textarea>
     {#if !readable}
       <p class="small muted">Written by hand, so it's edited as text. <button class="link-button" type="button" onclick={startVisual}>Start again visually</button></p>
     {/if}

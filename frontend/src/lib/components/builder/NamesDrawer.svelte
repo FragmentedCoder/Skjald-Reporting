@@ -33,7 +33,7 @@
     const target = nameTarget.current;
     if (target) {
       target.insert(row.name);
-      toast(`Inserted {{${row.name}}} in ${target.label}.`, "ok", { key: "names-drawer" });
+      toast(`Inserted ${row.name} in ${target.label}.`, "ok", { key: "names-drawer" });
       return;
     }
     try {
