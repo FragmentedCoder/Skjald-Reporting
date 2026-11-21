@@ -5,7 +5,8 @@
   import X from "@lucide/svelte/icons/x";
   import { instantOf, wallAt } from "#lib/cel/dates.js";
   import RichTextEditor from "#lib/components/builder/RichTextEditor.svelte";
-  import { checkAnswer, cvssScore } from "#lib/templates/answers.js";
+  import { cvssScore } from "#lib/templates/answers.js";
+  import { answerProblem, cellProblem } from "#lib/templates/formChecks.js";
   import { COLUMN_TYPES, settingsOf } from "#lib/templates/fields.js";
   import { peopleFor, type Person } from "#lib/templates/preview.js";
   import type { Drawn } from "#lib/templates/signature.js";
@@ -44,15 +45,10 @@
 
   const empty = $derived(value === null || value === undefined || value === "" || (Array.isArray(value) && value.length === 0)
     || (question.type === "cvss" && !(value as { vector?: string } | null)?.vector));
-  const typeProblem = $derived.by(() => {
-    if (question.type === "cvss") return checkAnswer("cvss", s, (value as { vector?: string } | null)?.vector ?? "");
-    if (question.type === "multi_select" && Array.isArray(value)) {
-      const n = value.length;
-      if (s.min_selected !== null && n < Number(s.min_selected)) return `Choose at least ${s.min_selected}.`;
-      if (s.max_selected !== null && n > Number(s.max_selected)) return `Choose at most ${s.max_selected}.`;
-    }
-    return checkAnswer(question.type, s, value);
-  });
+  // The answer's own problem. A list's are said in its cells; under the list only once
+  // the answers are checked (too few rows, say, isn't a mistake while rows are being added).
+  const listed = $derived(question.type === "repeating" || question.type === "table");
+  const typeProblem = $derived(listed && !checked ? null : answerProblem(question, value));
   const problem = $derived(typeProblem ?? invalid ?? ((touched || checked) && required && empty ? "This is required." : null));
 
   // Dates are typed in the company's time zone and kept as an instant.
@@ -196,7 +192,7 @@
                     {#if fixed}<th scope="row">{(row as { label: string }).label}</th>{/if}
                     {#each columns as c (c.key)}
                       {@const current = (rows[r] ?? {})[c.key]}
-                      {@const message = checkAnswer(c.type, settingsOf(c.type, c.settings ?? {}), current)}
+                      {@const message = current === null || current === undefined || current === "" ? (checked ? cellProblem(c, current) : null) : cellProblem(c, current)}
                       <td class:bad={message}>
                         {@render input(cell(COLUMN_TYPES.includes(c.type) ? c.type : "text", current, (v) => setGridCell(fixed?.length ?? null, r, c.key, v),
                           `${c.label}, row ${r + 1}`, settingsOf(c.type, c.settings ?? {})))}
