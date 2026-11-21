@@ -97,7 +97,7 @@ A template version is one JSON document (settings, the form's steps and question
 | 250 blocks | 0.4 s | 23 ms | 0.1 s | 0.3 s | 0.6 s |
 | 500 blocks | 0.6 s | 37 ms | 0.2 s | 0.3 s | 0.7 s |
 | 1,000 blocks | 0.9 s | 63 ms | 0.5 s | 0.3 s | 1.0 s |
-| 1,000 blocks and 500 questions (both limits) | 1.1 s | 85 ms | 0.6 s | 0.6 s | 1.5 s |
+| 1,000 blocks and 500 questions (both limits) | 1.1 s | 85 ms | 0.6 s | 0.7 s | 1.5 s |
 | 5,000 blocks (saved before the limit; refused now) | 3.2 s | 290 ms | 2.8 s | 1.2 s | 3.1 s |
 | 10,000 blocks (put in the database by hand) | 5.8 s | 600 ms | 5.4 s | 2.8 s | 9.5 s |
 
