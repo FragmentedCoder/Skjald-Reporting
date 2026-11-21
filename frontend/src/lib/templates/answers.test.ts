@@ -25,4 +25,10 @@ describe("answers", () => {
       expect(checkAnswer(type, {}, null)).toBeNull();
     }
   });
+
+  it("refuses a CVSS vector with a part named as something every object has, without failing", () => {
+    for (const part of ["constructor:X", "toString:X", "__proto__:X", "hasOwnProperty:N"]) {
+      expect(checkAnswer("cvss", { versions: ["3.1", "4.0"] }, `CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H/${part}`)).not.toBeNull();
+    }
+  });
 });

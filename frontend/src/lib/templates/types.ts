@@ -24,6 +24,8 @@ export interface Settings {
   delivery: ("download" | "email" | "protected_pdf")[];
   styles: ("company" | "customer")[];
   customer_background: boolean;
+  /** Whether reports carry "Made with Skjald", where the company's branding has it on (on unless set). */
+  made_with_skjald?: boolean;
 }
 
 export interface Question {

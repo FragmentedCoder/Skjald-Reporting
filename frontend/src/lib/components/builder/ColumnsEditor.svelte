@@ -3,9 +3,12 @@
   import ArrowUp from "@lucide/svelte/icons/arrow-up";
   import Plus from "@lucide/svelte/icons/plus";
   import X from "@lucide/svelte/icons/x";
-  import { freeKey, keyFrom } from "#lib/templates/edit.js";
+  import { RESERVED } from "#lib/templates/checks.js";
+  import { freeKey, KEY_PATTERN, keyFrom } from "#lib/templates/edit.js";
   import { COLUMN_TYPES, FIELD_TYPES } from "#lib/templates/fields.js";
+  import KeptInput from "./KeptInput.svelte";
   import OptionsEditor from "./OptionsEditor.svelte";
+  import WholeInput from "./WholeInput.svelte";
 
   // The columns of a repeating group or a table. Each column has a variable name, as
   // a question has, which rules read from a row: row.ip, item.attempts.
@@ -24,6 +27,16 @@
   function add() {
     const label = `Column ${columns.length + 1}`;
     columns.push({ key: freeKey(keyFrom(label), columns.map((c) => c.key)), label, type: "text", required: false, settings: FIELD_TYPES.text.settings() });
+  }
+
+  let problem = $state<string | null>(null);
+  function keyCheck(index: number): (text: string) => string | null {
+    return (text) => {
+      if (!KEY_PATTERN.test(text)) return "A column's variable name has small letters, digits and _, starting with a letter.";
+      if (RESERVED.has(text)) return `${text} is a reserved word in expressions.`;
+      if (columns.some((c, i) => i !== index && c.key === text)) return `Another column already uses ${text}.`;
+      return null;
+    };
   }
 
   function retype(column: Column, type: string) {
@@ -53,18 +66,40 @@
         </span>
       </div>
       <div class="line details">
-        <label class="small key">Name <input class="input mono" aria-label="Column {index + 1} variable name" bind:value={column.key} maxlength="50" pattern="[a-z][a-z0-9_]*" /></label>
+        <label class="small key">Name <KeptInput mono label="Column {index + 1} variable name" maxlength={50} bind:value={column.key} bind:problem check={keyCheck(index)} /></label>
         <label class="check small"><input type="checkbox" bind:checked={column.required} /> Required</label>
         {#if column.type === "number"}
           <label class="check small"><input type="checkbox" bind:checked={() => Boolean(column.settings.whole), (v) => (column.settings.whole = v)} /> Whole numbers</label>
         {/if}
       </div>
+      <!-- How the column's cells are asked for and printed, as a question of its kind sets them. -->
+      {#if column.type === "number"}
+        <div class="line details">
+          {#if !column.settings.whole}
+            <label class="small key">Decimals shown
+              <WholeInput label="Column {index + 1} decimals shown" narrow min={0} max={6}
+                bind:value={() => (column.settings.decimals as number | undefined) ?? 1, (v) => (column.settings.decimals = v ?? 1)} /></label>
+          {/if}
+          <label class="small key">Unit <input class="input" aria-label="Column {index + 1} unit" maxlength="20" placeholder="GB"
+            value={String(column.settings.unit ?? "")} oninput={(e) => (column.settings.unit = e.currentTarget.value)} /></label>
+        </div>
+      {:else if column.type === "datetime"}
+        <div class="line details">
+          <label class="small key">Asks for
+            <select class="input" aria-label="Column {index + 1} asks for" value={String(column.settings.mode ?? "datetime")}
+              onchange={(e) => (column.settings.mode = e.currentTarget.value)}>
+              <option value="datetime">A date and a time</option>
+              <option value="date">A date</option>
+            </select></label>
+        </div>
+      {/if}
       {#if column.type === "dropdown"}
         <OptionsEditor bind:options={() => column.settings.options as Option[], (v) => (column.settings.options = v)} id="{id}-col-{index}" />
       {/if}
     </div>
   {/each}
-  <button class="button button-secondary small-button" type="button" onclick={add}><Plus size={16} aria-hidden="true" /> Add a column</button>
+  {#if problem}<p class="small error" role="status">{problem} The name stays as it was until it's one that can be used.</p>{/if}
+  <button class="button button-secondary small-button" type="button" onclick={add} disabled={columns.length >= 20}><Plus size={16} aria-hidden="true" /> Add a column</button>
 </fieldset>
 
 <style>
@@ -104,7 +139,7 @@
     align-items: center;
     gap: var(--space-1);
   }
-  .key .input {
+  .key :global(.input) {
     width: 140px;
   }
   .row-actions {

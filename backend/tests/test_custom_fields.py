@@ -45,6 +45,14 @@ def define(client, headers, applies_to, key, type_, label=None, **more):
         "type": type_, **more})
 
 
+def change(client, headers, field, **changes):
+    """A change to a field, made from it as it was read."""
+    return client.put(f"{FIELDS}/{field['id']}", headers=headers, json={
+        "label": field["label"], "help": field["help"], "options": field["options"],
+        "position": field["position"], "archived": field["archived"],
+        "version": field["version"], **changes})
+
+
 @pytest.fixture
 def fields(client, designer):
     made = {
@@ -83,16 +91,54 @@ def test_designers_define_fields_and_everyone_reads_them(client, designer, manag
 
 def test_a_field_keeps_its_key_and_type(client, designer, fields) -> None:
     agreement = fields["agreement"]
-    changed = client.put(f"{FIELDS}/{agreement['id']}", headers=designer, json={
-        "label": "Agreement", "help": "From the contract.", "options": ["Gold", "Silver", "Bronze"],
-        "position": 5, "key": "renamed", "type": "text"})
+    changed = change(client, designer, agreement, label="Agreement", help="From the contract.",
+                     options=["Gold", "Silver", "Bronze"], position=5, key="renamed", type="text")
     assert changed.status_code == 200
     body = changed.json()
     assert (body["key"], body["type"], body["label"], body["options"], body["position"]) == (
         "agreement", "dropdown", "Agreement", ["Gold", "Silver", "Bronze"], 5)
-    assert client.put(f"{FIELDS}/{agreement['id']}", headers=designer, json={
-        "label": "Agreement", "options": []}).status_code == 400
-    assert client.put(f"{FIELDS}/9999", headers=designer, json={"label": "x"}).status_code == 404
+    assert change(client, designer, body, options=[]).status_code == 400
+    assert change(client, designer, {**body, "id": 9999}).status_code == 404
+
+
+def test_a_change_made_from_an_older_state_is_refused(client, designer, admin, fields) -> None:
+    """Two people have the Database page open. The second to act sends the label and
+    options their page still shows, which would put them back."""
+    _, other = admin
+    stale = fields["agreement"]
+    renamed = change(client, other, stale, label="Support tier",
+                     options=["Gold", "Silver", "Bronze"])
+    assert renamed.status_code == 200
+    for late in ({"archived": True}, {"position": 3}, {"label": "Agreement"}):
+        refused = change(client, designer, stale, **late)
+        assert refused.status_code == 409, late
+        assert refused.json()["detail"] == ("Someone changed this field since you opened it. "
+                                            "Look at their changes before making yours.")
+    now = next(f for f in client.get(FIELDS, headers=designer).json()
+               if f["key"] == "agreement")
+    assert (now["label"], now["options"], now["archived"], now["position"]) == (
+        "Support tier", ["Gold", "Silver", "Bronze"], False, stale["position"])
+    assert now["version"] == renamed.json()["version"] != stale["version"]
+    # Made from the field as it is now, the change goes through.
+    assert change(client, designer, now, archived=True).json()["archived"] is True
+    # A change always says what it was made from.
+    assert client.put(f"{FIELDS}/{stale['id']}", headers=designer, json={
+        "label": "Agreement", "options": ["Gold"]}).status_code == 422
+
+
+def test_a_label_or_an_option_of_spaces_alone_is_refused(client, designer, fields) -> None:
+    """Each was kept as "": a field without a label, and an option the forms read as
+    clearing the value."""
+    assert define(client, designer, "customer", "tier", "text", label="   ").status_code == 422
+    assert define(client, designer, "customer", "tier", "dropdown",
+                  options=["Gold", "  "]).status_code == 422
+    agreement = fields["agreement"]
+    assert change(client, designer, agreement, label="  ").status_code == 422
+    assert change(client, designer, agreement, options=["Gold", " "]).status_code == 422
+    tidied = change(client, designer, agreement, label="  Agreement ",
+                    options=[" Gold ", "Silver"]).json()
+    assert (tidied["label"], tidied["options"]) == ("Agreement", ["Gold", "Silver"])
+    assert change(client, designer, tidied, options=["Gold", " Gold "]).status_code == 400
 
 
 def test_values_are_checked_and_sealed_with_the_customer(client, admin, manager, fields,
@@ -112,7 +158,9 @@ def test_values_are_checked_and_sealed_with_the_customer(client, admin, manager,
 
     url = f"{CUSTOMERS}/{customer['id']}"
     for wrong, message in (({"agreement": "Platinum"}, "options"), ({"hours": "many"}, "number"),
-                           ({"hours": True}, "number"), ({"renewal": "soon"}, "date"),
+                           ({"hours": True}, "number"), ({"hours": 10 ** 400}, "number"),
+                           ({"renewal": "soon"}, "date"), ({"renewal": "2027-W09-1"}, "date"),
+                           ({"renewal": "20270301"}, "a date, such as 2027-03-01"),
                            ({"onsite": "yes"}, "yes or no"), ({"desk": "nobody"}, "email"),
                            ({"hotline": "call me"}, "phone"), ({"ticket": "X-1"}, "no custom")):
         refused = client.patch(url, headers=manager, json={"custom": wrong})
@@ -130,12 +178,46 @@ def test_values_are_checked_and_sealed_with_the_customer(client, admin, manager,
     assert "Gold" not in "".join(u.details for u in updates)
 
 
+def test_a_record_keeps_an_option_since_removed_from_its_dropdown(client, designer, manager,
+                                                                 fields) -> None:
+    customer = client.post(CUSTOMERS, headers=manager, json={
+        "name": "Fjordvik Logistik A/S", "custom": {"agreement": "Gold"}}).json()
+    define(client, designer, "project", "priority", "dropdown", options=["High", "Low"])
+    project = client.post(f"{CUSTOMERS}/{customer['id']}/projects", headers=manager, json={
+        "name": "Firewall incident", "custom": {"priority": "High"}}).json()
+    change(client, designer, fields["agreement"], options=["Platinum", "Silver"])
+    priority = next(f for f in client.get(FIELDS, headers=designer).json()
+                    if f["key"] == "priority")
+    change(client, designer, priority, options=["Urgent", "Low"])
+
+    # The forms send every value back, the one no longer offered among them.
+    url = f"{CUSTOMERS}/{customer['id']}"
+    saved = client.patch(url, headers=manager, json={
+        "address": "Havnegade 12, 7000 Fjordvik", "custom": {"agreement": "Gold", "hours": 4}})
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["custom"] == {"agreement": "Gold", "hours": 4.0}
+    renamed = client.patch(f"/api/projects/{project['id']}", headers=manager, json={
+        "name": "Firewall", "custom": {"priority": "High"}})
+    assert renamed.status_code == 200, renamed.text
+    assert renamed.json()["custom"] == {"priority": "High"}
+
+    # A new choice is one of today's options, and a removed one can't be chosen again.
+    other = client.patch(url, headers=manager, json={"custom": {"agreement": "Bronze"}})
+    assert (other.status_code, other.json()["detail"]) == (
+        400, "Choose one of Support agreement's options.")
+    assert client.patch(url, headers=manager,
+                        json={"custom": {"agreement": "Platinum"}}).status_code == 200
+    assert client.patch(url, headers=manager,
+                        json={"custom": {"agreement": "Gold"}}).status_code == 400
+    assert client.post(CUSTOMERS, headers=manager, json={
+        "name": "Nordlys IT ApS", "custom": {"agreement": "Gold"}}).status_code == 400
+
+
 def test_archiving_a_field_keeps_its_values(client, designer, manager, fields) -> None:
     customer = client.post(CUSTOMERS, headers=manager, json={
         "name": "Fjordvik Logistik A/S", "custom": {"agreement": "Silver"}}).json()
     field = fields["agreement"]
-    archived = client.put(f"{FIELDS}/{field['id']}", headers=designer, json={
-        "label": field["label"], "options": field["options"], "archived": True})
+    archived = change(client, designer, field, archived=True)
     assert archived.json()["archived"] is True
     url = f"{CUSTOMERS}/{customer['id']}"
     assert "agreement" not in client.get(url, headers=manager).json()["custom"]
@@ -144,8 +226,7 @@ def test_archiving_a_field_keeps_its_values(client, designer, manager, fields) -
     assert "agreement" not in [f["key"] for f in client.get(FIELDS, headers=manager).json()]
     every = client.get(f"{FIELDS}?archived=true", headers=manager).json()
     assert "agreement" in [f["key"] for f in every]
-    client.put(f"{FIELDS}/{field['id']}", headers=designer, json={
-        "label": field["label"], "options": field["options"], "archived": False})
+    change(client, designer, archived.json(), archived=False)
     assert client.get(url, headers=manager).json()["custom"] == {"agreement": "Silver"}
 
 

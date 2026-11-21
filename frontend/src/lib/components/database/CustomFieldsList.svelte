@@ -74,7 +74,7 @@
     busy = true;
     try {
       if (current) {
-        await customFieldsApi.update(current.id, { label, help, options: optionList, position: current.position, archived: current.archived });
+        await customFieldsApi.update(current.id, { label, help, options: optionList, position: current.position, archived: current.archived, version: current.version });
         toast(`${label} is saved.`, "ok");
       } else {
         await customFieldsApi.create({ applies_to: appliesTo, key, label, type, help, options: optionList });
@@ -84,18 +84,30 @@
       await load();
     } catch (e) {
       if (!sessionGone(e)) toast(e instanceof ApiError ? e.message : "The field couldn't be saved.", "critical");
+      // Someone changed the field first: what was typed was made from the old one, so
+      // the dialog closes on the list as it is now.
+      if (current && (await overtaken(e))) editing = false;
     } finally {
       busy = false;
     }
   }
 
+  // A change is refused (409) when someone else changed the field since this list was
+  // loaded, so that it can't put their label and options back: show theirs.
+  async function overtaken(e: unknown): Promise<boolean> {
+    if (!(e instanceof ApiError) || e.status !== 409) return false;
+    await load();
+    return true;
+  }
+
   async function change(field: CustomField, patch: Partial<Pick<CustomField, "position" | "archived">>, done: string) {
     try {
-      await customFieldsApi.update(field.id, { label: field.label, help: field.help, options: field.options, position: field.position, archived: field.archived, ...patch });
+      await customFieldsApi.update(field.id, { label: field.label, help: field.help, options: field.options, position: field.position, archived: field.archived, version: field.version, ...patch });
       toast(done, "ok");
       await load();
     } catch (e) {
       if (!sessionGone(e)) toast(e instanceof ApiError ? e.message : "That didn't work. Try again.", "critical");
+      await overtaken(e);
     }
   }
 
@@ -110,11 +122,12 @@
     try {
       for (const [i, id] of order.entries()) {
         const f = list.find((x) => x.id === id) as CustomField;
-        if (f.position !== i) await customFieldsApi.update(f.id, { label: f.label, help: f.help, options: f.options, position: i, archived: f.archived });
+        if (f.position !== i) await customFieldsApi.update(f.id, { label: f.label, help: f.help, options: f.options, position: i, archived: f.archived, version: f.version });
       }
       await load();
     } catch (e) {
       if (!sessionGone(e)) toast(e instanceof ApiError ? e.message : "That didn't work. Try again.", "critical");
+      await overtaken(e);
     }
   }
 

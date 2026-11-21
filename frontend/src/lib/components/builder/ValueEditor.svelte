@@ -2,7 +2,7 @@
   import Plus from "@lucide/svelte/icons/plus";
   import X from "@lucide/svelte/icons/x";
   import { entryChoice, type Choice, type NameEntry } from "#lib/templates/catalogue.js";
-  import { fitsShape, OPS, type Condition, type Group, type Shape, type ValueRule } from "#lib/templates/rules.js";
+  import { fitsShape, OPS, type Group, type Shape, type ValueRule } from "#lib/templates/rules.js";
   import ConditionEditor from "./ConditionEditor.svelte";
   import LiteralInput from "./LiteralInput.svelte";
 
@@ -18,7 +18,9 @@
     label?: string;
   } = $props();
 
-  const switchable = $derived(entries.filter((e) => e.shape === "text" || e.shape === "whole"));
+  // SWITCH looks at a text answer for any result, and at a whole number for a text
+  // result (the cases the function has: shared/cel/functions.json).
+  const switchable = $derived(entries.filter((e) => e.shape === "text" || (e.shape === "whole" && result === "text")));
   const switched = $derived.by(() => {
     const current = rule;
     return current.kind === "switch" ? entries.find((e) => e.name === current.name) : undefined;
@@ -26,9 +28,6 @@
   const resultCanSwitch = $derived(result === "text" || result === "number" || result === "whole");
   // Names whose value could be this one: for a date, when the report is started first.
   const alike = $derived(entries.filter((e) => fitsShape(e.shape, result)).sort((a, b) => Number(b.name === "report.started") - Number(a.name === "report.started")));
-
-  const asGroup = (c: Condition): Group =>
-    c.kind === "all" || c.kind === "any" || c.kind === "one" ? c : { kind: "all", items: [c] };
 
   function blankCondition(): Group {
     const first = entries.find((e) => e.group === "Answers" && e.shape !== "other") ?? entries[0];
@@ -70,7 +69,7 @@
             <button class="mini" type="button" aria-label="Remove {index === 0 ? 'the IF' : `ELSE IF ${index}`}" onclick={() => rule.kind === "if" && rule.branches.splice(index, 1)}><X size={14} aria-hidden="true" /></button>
           {/if}
         </div>
-        <ConditionEditor bind:condition={() => asGroup(branch.when), (v) => (branch.when = v)} {entries} label="{label}, {index === 0 ? 'if' : `else if ${index}`}" />
+        <ConditionEditor bind:condition={branch.when} {entries} label="{label}, {index === 0 ? 'if' : `else if ${index}`}" />
         <div class="then">
           <span class="keyword">then</span>
           <LiteralInput bind:value={branch.value} shape={result} {choices} label="{label}, {index === 0 ? 'if' : `else if ${index}`}: then" />

@@ -4,11 +4,11 @@
 // to the same problems in the same words and order: steps and their questions, then
 // loops among calculated values, then the layout, depth first.
 
-import { RE2JS } from "re2js";
 import { Engine, ExpressionError, human, unknownName } from "#lib/cel/engine.js";
+import { regex } from "#lib/cel/library.js";
 import { fieldType, settingsOf } from "./fields";
 import { declarations, ITEM, questionNames } from "./names";
-import { docExpressions, interpolations } from "./text";
+import { blank, docExpressions, interpolations, trimmed } from "./text";
 import { questionsOf, SIGNS, type Block, type Problem, type Question, type RichText, type Switch, type TemplateContent } from "./types";
 
 // Words CEL keeps for itself: answers.<key> can't be read with one of them as key.
@@ -18,12 +18,21 @@ export const RESERVED = new Set([
 ]);
 const LISTS = new Set(["repeating", "table"]);
 export const ITEM_OUTSIDE = "item is only there inside a section repeated for each item.";
+const NOT_ROWS = "A section repeats for the rows of a repeating group or table, but this list holds something else.";
 const SIGNERS = { technician: "The technician", reviewer: "The reviewer", company: "The company seal" };
 
-const fits = (got: string, expected: string) =>
-  got === "dyn" || got === expected || (expected === "list" && got.startsWith("list<"));
-
 type Columns = { key: string }[];
+type Column = { key: string; type: string; settings?: Record<string, unknown> };
+
+/** Whether a pattern is one both sides can use. */
+function usable(pattern: string): boolean {
+  try {
+    regex(pattern);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export interface CheckOptions {
   library?: Record<string, string>;
@@ -60,10 +69,13 @@ class Checker {
     return !item && error.message === unknownName("item") ? ITEM_OUTSIDE : error.message;
   }
 
-  /** An expression that, when set, must work and give the expected type. */
+  /**
+   * An expression that, when set, must work and give the expected type ("rows": the
+   * rows of a repeating group or table).
+   */
   expr(element: string, field: string, expr: string | null | undefined, expected: string | null, item = false) {
     if (expr === null || expr === undefined) return;
-    if (!expr.trim()) {
+    if (blank(expr)) {
       this.add(element, field, "Write the expression, or remove the rule.");
       return;
     }
@@ -75,7 +87,12 @@ class Checker {
       this.add(element, field, this.message(error, item));
       return;
     }
-    if (expected !== null && !fits(got, expected)) {
+    if (expected === "rows") {
+      // What a section repeats for: inside it each item is read as a row (item.ip).
+      if (got !== "dyn" && got !== "list<dyn>" && !got.startsWith("list<map<string,")) {
+        this.add(element, field, got.startsWith("list") ? NOT_ROWS : `This should give a list, but gives ${human(got)}.`);
+      }
+    } else if (expected !== null && got !== "dyn" && got !== expected) {
       this.add(element, field, `This should give ${human(expected)}, but gives ${human(got)}.`);
     }
   }
@@ -108,7 +125,7 @@ class Checker {
 
   rich(element: string, field: string, doc: RichText | null, item: boolean) {
     if (doc === null) return;
-    for (const expr of docExpressions(doc)) this.printed(element, field, expr.trim(), item);
+    for (const expr of docExpressions(doc)) this.printed(element, field, trimmed(expr), item);
   }
 
   // The form
@@ -116,7 +133,7 @@ class Checker {
   question(q: Question, seenKeys: Set<string>) {
     this.id(q.id);
     const type = fieldType(q.type);
-    if (!q.label.trim()) this.add(q.id, "label", type.asks ? "Write the question." : "Write the heading.");
+    if (blank(q.label)) this.add(q.id, "label", type.asks ? "Write the question." : "Write the heading.");
     if (type.asks) {
       if (q.key === null) this.add(q.id, "key", "Give the question a variable name.");
       else if (RESERVED.has(q.key)) this.add(q.id, "key", `${q.key} is a reserved word in expressions: choose another variable name.`);
@@ -133,7 +150,7 @@ class Checker {
       else this.expr(q.id, "default", q.default, own);
     }
     if (q.type === "calculated") {
-      if (!(q.value ?? "").trim()) this.add(q.id, "value", "Write the expression that works out this value.");
+      if (blank(q.value ?? "")) this.add(q.id, "value", "Write the expression that works out this value.");
       else this.expr(q.id, "value", q.value, own ?? null);
     } else if (q.value !== null && q.value !== undefined) {
       this.add(q.id, "value", "Only calculated values have an expression.");
@@ -142,23 +159,19 @@ class Checker {
 
   settings(q: Question) {
     const s = settingsOf(q.type, q.settings);
-    const labels = (list: unknown) => ((list ?? []) as { label: string }[]).map((entry) => entry.label.trim());
+    const labels = (list: unknown) => ((list ?? []) as { label: string }[]).map((entry) => trimmed(entry.label));
     if (q.type === "dropdown" || q.type === "multi_select") {
       labels(s.options).forEach((label, i) => !label && this.add(q.id, "settings.options", `Write what choice ${i + 1} is shown as.`));
     }
     if (q.type === "yes_no") {
       for (const [name, word] of [["yes_label", "Yes"], ["no_label", "No"]]) {
-        if (!String(s[name] ?? "").trim()) this.add(q.id, `settings.${name}`, `Write what ${word} is shown as.`);
+        if (blank(String(s[name] ?? ""))) this.add(q.id, `settings.${name}`, `Write what ${word} is shown as.`);
       }
     }
     if (LISTS.has(q.type)) labels(s.columns).forEach((label, i) => !label && this.add(q.id, "settings.columns", `Give column ${i + 1} a heading.`));
     if (q.type === "table") labels(s.rows).forEach((label, i) => !label && this.add(q.id, "settings.rows", `Give row ${i + 1} a heading.`));
-    if ((q.type === "text" || q.type === "serial") && s.pattern) {
-      try {
-        RE2JS.compile(String(s.pattern));
-      } catch {
-        this.add(q.id, "settings.pattern", "This pattern isn't a regular expression Skjald can use (RE2 syntax).");
-      }
+    if ((q.type === "text" || q.type === "serial") && s.pattern && !usable(String(s.pattern))) {
+      this.add(q.id, "settings.pattern", "This pattern isn't a regular expression Skjald can use (RE2 syntax).");
     }
     if (q.type === "number" && s.min !== null && s.max !== null && Number(s.min) > Number(s.max)) {
       this.add(q.id, "settings.min", "The smallest value is larger than the largest.");
@@ -180,13 +193,42 @@ class Checker {
     if (q.type === "repeating" && Number(s.min_rows) > Number(s.max_rows)) {
       this.add(q.id, "settings.min_rows", "The fewest rows are more than the most.");
     }
+    if (LISTS.has(q.type)) (s.columns as Column[]).forEach((column, i) => this.columnSettings(q, i + 1, column));
+  }
+
+  /**
+   * A column is a question in small: its name is read in expressions (r.ip), and its
+   * own settings are held to what a question's are.
+   */
+  columnSettings(q: Question, number: number, column: Column) {
+    const where = "settings.columns";
+    const s = settingsOf(column.type, column.settings ?? {});
+    if (RESERVED.has(column.key)) {
+      this.add(q.id, where, `${column.key} is a reserved word in expressions: choose another variable name for column ${number}.`);
+    }
+    if (column.type === "dropdown") {
+      ((s.options ?? []) as { label: string }[]).forEach((option, i) => {
+        if (blank(option.label)) this.add(q.id, where, `Write what choice ${i + 1} of column ${number} is shown as.`);
+      });
+    }
+    if (column.type === "yes_no") {
+      for (const [name, word] of [["yes_label", "Yes"], ["no_label", "No"]]) {
+        if (blank(String(s[name] ?? ""))) this.add(q.id, where, `Write what ${word} is shown as in column ${number}.`);
+      }
+    }
+    if ((column.type === "text" || column.type === "serial") && s.pattern && !usable(String(s.pattern))) {
+      this.add(q.id, where, `Column ${number}'s pattern isn't a regular expression Skjald can use (RE2 syntax).`);
+    }
+    if (column.type === "number" && s.min !== null && s.max !== null && Number(s.min) > Number(s.max)) {
+      this.add(q.id, where, `Column ${number}'s smallest value is larger than its largest.`);
+    }
   }
 
   /** Calculated values that depend on themselves, through others or directly. */
   loops() {
     const calculated = new Map(
       questionsOf(this.content)
-        .filter((q) => q.type === "calculated" && q.key && (q.value ?? "").trim())
+        .filter((q) => q.type === "calculated" && q.key && !blank(q.value ?? ""))
         .map((q) => [q.key as string, q]),
     );
     const depends = new Map<string, string[]>();
@@ -248,7 +290,7 @@ class Checker {
    */
   switched(b: Switch, item: boolean) {
     let got: string | null = null;
-    if (b.value === null || !b.value.trim()) {
+    if (b.value === null || blank(b.value)) {
       this.add(b.id, "value", "Choose what picks the case.");
     } else {
       try {
@@ -290,14 +332,14 @@ class Checker {
         this.text(b.id, "title", b.title, item);
         break;
       case "section":
-        if (!b.title.trim()) this.add(b.id, "title", "Give the section a title.");
+        if (blank(b.title)) this.add(b.id, "title", "Give the section a title.");
         this.text(b.id, "title", b.title, item);
         this.rich(b.id, "intro", b.intro ?? null, item);
-        this.expr(b.id, "repeat_for", b.repeat_for, "list", outer);
+        this.expr(b.id, "repeat_for", b.repeat_for, "rows", outer);
         for (const child of b.blocks) this.block(child, item);
         break;
       case "heading":
-        if (!b.text.trim()) this.add(b.id, "text", "Write the heading.");
+        if (blank(b.text)) this.add(b.id, "text", "Write the heading.");
         this.text(b.id, "text", b.text, item);
         break;
       case "text":
@@ -353,7 +395,7 @@ class Checker {
       }
       case "sources":
         this.text(b.id, "intro", b.intro, item);
-        b.items.forEach((source, i) => !source.title.trim() && this.add(b.id, `items.${i}.title`, `Give source ${i + 1} a title.`));
+        b.items.forEach((source, i) => blank(source.title) && this.add(b.id, `items.${i}.title`, `Give source ${i + 1} a title.`));
         if (b.question !== null) {
           const q = this.chosen(b.id, b.question, "");
           if (q !== null) this.isList(b.id, q);
@@ -410,7 +452,7 @@ export function check(content: TemplateContent, options: CheckOptions = {}): Pro
   const seenKeys = new Set<string>();
   for (const step of content.form) {
     checker.id(step.id);
-    if (!step.title.trim()) checker.add(step.id, "title", "Give the step a title.");
+    if (blank(step.title)) checker.add(step.id, "title", "Give the step a title.");
     checker.expr(step.id, "visible_when", step.visible_when, "bool");
     for (const q of step.questions) checker.question(q, seenKeys);
   }

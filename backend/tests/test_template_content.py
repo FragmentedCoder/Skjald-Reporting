@@ -15,7 +15,16 @@ from pydantic import ValidationError
 
 from app.templates.changes import changes
 from app.templates.checks import check
-from app.templates.content import TemplateContent, starter_content
+from app.templates.content import (
+    MAX_BLOCK_DEPTH,
+    MAX_BLOCKS,
+    MAX_CONTENT_BYTES,
+    MAX_QUESTIONS,
+    Section,
+    Step,
+    TemplateContent,
+    starter_content,
+)
 from app.templates.names import CONTEXT, declarations
 from app.templates.secrets import printed
 from app.templates.text import RichTextError, check_doc, doc_text, interpolations
@@ -96,6 +105,12 @@ def test_structure_is_checked_strictly(parts: dict[str, Any], message: str) -> N
         TemplateContent.model_validate(parts)
 
 
+def test_a_template_carries_made_with_skjald_unless_it_says_not() -> None:
+    assert content().settings.made_with_skjald is True
+    without = content(settings={"made_with_skjald": False})
+    assert without.dump()["settings"]["made_with_skjald"] is False
+
+
 def test_settings_are_filled_in_with_their_defaults() -> None:
     parsed = content(form=[{"id": "s_main1", "title": "Step", "questions": [
         {"id": "q_x123", "key": "x", "type": "number", "label": "X"},
@@ -128,6 +143,23 @@ def para(*inline: dict[str, Any]) -> dict[str, Any]:
 def test_rich_text_holds_only_what_is_printed(doc: dict[str, Any]) -> None:
     with pytest.raises(RichTextError):
         check_doc(doc)
+
+
+@pytest.mark.parametrize("inline", [
+    {"type": "text", "text": "half \ud83d of an emoji"},
+    {"type": "variable", "attrs": {"expr": "answers.title + \"\udc00\""}},
+    {"type": "text", "text": "x", "marks": [
+        {"type": "link", "attrs": {"href": "https://fjordvik.example/\ud800"}}]},
+])
+def test_rich_text_holds_whole_characters(inline: dict[str, Any]) -> None:
+    # Half of a pair can't be written to the database: it's refused with the rest of
+    # what's checked on save, not when the document is stored.
+    with pytest.raises(ValidationError, match="half of a character"):
+        content(layout=[{"id": "b_text1", "kind": "text", "content": para(inline)}])
+    with pytest.raises(RichTextError):
+        check_doc(para(inline))
+    whole = para({"type": "text", "text": "A whole 🛡️ and æ"})
+    assert check_doc(whole) == whole
 
 
 def test_rich_text_lists_and_words() -> None:
@@ -174,6 +206,65 @@ def test_changes_by_id() -> None:
     assert found.settings_changed == ["prefix"]
     assert found.any
     assert not changes(old, old).any
+    assert not found.steps_changed and not found.questions_moved and not found.blocks_moved
+    assert found.sample_changed is False
+
+
+def test_changes_to_steps_moves_and_sample_answers_are_said() -> None:
+    old = TemplateContent.model_validate(INCIDENT)
+
+    def changed(edit: Any) -> Any:
+        raw = json.loads(json.dumps(INCIDENT))
+        edit(raw)
+        found = changes(old, TemplateContent.model_validate(raw))
+        assert found.any
+        return found
+
+    # A step put in another's place, with a rule of its own, and one renamed and hidden.
+    def steps(raw: dict[str, Any]) -> None:
+        raw["form"][1] = {"id": "s_extra1", "title": "Extra", "visible_when": "answers.found",
+                          "questions": raw["form"][1]["questions"]}
+        raw["form"][2]["title"] = "Handover"
+        raw["form"][2]["visible_when"] = "false"
+    found = changed(steps)
+    assert [(s.id, s.label) for s in found.steps_added] == [("s_extra1", "Extra")]
+    assert [(s.id, s.label) for s in found.steps_removed] == [("s_attack", "The attack")]
+    assert [(s.id, s.label, s.parts) for s in found.steps_changed] == [
+        ("s_actions", "Handover", ["title", "visible_when"])]
+    assert [q.id for q in found.questions_moved] == ["q_found", "q_attackers", "q_evidence"]
+    assert not found.questions_changed and not found.steps_moved
+
+    # A question moved to another step, and steps put in another order.
+    def moves(raw: dict[str, Any]) -> None:
+        raw["form"][2]["questions"].insert(1, raw["form"][0]["questions"].pop(2))
+        raw["form"].insert(0, raw["form"].pop(2))
+    found = changed(moves)
+    assert [(q.id, q.label) for q in found.questions_moved] == [("q_cvss", "Highest CVSS score")]
+    assert [s.id for s in found.steps_moved] == ["s_actions"]
+    assert not (found.questions_changed or found.questions_added or found.questions_removed)
+
+    # One question moved up past four others is one question moved.
+    def reorder(raw: dict[str, Any]) -> None:
+        raw["form"][0]["questions"].insert(0, raw["form"][0]["questions"].pop(4))
+    assert [q.id for q in changed(reorder).questions_moved] == ["q_deadline"]
+
+    # A block moved to another section, and two blocks changing places.
+    def blocks(raw: dict[str, Any]) -> None:
+        raw["layout"][3]["blocks"].append(raw["layout"][1]["blocks"].pop(1))
+        raw["layout"][2]["blocks"].reverse()
+    found = changed(blocks)
+    assert sorted(b.id for b in found.blocks_moved) in (
+        ["b_callout", "b_evidence"], ["b_callout", "b_table"])
+    assert not (found.blocks_changed or found.blocks_added or found.blocks_removed)
+
+    # A question added among others moves none of them; sample answers are said.
+    def added(raw: dict[str, Any]) -> None:
+        raw["form"][0]["questions"].insert(
+            1, {"id": "q_hosts", "key": "hosts", "type": "text", "label": "Hosts"})
+        raw["sample"]["answers"]["q_summary"] = "Something else"
+    found = changed(added)
+    assert [q.id for q in found.questions_added] == ["q_hosts"]
+    assert not found.questions_moved and found.sample_changed is True
 
 
 def test_changes_inside_a_switch_are_the_blocks_own() -> None:
@@ -186,7 +277,21 @@ def test_changes_inside_a_switch_are_the_blocks_own() -> None:
     found = changes(layout("da", "Hej"), layout("en", "Hello"))
     assert [(b.id, b.parts) for b in found.blocks_changed] == [
         ("b_switch", ["cases"]), ("b_head1", ["text"])]
+    # The case was renamed, not the heading moved; nor when a case is put before it.
+    assert not found.blocks_moved
     assert not changes(layout("da", "Hej"), layout("da", "Hej")).any
+    before = layout("da", "Hej")
+    after = content(layout=[{
+        "id": "b_switch", "kind": "switch", "value": "customer.language",
+        "cases": [{"match": "sv", "blocks": []},
+                  {"match": "da", "blocks": [{"id": "b_head1", "kind": "heading", "text": "Hej"}]}],
+        "otherwise": []}])
+    assert not changes(before, after).blocks_moved
+    moved = content(layout=[{
+        "id": "b_switch", "kind": "switch", "value": "customer.language",
+        "cases": [{"match": "da", "blocks": []}],
+        "otherwise": [{"id": "b_head1", "kind": "heading", "text": "Hej"}]}])
+    assert [b.id for b in changes(before, moved).blocks_moved] == ["b_head1"]
 
 
 SECRETS = json.loads((SHARED / "secrets.json").read_text())
@@ -196,3 +301,20 @@ SECRETS = json.loads((SHARED / "secrets.json").read_text())
 def test_secrets_print_partly(case: dict[str, str]) -> None:
     assert printed(case["secret"]) == case["printed"]
     assert printed(case["secret"], "omit") == ""
+
+
+def test_the_size_limits_are_the_ones_the_builder_checks() -> None:
+    """shared/templates/limits.json holds the server and the builder to the same numbers."""
+    limits = json.loads((SHARED / "limits.json").read_text())
+    assert limits["questions"] == MAX_QUESTIONS
+    assert limits["blocks"] == MAX_BLOCKS
+    assert limits["block_depth"] == MAX_BLOCK_DEPTH
+    assert limits["bytes"] == MAX_CONTENT_BYTES
+
+    def longest(model: Any, field: str) -> int:
+        return next(m.max_length for m in model.model_fields[field].metadata
+                    if getattr(m, "max_length", None) is not None)
+
+    assert limits["in_one_list"] == longest(Section, "blocks") == longest(Step, "questions")
+    assert limits["steps"] == longest(TemplateContent, "form")
+

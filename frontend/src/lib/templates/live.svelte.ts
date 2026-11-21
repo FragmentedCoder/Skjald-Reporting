@@ -6,6 +6,10 @@ import { paginate, type Paged } from "./pages";
 import type { PreviewInput, PreviewModel } from "./preview";
 
 const AFTER_MS = 250;
+// A whole preview is thousands of expressions for a large template, or a small one
+// printed for hundreds of rows, so it gets longer than the second one expression gets.
+// It runs off the page's thread either way: the builder stays quick meanwhile.
+const TIME_LIMIT_MS = 10_000;
 const SETUP = { key: "preview", declarations: {}, options: {} };
 
 export class LivePreview {
@@ -24,7 +28,7 @@ export class LivePreview {
 
   async #run(input: PreviewInput): Promise<void> {
     const asked = ++this.#asked;
-    const [result] = await this.#client.run(SETUP, {}, [{ kind: "preview", input }]);
+    const [result] = await this.#client.run(SETUP, {}, [{ kind: "preview", input }], TIME_LIMIT_MS);
     if (asked !== this.#asked) return;
     if (result.ok) {
       this.model = result.value as PreviewModel;

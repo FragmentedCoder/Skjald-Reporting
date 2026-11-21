@@ -23,6 +23,17 @@ export interface StyleAsset {
   height: number;
 }
 
+/**
+ * Whether one of a style's pictures is artwork for a whole page, not an image to place
+ * on one. The server keeps both alike, so it's told by shape: artwork is always an SVG
+ * of an A4 page's proportions, within what the server allows when it takes it
+ * (backend/app/backgrounds.py). A page converted from a PDF is 595 × 842, a PNG or JPEG
+ * of a page 210 × 297, an SVG of a page whatever size it was drawn at.
+ */
+export function isArtwork(asset: StyleAsset): boolean {
+  return asset.content_type === "image/svg+xml" && Math.abs(asset.height / asset.width - 297 / 210) <= 0.03;
+}
+
 export interface Style extends StyleSummary {
   content: StyleContent;
   /** The styles this one stacks on, bottom first, above the Skjald default. */

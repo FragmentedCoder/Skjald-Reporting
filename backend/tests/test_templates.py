@@ -83,6 +83,37 @@ def test_a_new_template_has_a_starter_draft(client, designer, template, session)
     assert created.target_id == str(template["id"])
 
 
+def test_a_template_needs_a_name_with_something_to_see(client, designer, template) -> None:
+    """Spaces alone passed the length check and were kept as an empty name."""
+    _, headers = designer
+    for name in ("   ", "\t\n", "\u200b \ufeff"):
+        assert client.post(TEMPLATES, headers=headers,
+                           json={"name": name, "description": ""}).status_code == 422, name
+        assert client.patch(f"{TEMPLATES}/{template['id']}", headers=headers,
+                            json={"name": name}).status_code == 422, name
+        assert client.post(f"{TEMPLATES}/{template['id']}/copy", headers=headers,
+                           json={"name": name}).status_code == 422, name
+    renamed = client.patch(f"{TEMPLATES}/{template['id']}", headers=headers,
+                           json={"name": "  Incident report  "})
+    assert renamed.status_code == 200
+    assert renamed.json()["name"] == "Incident report"
+
+
+def test_half_a_character_in_a_sample_answer_is_refused_not_a_crash(client, designer,
+                                                                   template) -> None:
+    """A lone surrogate (half an emoji) can't be written out to be stored: it was an
+    HTTP 500 when the draft was saved."""
+    _, headers = designer
+    content = json.loads(json.dumps(INCIDENT))
+    content["sample"]["answers"]["q_summary"] = "Half an emoji: \ud83d"
+    # As a browser sends it: the half written as an escape, which JSON allows.
+    body = json.dumps({"content": content, "revision": 1}).encode()
+    refused = client.put(f"{TEMPLATES}/{template['id']}/draft", content=body,
+                         headers={**headers, "Content-Type": "application/json"})
+    assert refused.status_code == 422
+    assert "half of a character" in refused.json()["detail"]
+
+
 def test_saving_a_draft_reports_its_problems_and_counts_revisions(client, designer, template,
                                                                   frozen_clock) -> None:
     _, headers = designer
@@ -146,6 +177,92 @@ def test_a_draft_must_have_the_right_shape(client, designer, template, change, m
     refused = save(client, headers, template["id"], content, 1)
     assert refused.status_code == 422
     assert refused.json()["detail"].startswith(message)
+
+
+def _breaks(count: int, start: int = 0) -> list[dict]:
+    return [{"id": f"b_brk{start + i:05d}", "kind": "page_break"} for i in range(count)]
+
+
+def _nested(levels: int) -> dict:
+    """A section holding a section, so many levels deep."""
+    block: dict = {"id": "b_deep00000", "kind": "heading", "text": "At the bottom"}
+    for level in range(levels - 1):
+        block = {"id": f"b_deep{level + 1:05d}", "kind": "section", "title": "Deeper",
+                 "blocks": [block]}
+    return block
+
+
+def _questions(count: int) -> list[dict]:
+    return [{"id": f"q_many{i:04d}", "key": f"many_{i}", "type": "text", "label": f"Question {i}"}
+            for i in range(count)]
+
+
+def test_a_template_has_a_largest_size_said_in_plain_words(client, designer, template) -> None:
+    """Up to 500 questions, 1,000 blocks and ten levels of blocks in blocks: one more of
+    any is refused, saying which, and nothing nested past reading is ever stored."""
+    _, headers = designer
+    base = json.loads(json.dumps(INCIDENT))
+    base["layout"] = []
+    base["form"] = [{"id": "s_many", "title": "Many", "questions": []}]
+
+    def attempt(change):
+        content = json.loads(json.dumps(base))
+        change(content)
+        return save(client, headers, template["id"], content, 1)
+
+    def blocks(count):
+        # Sections of up to 300, as a list of blocks takes.
+        def change(content):
+            content["layout"] = [
+                {"id": f"b_sec{n:05d}", "kind": "section", "title": "Part", "blocks":
+                 _breaks(min(250, count - 1 - n * 251), n * 1000)}
+                for n in range(-(-count // 251))]
+            assert sum(1 + len(s["blocks"]) for s in content["layout"]) == count
+        return change
+
+    refused = attempt(blocks(1004))
+    assert refused.status_code == 422
+    assert refused.json()["detail"] == "A template takes up to 1,000 blocks; this one has 1,004."
+    refused = attempt(lambda c: c["form"][0].update(questions=_questions(300))
+                      or c["form"].append({"id": "s_more", "title": "More",
+                                           "questions": _questions(201)}))
+    assert refused.status_code == 422
+    assert refused.json()["detail"] == (
+        "A template takes up to 500 questions and headings; this one has 501.")
+    refused = attempt(lambda c: c["layout"].append(_nested(11)))
+    assert refused.status_code == 422
+    assert refused.json()["detail"] == (
+        "Blocks can sit inside each other up to 10 levels deep; this template goes deeper.")
+    # Far past the limit is refused the same way, not a crash, whichever of the server's
+    # own guards meets it first (its count of blocks, the depth of what was sent, or a
+    # library's limit on how deep it reads).
+    for levels in (12, 50, 61, 120, 127, 128, 400, 3000):
+        refused = attempt(lambda c, levels=levels: c["layout"].append(_nested(levels)))
+        assert refused.status_code == 422, levels
+        assert "levels deep" in refused.json()["detail"], levels
+
+    # The stored document, with every default written out, is what's measured.
+    def nearly(content):
+        content["layout"] = [{"id": "b_big00", "kind": "text", "content": {
+            "type": "doc", "content": [{"type": "paragraph", "content": [
+                {"type": "text", "text": "x" * (2 * 1024 * 1024 - 12_000)}]}]}},
+            {"id": "b_sec00000", "kind": "section", "title": "", "blocks": _breaks(250)}]
+    refused = attempt(nearly)
+    assert refused.status_code == 422
+    assert refused.json()["detail"] == "The template is larger than 2 MB."
+
+    # At the limits it saves, and opens again.
+    def full(content):
+        blocks(1000)(content)
+        content["layout"][0]["blocks"][0] = _nested(9)
+        content["layout"][0]["blocks"] = content["layout"][0]["blocks"][:250 - 8]
+        content["form"] = [{"id": "s_many", "title": "Many", "questions": _questions(300)},
+                           {"id": "s_more", "title": "More", "questions": [
+                               dict(q, id=q["id"].replace("many", "more"), key=q["key"] + "_b")
+                               for q in _questions(200)]}]
+    saved = attempt(full)
+    assert saved.status_code == 200, saved.text
+    assert client.get(f"{TEMPLATES}/{template['id']}/draft", headers=headers).status_code == 200
 
 
 def test_publishing_freezes_the_draft_as_the_next_version(client, designer, template, session

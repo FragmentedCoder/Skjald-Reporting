@@ -15,10 +15,9 @@ from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-import re2
-
 from app.cel import Engine, ExpressionError
 from app.cel.engine import human, unknown_name
+from app.cel.library import regex
 from app.templates.content import (
     SIGNS,
     Answer,
@@ -42,7 +41,7 @@ from app.templates.content import (
 from app.templates.content import Heading as HeadingBlock
 from app.templates.fields import FIELD_TYPES
 from app.templates.names import ITEM, declarations, question_names, questions
-from app.templates.text import doc_expressions, interpolations
+from app.templates.text import blank, doc_expressions, interpolations, trimmed
 
 # Words CEL keeps for itself: answers.<key> can't be read with one of them as key.
 RESERVED = frozenset({
@@ -52,6 +51,8 @@ RESERVED = frozenset({
 })
 LISTS = ("repeating", "table")
 ITEM_OUTSIDE = "item is only there inside a section repeated for each item."
+NOT_ROWS = ("A section repeats for the rows of a repeating group or table, but this list "
+            "holds something else.")
 SIGNERS = {"technician": "The technician", "reviewer": "The reviewer",
            "company": "The company seal"}
 
@@ -61,12 +62,6 @@ class Problem:
     element: str
     field: str
     message: str
-
-
-def _fits(got: str, expected: str) -> bool:
-    if got == "dyn" or got == expected:
-        return True
-    return expected == "list" and got.startswith("list<")
 
 
 @dataclass
@@ -94,10 +89,11 @@ class _Checker:
 
     def expr(self, element: str, field_: str, expr: str | None, expected: str | None,
              *, item: bool = False) -> None:
-        """An expression that, when set, must work and give the expected type."""
+        """An expression that, when set, must work and give the expected type ("rows":
+        the rows of a repeating group or table)."""
         if expr is None:
             return
-        if not expr.strip():
+        if blank(expr):
             self.add(element, field_, "Write the expression, or remove the rule.")
             return
         engine = self.item_engine if item else self.engine
@@ -106,7 +102,12 @@ class _Checker:
         except ExpressionError as error:
             self.add(element, field_, self.message(error, item))
             return
-        if expected is not None and not _fits(got, expected):
+        if expected == "rows":
+            # What a section repeats for: inside it each item is read as a row (item.ip).
+            if got not in ("dyn", "list<dyn>") and not got.startswith("list<map<string,"):
+                self.add(element, field_, NOT_ROWS if got.startswith("list") else
+                         f"This should give a list, but gives {human(got)}.")
+        elif expected is not None and got not in ("dyn", expected):
             self.add(element, field_,
                      f"This should give {human(expected)}, but gives {human(got)}.")
 
@@ -137,14 +138,14 @@ class _Checker:
         if doc is None:
             return
         for expr in doc_expressions(doc):
-            self.printed(element, field_, expr.strip(), item=item)
+            self.printed(element, field_, trimmed(expr), item=item)
 
     # The form
 
     def question(self, q: Question, seen_keys: set[str]) -> None:
         self.id(q.id)
         field_type = FIELD_TYPES[q.type]
-        if not q.label.strip():
+        if blank(q.label):
             self.add(q.id, "label",
                      "Write the question." if field_type.asks else "Write the heading.")
         if field_type.asks:
@@ -168,7 +169,7 @@ class _Checker:
             else:
                 self.expr(q.id, "default", q.default, own)
         if q.type == "calculated":
-            if not (q.value or "").strip():
+            if blank(q.value or ""):
                 self.add(q.id, "value", "Write the expression that works out this value.")
             else:
                 self.expr(q.id, "value", q.value, own)
@@ -179,26 +180,23 @@ class _Checker:
         s = q.settings
         if q.type in ("dropdown", "multi_select"):
             for i, option in enumerate(s["options"]):
-                if not option["label"].strip():
+                if blank(option["label"]):
                     self.add(q.id, "settings.options", f"Write what choice {i + 1} is shown as.")
         if q.type == "yes_no":
             for name, word in (("yes_label", "Yes"), ("no_label", "No")):
-                if not s[name].strip():
+                if blank(s[name]):
                     self.add(q.id, f"settings.{name}", f"Write what {word} is shown as.")
         if q.type in LISTS:
             for i, column in enumerate(s["columns"]):
-                if not column["label"].strip():
+                if blank(column["label"]):
                     self.add(q.id, "settings.columns", f"Give column {i + 1} a heading.")
         if q.type == "table":
             for i, row in enumerate(s["rows"]):
-                if not row["label"].strip():
+                if blank(row["label"]):
                     self.add(q.id, "settings.rows", f"Give row {i + 1} a heading.")
-        if q.type in ("text", "serial") and s.get("pattern"):
-            try:
-                re2.compile(s["pattern"])
-            except Exception:
-                self.add(q.id, "settings.pattern",
-                         "This pattern isn't a regular expression Skjald can use (RE2 syntax).")
+        if q.type in ("text", "serial") and s.get("pattern") and not self.pattern(s["pattern"]):
+            self.add(q.id, "settings.pattern",
+                     "This pattern isn't a regular expression Skjald can use (RE2 syntax).")
         if q.type == "number" and s["min"] is not None and s["max"] is not None:
             if s["min"] > s["max"]:
                 self.add(q.id, "settings.min", "The smallest value is larger than the largest.")
@@ -216,11 +214,49 @@ class _Checker:
                 self.add(q.id, "settings.rows", f"Two rows use the variable name {key}.")
         if q.type == "repeating" and s["min_rows"] > s["max_rows"]:
             self.add(q.id, "settings.min_rows", "The fewest rows are more than the most.")
+        if q.type in LISTS:
+            for i, column in enumerate(s["columns"]):
+                self.column_settings(q, i + 1, column)
+
+    @staticmethod
+    def pattern(pattern: str) -> bool:
+        """Whether a pattern is one both sides can use."""
+        try:
+            regex(pattern)
+        except ValueError:
+            return False
+        return True
+
+    def column_settings(self, q: Question, number: int, column: dict[str, Any]) -> None:
+        """A column is a question in small: its name is read in expressions (r.ip),
+        and its own settings are held to what a question's are."""
+        where = "settings.columns"
+        s = column["settings"]
+        if column["key"] in RESERVED:
+            self.add(q.id, where, f"{column['key']} is a reserved word in expressions: choose "
+                                  f"another variable name for column {number}.")
+        if column["type"] == "dropdown":
+            for i, option in enumerate(s["options"]):
+                if blank(option["label"]):
+                    self.add(q.id, where,
+                             f"Write what choice {i + 1} of column {number} is shown as.")
+        if column["type"] == "yes_no":
+            for name, word in (("yes_label", "Yes"), ("no_label", "No")):
+                if blank(s[name]):
+                    self.add(q.id, where, f"Write what {word} is shown as in column {number}.")
+        if column["type"] in ("text", "serial") and s.get("pattern") and not self.pattern(
+                s["pattern"]):
+            self.add(q.id, where, f"Column {number}'s pattern isn't a regular expression Skjald "
+                                  "can use (RE2 syntax).")
+        if column["type"] == "number" and s["min"] is not None and s["max"] is not None:
+            if s["min"] > s["max"]:
+                self.add(q.id, where,
+                         f"Column {number}'s smallest value is larger than its largest.")
 
     def loops(self) -> None:
         """Calculated values that depend on themselves, through others or directly."""
         calculated = {q.key: q for q in questions(self.content)
-                      if q.type == "calculated" and q.key and (q.value or "").strip()}
+                      if q.type == "calculated" and q.key and not blank(q.value or "")}
         depends: dict[str, list[str]] = {}
         for key, q in calculated.items():
             try:
@@ -287,7 +323,7 @@ class _Checker:
         """What picks a switch's case gives text or a whole number, and each case's
         value is one of those, picked by no other case."""
         got: str | None = None
-        if b.value is None or not b.value.strip():
+        if b.value is None or blank(b.value):
             self.add(b.id, "value", "Choose what picks the case.")
         else:
             engine = self.item_engine if item else self.engine
@@ -331,15 +367,15 @@ class _Checker:
         elif isinstance(b, Contents):
             self.text(b.id, "title", b.title, item=item)
         elif isinstance(b, Section):
-            if not b.title.strip():
+            if blank(b.title):
                 self.add(b.id, "title", "Give the section a title.")
             self.text(b.id, "title", b.title, item=item)
             self.rich(b.id, "intro", b.intro, item=item)
-            self.expr(b.id, "repeat_for", b.repeat_for, "list", item=outer)
+            self.expr(b.id, "repeat_for", b.repeat_for, "rows", item=outer)
             for child in b.blocks:
                 self.block(child, item=item)
         elif isinstance(b, HeadingBlock):
-            if not b.text.strip():
+            if blank(b.text):
                 self.add(b.id, "text", "Write the heading.")
             self.text(b.id, "text", b.text, item=item)
         elif isinstance(b, TextBlock):
@@ -392,7 +428,7 @@ class _Checker:
         elif isinstance(b, Sources):
             self.text(b.id, "intro", b.intro, item=item)
             for i, source in enumerate(b.items):
-                if not source.title.strip():
+                if blank(source.title):
                     self.add(b.id, f"items.{i}.title", f"Give source {i + 1} a title.")
             if b.question is not None:
                 q = self.chosen(b.id, b.question, "")
@@ -441,7 +477,7 @@ def check(
     seen_keys: set[str] = set()
     for step in content.form:
         checker.id(step.id)
-        if not step.title.strip():
+        if blank(step.title):
             checker.add(step.id, "title", "Give the step a title.")
         checker.expr(step.id, "visible_when", step.visible_when, "bool")
         for q in step.questions:

@@ -22,12 +22,15 @@ from app import clock
 from app.auth.dependencies import DB, effective_capabilities
 from app.auth.sessions import UserSession
 from app.backgrounds import MAX_PAGE_BYTES
+from app.branding import company_timezone
+from app.custom_fields import custom_names
 from app.library.models import LibraryEntry, LibraryVersion
 from app.library.routes import current_entries
-from app.library.values import parse_value
+from app.library.values import library_names, parse_value
 from app.roles import Capability
 from app.styles import artwork
 from app.styles.content import StyleContent, assets
+from app.styles.content import problems as style_problems
 from app.styles.models import Style, StyleAsset, StyleVersion
 from app.svg import SvgRejected, clean_svg
 from app.templates import files
@@ -73,9 +76,23 @@ def _library_used(db: Session, content: TemplateContent) -> list[dict[str, Any]]
             wanted.add(("table", match.group(3)))
         else:
             wanted.add((_KINDS[match.group(1)], match.group(2)))
+    current = list(current_entries(db))
+    # A snippet brings the variables it reads, or it would print with gaps elsewhere.
+    for entry, version in current:
+        if entry.kind == "snippet" and ("snippet", entry.key) in wanted:
+            wanted |= {("variable", m.group(2)) for m in _LIBRARY.finditer(version.value)
+                       if m.group(1) == "vars"}
     return [{"kind": entry.kind, "key": entry.key, "description": entry.description,
              "value": json.loads(version.value)}
-            for entry, version in current_entries(db) if (entry.kind, entry.key) in wanted]
+            for entry, version in current if (entry.kind, entry.key) in wanted]
+
+
+def _pictures_used(db: Session, template_id: int, content: TemplateContent) -> list[files.Picture]:
+    """The template's pictures this version prints: not every one ever uploaded."""
+    used = set(re.findall(r'"asset":\s*"([0-9a-f]{64})"', canonical(content)))
+    return [files.Picture(a.sha256, a.content_type, a.data, a.name)
+            for a in _assets(db, template_id)
+            if a.sha256 in used and a.content_type in files.EXTENSIONS]
 
 
 def _company_style(db: Session) -> tuple[dict[str, Any] | None, list[files.Picture]]:
@@ -113,8 +130,7 @@ def export_template(template_id: int, request: Request, record: Designer, db: DB
     data = files.write(files.Export(
         uuid=template.uuid, name=template.name, description=template.description,
         version=row.number, content=content,
-        pictures=[files.Picture(a.sha256, a.content_type, a.data)
-                  for a in _assets(db, template.id) if a.content_type in files.EXTENSIONS],
+        pictures=_pictures_used(db, template.id, content),
         library=_library_used(db, content), style=style, style_pictures=style_pictures,
         app_version=skjald_version(), exported_at=clock.utcnow().isoformat(timespec="seconds"),
     ))
@@ -202,6 +218,12 @@ def _import_style(db: Session, record: UserSession, style: dict[str, Any] | None
     except ValidationError:
         raise HTTPException(status.HTTP_400_BAD_REQUEST,
                             "The style in the file isn't valid.") from None
+    # As when a style is saved: its text reads the report's context and the library alone.
+    library = {**library_names(entry for entry, _ in current_entries(db)), **custom_names(db)}
+    wrong = style_problems(content, timezone=company_timezone(db), library=library)
+    if wrong:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            f"The style in the file isn't valid. {wrong[0]}")
     now = clock.utcnow()
     made = Style(name=name, is_default=False, current=1, created_at=now, created_by=record.user_id)
     db.add(made)
@@ -243,8 +265,11 @@ def import_template(data: Annotated[bytes, Body(media_type="application/octet-st
     db.add(template)
     db.flush()
     db.add(_new_version(template.id, content, record.user_id))
+    # Each picture's name, as the file gives it, by what it's called once cleaned.
+    called = {renamed[old]: (re.sub(r"[^\w .()-]", "_", name).strip() or "image")[:200]
+              for old, name in imported.picture_names.items() if old in renamed}
     for sha, clean in cleaned.items():
-        db.add(TemplateAsset(template_id=template.id, sha256=sha, name="image",
+        db.add(TemplateAsset(template_id=template.id, sha256=sha, name=called.get(sha, "image"),
                              content_type=clean.content_type, width=clean.width,
                              height=clean.height, data=clean.data, created_at=now,
                              created_by=record.user_id))

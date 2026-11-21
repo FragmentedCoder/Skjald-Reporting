@@ -5,7 +5,7 @@
 export const MAX_DECIMALS = 10;
 
 /** A number's digits as text: whole part and fraction, without a sign. */
-function digitsOf(value: number | bigint): { negative: boolean; whole: string; fraction: string } {
+export function digitsOf(value: number | bigint): { negative: boolean; whole: string; fraction: string } {
   if (typeof value === "bigint") {
     return { negative: value < 0n, whole: (value < 0n ? -value : value).toString(), fraction: "" };
   }

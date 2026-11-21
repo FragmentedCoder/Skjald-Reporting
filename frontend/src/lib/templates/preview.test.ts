@@ -94,6 +94,28 @@ describe("answers change what's printed", () => {
     const repeated = model.blocks.filter((b) => b.id.startsWith("b_each~"));
     expect(repeated.map((b) => b.kind === "section" && b.title)).toEqual(["Address 198.51.100.23", "Address 203.0.113.77", "Address 2001:db8::5"]);
     expect(repeated.map((b) => b.kind === "section" && b.blocks.length)).toEqual([1, 1, 0]);
+    // What each repetition prints has an ID of its own, ending as its section's does.
+    expect(repeated.flatMap((b) => (b.kind === "section" ? b.blocks.map((inner) => inner.id) : []))).toEqual(["b_eachtxt~0", "b_eachtxt~1"]);
+  });
+
+  it("gives everything printed an ID of its own, however sections repeat and nest", () => {
+    const c = content();
+    const heading = (id: string) => ({ id, kind: "heading" as const, visible_when: null, text: "{{item.ip}}" });
+    const repeat = (id: string, blocks: TemplateContent["layout"]) => ({ id, kind: "section" as const, visible_when: null, title: "{{item.ip}}", intro: null, new_page: false,
+      numbered: true, landscape: false, repeat_for: "answers.attackers", blocks });
+    c.layout.push(repeat("b_outer", [heading("b_inhead"), { id: "b_incols", kind: "columns", visible_when: null, columns: [[heading("b_incol1")], [heading("b_incol2")]] },
+      repeat("b_inner", [heading("b_deep")])]));
+    const ids: string[] = [];
+    const walk = (blocks: Shown[]) => blocks.forEach((b) => {
+      ids.push(b.id);
+      if (b.kind === "section") walk(b.blocks);
+      if (b.kind === "columns") b.columns.forEach(walk);
+    });
+    const model = preview(input(c));
+    walk(model.blocks);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toContain("b_deep~2~1");
+    expect(paginate(model.blocks).pages.flatMap((p) => p.items.map((i) => i.block.id)).filter((id, i, list) => list.indexOf(id) !== i)).toEqual([]);
   });
 
   it("prints the first case of a switch with the value, else its otherwise", () => {
@@ -201,7 +223,8 @@ describe("what questions start as", () => {
       q("q_when", "moment", "datetime", "report.started", { mode: "datetime" }),
       q("q_who1", "who", "text", "author.display_name"),
     );
-    c.layout.push({ id: "b_start", kind: "heading", visible_when: null, text: "{{answers.day}} / {{answers.moment}} / {{answers.who}}" });
+    c.layout.push({ id: "b_start", kind: "heading", visible_when: null, text: "{{answers.day}} / {{answers.moment}} / {{answers.who}}" },
+      { id: "b_startday", kind: "answer", visible_when: null, question: "q_day1", show_label: true });
     return c;
   };
   const run = (c: TemplateContent, answers: Record<string, unknown>) => {
@@ -216,6 +239,8 @@ describe("what questions start as", () => {
     expect(model.errors).toEqual([]);
     expect(model.defaults).toEqual({ q_day1: "2026-11-19T23:00:00.000Z", q_when: "2026-11-20T13:47:00.000Z", q_who1: "Freja Holm" });
     expect(find(model.blocks, "b_start")).toMatchObject({ text: "20 November 2026 / 20 November 2026, 14:47 / Freja Holm" });
+    // An Answer block prints the start value too, as the question's own kind of answer.
+    expect(find(model.blocks, "b_startday")).toMatchObject({ label: "day", text: "20 November 2026" });
   });
 
   it("leaves answered questions, and ones cleared on purpose, as they are", () => {
@@ -223,6 +248,136 @@ describe("what questions start as", () => {
     const model = run(c, { ...c.sample.answers, q_day1: "2026-10-01T22:00:00.000Z", q_who1: null });
     expect(model.defaults).toEqual({ q_when: "2026-11-20T13:47:00.000Z" });
     expect(model.values.who).toBeNull();
+  });
+});
+
+describe("a date that isn't answered", () => {
+  const q = (c: TemplateContent, id: string, key: string, type: string, more: Record<string, unknown> = {}) =>
+    ({ ...c.form[0].questions[0], id, key, type, label: key, required: false, settings: type === "datetime" ? { mode: "datetime" } : {}, ...more });
+
+  it("prints as nothing, not as the first day of 1970", () => {
+    const c = content();
+    c.layout.push({ id: "b_when", kind: "heading", visible_when: null, text: "Detected: {{answers.detected}}." });
+    const answers = { ...c.sample.answers, q_detected: undefined };
+    const model = preview({ ...input(c, answers), timezone: "Europe/Copenhagen" });
+    expect(find(model.blocks, "b_when")).toMatchObject({ text: "Detected: ." });
+  });
+
+  it("starts nothing: a date question that starts as another one not answered stays empty", () => {
+    const c = content();
+    c.form[0].questions.push(q(c, "q_until", "until", "datetime", { default: "answers.detected" }));
+    const model = preview({ ...input(c, { ...c.sample.answers, q_detected: undefined }), timezone: "Europe/Copenhagen" });
+    expect(model.defaults).toEqual({});
+  });
+
+  it("lets a question start as a calculated value, and a calculated value read what a question starts as", () => {
+    const c = content();
+    c.form[0].questions.push(
+      q(c, "q_until", "until", "datetime", { default: "answers.deadline" }),
+      q(c, "q_note1", "note", "text", { default: "answers.severity" }),
+      { ...q(c, "q_shout", "shout", "calculated", { value: 'answers.note + "!"' }), settings: { result: "text", show_in_form: false } },
+    );
+    const model = preview({ ...input(c), timezone: "Europe/Copenhagen" });
+    expect(model.errors).toEqual([]);
+    expect(model.defaults).toEqual({ q_until: "2026-10-24T01:14:00.000Z", q_note1: "Critical" });
+    expect(model.values.shout).toBe("Critical!");
+  });
+});
+
+describe("one value that can't be used", () => {
+  it("marks a date outside what can be printed where it's printed, and prints the rest", () => {
+    const c = content();
+    c.layout.push({ id: "b_far", kind: "heading", visible_when: null, text: "{{ add_hours(answers.detected, 9000000000) }} and on" });
+    const model = preview({ ...input(c), timezone: "Europe/Copenhagen" });
+    expect(find(model.blocks, "b_far")).toMatchObject({ text: "⚠ and on" });
+    expect(model.errors.map((e) => e.element)).toEqual(["b_far"]);
+    expect(find(model.blocks, "b_cover")).toMatchObject({ title: "Security incident report" });
+  });
+
+  it("is the calculated question's own problem when it gives another kind of value than it says", () => {
+    const c = content();
+    const first = c.form[0].questions[0];
+    c.form[0].questions.push({ ...first, id: "q_ratio", key: "ratio", type: "calculated", label: "Ratio", required: false,
+      value: "answers.cvss / 2.0", settings: { result: "whole", show_in_form: false } });
+    const model = preview({ ...input(c), timezone: "Europe/Copenhagen" });
+    // Every other expression still works: only the calculated value is reported.
+    expect(model.errors).toEqual([{ element: "q_ratio", message: "This should give a whole number, but with these answers it gives 4.55." }]);
+    expect(model.values.ratio).toBeNull();
+    expect(model.values.severity).toBe("Critical");
+  });
+});
+
+describe("the rows of a repeating group, as rules read them", () => {
+  const withLog = () => {
+    const c = content();
+    const first = c.form[0].questions[0];
+    const column = (key: string, type: string, settings: Record<string, unknown> = {}) => ({ key, label: key, type, required: false, settings });
+    c.form[0].questions.push(
+      { ...first, id: "q_log01", key: "log", type: "repeating", label: "Log", required: false, settings: { min_rows: 0, max_rows: 100,
+        columns: [column("what", "text"), column("hours", "number", { whole: false, decimals: 1 }), column("rate", "number", { whole: false, decimals: 2 }),
+          column("count", "number", { whole: true }), column("when", "datetime"), column("done", "yes_no")] } },
+      { ...first, id: "q_total", key: "total", type: "calculated", label: "Total", required: false,
+        value: "sum(answers.log.map(r, r.hours * r.rate))", settings: { result: "number", show_in_form: false } },
+    );
+    return c;
+  };
+  const rows = [
+    { what: "Triage", hours: 3, rate: 1.5, count: 2, when: "2026-10-21T10:00:00.000Z", done: true },
+    { what: "Report", hours: 2.5, rate: 2, count: 1, when: "2026-10-23T10:00:00.000Z", done: false },
+    // A row just added in the form: nothing filled in yet.
+    { what: null, hours: null, rate: null, count: null, when: null, done: null },
+  ];
+  const run = (c: TemplateContent) => preview({ ...input(c, { ...c.sample.answers, q_log01: rows }), timezone: "Europe/Copenhagen" });
+
+  it("gives each cell its column's kind: a whole number typed in a decimal column still multiplies", () => {
+    const model = run(withLog());
+    expect(model.errors).toEqual([]);
+    expect(model.values.total).toBe(9.5);
+  });
+
+  it("compares a date column with a date, and reads a blank cell as empty", () => {
+    const c = withLog();
+    c.layout.push(
+      { id: "b_early", kind: "heading", visible_when: 'answers.log.exists(row, row.when < date("2026-10-22"))', text: "{{size(answers.log.filter(r, r.count >= 1))}} counted, {{answers.log.filter(r, r.done).map(r, r.what).join(\", \")}} done" },
+      { id: "b_each", kind: "section", visible_when: null, title: "{{item.what}}: {{item.hours * 2.0}} / {{item.when}}", intro: null, new_page: false, numbered: false, landscape: false, repeat_for: "answers.log", blocks: [] },
+    );
+    const model = run(c);
+    expect(model.errors).toEqual([]);
+    expect(find(model.blocks, "b_early")).toMatchObject({ text: "2 counted, Triage done" });
+    // Inside a section repeated for each row the cells keep their kinds too.
+    expect(model.blocks.filter((b) => b.id.startsWith("b_each")).map((b) => (b as { title: string }).title))
+      .toEqual(["Triage: 6 / 21 October 2026, 12:00", "Report: 5 / 23 October 2026, 12:00", ": 0 / "]);
+  });
+});
+
+describe("a group's columns print as they're set", () => {
+  it("prints a number column with its decimals and unit, and a date column without a time when it asks for a date", () => {
+    const c = content();
+    const first = c.form[0].questions[0];
+    c.form[0].questions.push({ ...first, id: "q_disks", key: "disks", type: "repeating", label: "Disks", required: false, settings: { min_rows: 0, max_rows: 100, columns: [
+      { key: "size", label: "Size", type: "number", required: false, settings: { whole: false, decimals: 2, unit: "GB" } },
+      { key: "wiped", label: "Wiped", type: "datetime", required: false, settings: { mode: "date" } },
+      { key: "checked", label: "Checked", type: "datetime", required: false, settings: { mode: "datetime" } },
+    ] } });
+    c.layout.push({ id: "b_disks", kind: "table", visible_when: null, question: "q_disks", caption: "", columns: ["wiped", "size", "checked"], empty_text: "", row_numbers: false });
+    const answers = { ...c.sample.answers, q_disks: [{ size: 931.5, wiped: "2026-10-20T22:00:00.000Z", checked: "2026-10-21T08:30:00.000Z" }] };
+    expect(find(preview({ ...input(c, answers), timezone: "Europe/Copenhagen" }).blocks, "b_disks")).toMatchObject({
+      // In the order the table block asks for, not the group's own.
+      grid: { headers: ["Wiped", "Size", "Checked"], rows: [["21 Oct 2026", "931.50 GB", "21 Oct 2026, 10:30"]] },
+    });
+  });
+});
+
+describe("the severity summary", () => {
+  it("counts a row by what its dropdown shows as well as by the value it keeps", () => {
+    const c = content();
+    const first = c.form[0].questions[0];
+    const options = [{ value: "kritisk", label: "Kritisk" }, { value: "hoej", label: "Høj" }, { value: "lav", label: "Lav" }];
+    c.form[0].questions.push({ ...first, id: "q_finds", key: "finds", type: "repeating", label: "Findings", required: false,
+      settings: { columns: [{ key: "title", label: "Title", type: "text", required: false, settings: {} }, { key: "sev", label: "Severity", type: "dropdown", required: false, settings: { options } }], min_rows: 0, max_rows: 100 } });
+    c.layout.push({ id: "b_sev", kind: "severity_summary", visible_when: null, question: "q_finds", column: "sev", levels: ["Kritisk", "Høj", "lav"], caption: "" });
+    const answers = { ...c.sample.answers, q_finds: [{ title: "a", sev: "hoej" }, { title: "b", sev: "hoej" }, { title: "c", sev: "kritisk" }, { title: "d", sev: "lav" }, { title: "e", sev: null }] };
+    expect(find(preview(input(c, answers)).blocks, "b_sev")).toMatchObject({ counts: [{ level: "Kritisk", count: 1 }, { level: "Høj", count: 2 }, { level: "lav", count: 1 }] });
   });
 });
 

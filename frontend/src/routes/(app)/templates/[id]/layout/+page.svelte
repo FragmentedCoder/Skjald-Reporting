@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { goto } from "$app/navigation";
+  import { resolve } from "$app/paths";
   import { onDestroy, onMount, tick } from "svelte";
   import { ApiError, sessionGone } from "#lib/api.js";
   import { Engine } from "#lib/cel/engine.js";
@@ -21,6 +23,7 @@
   import { LivePreview } from "#lib/templates/live.svelte.js";
   import { declarations, ITEM } from "#lib/templates/names.js";
   import { shapeOf } from "#lib/templates/rules.js";
+  import { MAX_IN_ONE_LIST, noRoomForBlock } from "#lib/templates/limits.js";
   import { listsIn, questionsOf, type Block, type BlockKind, type Problem, type TemplateContent } from "#lib/templates/types.js";
   import { toast } from "#lib/toast.svelte.js";
 
@@ -73,7 +76,7 @@
     const group = questionsOf(content).find((q) => `answers.${q.key}` === repeat);
     const columns = group ? (settingsOf(group.type, group.settings).columns as { key: string; label: string; type: string; settings?: Record<string, unknown> }[]) : [];
     const type = (c: { type: string; settings?: Record<string, unknown> }) =>
-      c.type === "number" ? (c.settings?.whole ? "int" : "double") : c.type === "yes_no" ? "bool" : "string";
+      c.type === "number" ? (c.settings?.whole ? "int" : "double") : c.type === "yes_no" ? "bool" : c.type === "datetime" ? "timestamp" : "string";
     return [
       ...columns.map((c) => ({ name: `item.${c.key}`, label: `${c.label}, for this row`, group: "Each row", type: "dyn", shape: shapeOf(type(c)) })),
       ...entries,
@@ -124,10 +127,18 @@
       const beside = (kind === "section" ? path.findLast((p) => p.block.kind === "section") : undefined) ?? path[0];
       if (beside) [target, at] = [beside.list, beside.index + 1];
     }
+    if (full(target)) return;
     const block = newBlock(kind as BlockKind, target !== content.layout);
     target.splice(at, 0, block);
     select(block.id);
     void focusPanel();
+  }
+
+  // Whether there's no room for another block in this list, saying so if there isn't.
+  function full(list: Block[]): boolean {
+    const why = noRoomForBlock(content, list);
+    if (why) toast(why, "info", { key: "template-full" });
+    return why !== null;
   }
 
   // A block dropped on the pages: moved there, or new from the palette. It goes where
@@ -136,6 +147,7 @@
     if (draft.readonly) return;
     const moving = "move" in dropped ? locate(content.layout, dropped.move) : null;
     if ("move" in dropped && !moving) return;
+    if (!moving && full([])) return;
     const anchorId = at && ("after" in at ? at.after : "first" in at ? at.first : at.before);
     if (moving && anchorId && pathTo([moving.block], anchorId)) return;
     moving?.list.splice(moving.index, 1);
@@ -144,6 +156,12 @@
     if (at && anchor) {
       if ("first" in at && anchor.block.kind === "section") [list, index] = [anchor.block.blocks, 0];
       else [list, index] = [anchor.list, anchor.index + ("before" in at ? 0 : 1)];
+    }
+    if (list.length >= MAX_IN_ONE_LIST) {
+      // Full where it was dropped: a moved block goes back where it was.
+      moving?.list.splice(moving.index, 0, moving.block);
+      full(list);
+      return;
     }
     const block = moving ? moving.block : newBlock((dropped as { add: string }).add as BlockKind, list !== content.layout);
     list.splice(index, 0, block);
@@ -207,11 +225,19 @@
   });
   const hidden = $derived(new Map((live.model?.hidden ?? []).map((h) => [h.id, h.reason])));
 
+  // A problem's link selects what it's about: a block here, a question or step on the
+  // Questions tab (the list shows every problem, whichever tab it's read on).
   function show(problem: Problem) {
     if (locate(content.layout, problem.element)) {
       select(problem.element);
       void focusPanel();
+      return;
     }
+    const step = content.form.find((s) => s.id === problem.element);
+    const question = questionsOf(content).find((q) => q.id === problem.element);
+    if (!step && !question) return;
+    draft.selection = { kind: step ? "step" : "question", id: problem.element };
+    void goto(resolve("/(app)/templates/[id]", { id: String(draft.id) }));
   }
 </script>
 
@@ -247,16 +273,20 @@
   <section class="canvas" aria-labelledby="layout-title">
     {#if view === "blocks"}
       <BlockList bind:blocks={content.layout} label="Blocks in the PDF" empty="Drag a block here, or click one in the palette."
-        selected={selectedId} {hidden} problems={(id) => draft.problemsFor(id).length} readonly={draft.readonly} onselect={select} />
+        selected={selectedId} {hidden} problems={(id) => draft.problemsFor(id).length} readonly={draft.readonly} onselect={select}
+        room={(list) => !full(list)} />
     {:else if live.paged}
       {#if looks.problem}<p class="alert alert-warning small">{looks.problem}</p>{/if}
       {#if live.problem}<p class="alert alert-warning small">{live.problem}</p>{/if}
       {#if live.model?.errors.length}
         <p class="alert alert-warning small">{live.model.errors.length} expression{live.model.errors.length === 1 ? "" : "s"} failed with the sample answers, shown as ⚠ on the pages.</p>
       {/if}
-      <PdfPages paged={live.paged} look={looks.look(live.model?.pageTexts)} language={content.settings.language} reportNumber={String(draft.sampleContext.report.number)}
+      <PdfPages paged={live.paged} look={looks.look(live.model?.pageTexts, content.settings.made_with_skjald ?? true)} language={content.settings.language} reportNumber={String(draft.sampleContext.report.number)}
         classification={String(draft.sampleContext.project.classification)} selected={selectedId} onselect={select}
         onplace={draft.readonly ? undefined : place} />
+    {:else if live.problem}
+      <!-- No pages at all, and the reason: never left saying it's still working them out. -->
+      <p class="alert alert-warning small">{live.problem}</p>
     {:else}
       <p class="muted">Working out the pages…</p>
     {/if}
@@ -265,10 +295,14 @@
   <aside class="panel" aria-label="Settings of what's selected" bind:this={panel}>
     <fieldset class="unstyled" disabled={draft.readonly}>
       {#if found}
-        <BlockPanel block={found.block} {content} engine={repeat ? itemEngine : engine} entries={blockEntries}
-          problems={draft.problemsFor(found.block.id)} assets={draft.template?.assets ?? []}
-          first={found.index === 0} last={found.index === found.list.length - 1}
-          onupload={upload} onremove={remove} onmove={move} />
+        <!-- A panel of its own for each block: none takes over the last one's text
+             editor (and its undo steps), half-written rule or upload under way. -->
+        {#key found.block.id}
+          <BlockPanel block={found.block} {content} engine={repeat ? itemEngine : engine} entries={blockEntries}
+            problems={draft.problemsFor(found.block.id)} assets={draft.template?.assets ?? []}
+            first={found.index === 0} last={found.index === found.list.length - 1}
+            onupload={upload} onremove={remove} onmove={move} />
+        {/key}
       {:else}
         <p class="small muted">Select a block to change it.</p>
       {/if}

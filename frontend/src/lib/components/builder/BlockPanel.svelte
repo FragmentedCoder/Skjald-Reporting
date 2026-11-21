@@ -81,14 +81,23 @@
   async function upload(event: Event) {
     const input = event.currentTarget as HTMLInputElement;
     const file = input.files?.[0];
-    if (!file || block.kind !== "image") return;
+    // The block it's for: another may be selected by the time the upload is done.
+    const target = block;
+    if (!file || target.kind !== "image") return;
     uploading = true;
     uploadError = null;
     const asset = await onupload(file);
     uploading = false;
     input.value = "";
-    if (asset) block.asset = asset.sha256;
+    if (asset) target.asset = asset.sha256;
     else uploadError = "The image couldn't be added.";
+  }
+
+  // Which of a list's columns a table prints, and in what order: nothing kept when
+  // it's all of them in the list's own order, so a column added later is printed too.
+  function setColumns(all: string[], next: string[]) {
+    if (block.kind !== "table") return;
+    block.columns = next.length === all.length && next.every((key, i) => key === all[i]) ? null : next;
   }
 
   const contrastNote = $derived.by(() => {
@@ -98,10 +107,10 @@
   });
 </script>
 
-{#snippet text(field: string, label: string, value: string, set: (v: string) => void, hint = "")}
+{#snippet text(field: string, label: string, value: string, set: (v: string) => void, hint = "", maxlength = 500)}
   <div class="field">
     <label for="{id}-{field}">{label}</label>
-    <NameInput id="{id}-{field}" bind:value={() => value, set} {entries} invalid={Boolean(problem(field))} />
+    <NameInput id="{id}-{field}" bind:value={() => value, set} {entries} {maxlength} invalid={Boolean(problem(field))} />
     <span class="hint" class:error={problem(field)}>{problem(field) ?? hint}</span>
   </div>
 {/snippet}
@@ -119,7 +128,7 @@
   <div class="group-head"><h3 id="{id}-pdf">In the PDF</h3><Where pdf /></div>
 
   {#if block.kind === "section"}
-    {@render text("title", "Title", block.title, (v) => block.kind === "section" && (block.title = v), "Type {{ to insert a name, such as the report's number.")}
+    {@render text("title", "Title", block.title, (v) => block.kind === "section" && (block.title = v), "Type {{ to insert a name, such as the report's number.", 300)}
     {#if block.intro}
       <RichTextEditor bind:value={block.intro} {entries} label="Introduction, under the heading" id="{id}-intro" />
       <button class="link-button small start" type="button" onclick={() => block.kind === "section" && (block.intro = null)}>Remove the introduction</button>
@@ -164,7 +173,7 @@
       </select>
     </div>
   {:else if block.kind === "heading"}
-    {@render text("text", "Heading", block.text, (v) => block.kind === "heading" && (block.text = v))}
+    {@render text("text", "Heading", block.text, (v) => block.kind === "heading" && (block.text = v), "", 300)}
   {:else if block.kind === "text"}
     <RichTextEditor bind:value={() => block.kind === "text" ? block.content : null, (v) => block.kind === "text" && v && (block.content = v)} {entries} label="Text" id="{id}-content" />
     {#if problem("content")}<p class="small error">{problem("content")}</p>{/if}
@@ -189,16 +198,25 @@
     </div>
     {#if block.question}
       {@const all = columnsOf(block.question)}
+      {@const keys = all.map((c) => c.key)}
+      {@const shown = (block.columns ?? keys).filter((k) => keys.includes(k))}
+      <!-- The columns as they print, left to right, then the ones left out. -->
+      {@const listed = [...shown.flatMap((k) => all.filter((c) => c.key === k)), ...all.filter((c) => !shown.includes(c.key))]}
       <fieldset class="plain">
-        <legend>Columns printed</legend>
-        {#each all as column (column.key)}
-          <label class="check"><input type="checkbox" checked={!block.columns || block.columns.includes(column.key)}
-            onchange={(e) => {
-              if (block.kind !== "table") return;
-              const shown = block.columns ?? all.map((c) => c.key);
-              const next = e.currentTarget.checked ? all.map((c) => c.key).filter((k) => shown.includes(k) || k === column.key) : shown.filter((k) => k !== column.key);
-              block.columns = next.length === all.length ? null : next;
-            }} /> {column.label}</label>
+        <legend>Columns printed, in this order</legend>
+        {#each listed as column, i (column.key)}
+          <div class="column-line">
+            <label class="check"><input type="checkbox" checked={shown.includes(column.key)}
+              onchange={(e) => setColumns(keys, e.currentTarget.checked ? [...shown, column.key] : shown.filter((k) => k !== column.key))} /> {column.label}</label>
+            {#if shown.includes(column.key) && shown.length > 1}
+              <span class="order">
+                <button class="mini" type="button" aria-label="Move {column.label} earlier" title="Earlier" disabled={i === 0}
+                  onclick={() => setColumns(keys, shown.map((k, n) => (n === i - 1 ? shown[i] : n === i ? shown[i - 1] : k)))}><ArrowUp size={14} aria-hidden="true" /></button>
+                <button class="mini" type="button" aria-label="Move {column.label} later" title="Later" disabled={i === shown.length - 1}
+                  onclick={() => setColumns(keys, shown.map((k, n) => (n === i + 1 ? shown[i] : n === i ? shown[i + 1] : k)))}><ArrowDown size={14} aria-hidden="true" /></button>
+              </span>
+            {/if}
+          </div>
         {/each}
         {#if problem("columns")}<p class="small error">{problem("columns")}</p>{/if}
       </fieldset>
@@ -265,7 +283,13 @@
   {:else if block.kind === "callout"}
     <div class="field">
       <label for="{id}-tone">Tone</label>
-      <select id="{id}-tone" class="input" bind:value={block.tone}>
+      <select id="{id}-tone" class="input" value={block.tone}
+        onchange={(e) => {
+          if (block.kind !== "callout") return;
+          block.tone = e.currentTarget.value as typeof block.tone;
+          // The swatch shows a colour straight away: the block holds that one.
+          if (block.tone === "custom") block.colour ??= "#DCE6EE";
+        }}>
         {#each TONES as tone (tone.value)}<option value={tone.value}>{tone.label}</option>{/each}
         <option value="custom">A colour of my own</option>
       </select>
@@ -308,7 +332,7 @@
     <div class="field">
       <label for="{id}-levels">Levels, in order</label>
       <input id="{id}-levels" class="input" value={block.levels.join(", ")}
-        oninput={(e) => { if (block.kind === "severity_summary") { const levels = e.currentTarget.value.split(",").map((v) => v.trim()).filter(Boolean); if (levels.length) block.levels = levels.slice(0, 8); } }} />
+        oninput={(e) => { if (block.kind === "severity_summary") { const levels = e.currentTarget.value.split(",").map((v) => v.trim().slice(0, 50)).filter(Boolean); if (levels.length) block.levels = levels.slice(0, 8); } }} />
       <span class="hint">Separated by commas. Rows count where the column says one of them.</span>
     </div>
     {@render text("caption", "Caption", block.caption, (v) => block.kind === "severity_summary" && (block.caption = v))}
@@ -440,6 +464,15 @@
     font-weight: 600;
   }
   .head-actions {
+    display: flex;
+  }
+  .column-line {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+  .order {
     display: flex;
   }
   .mini {

@@ -651,6 +651,297 @@
           "page": 4
         }
       ]
+    },
+    {
+      "name": "Two landscape sections in a row share their landscape page",
+      "blocks": [
+        {
+          "kind": "section",
+          "id": "a",
+          "title": "a",
+          "newPage": false,
+          "landscape": false,
+          "numbered": true,
+          "blocks": [
+            {
+              "kind": "text",
+              "id": "t1"
+            }
+          ]
+        },
+        {
+          "kind": "section",
+          "id": "wide1",
+          "title": "wide1",
+          "newPage": false,
+          "landscape": true,
+          "numbered": true,
+          "blocks": [
+            {
+              "kind": "table",
+              "id": "g1"
+            }
+          ]
+        },
+        {
+          "kind": "section",
+          "id": "wide2",
+          "title": "wide2",
+          "newPage": false,
+          "landscape": true,
+          "numbered": true,
+          "blocks": [
+            {
+              "kind": "table",
+              "id": "g2"
+            }
+          ]
+        },
+        {
+          "kind": "section",
+          "id": "b",
+          "title": "b",
+          "newPage": false,
+          "landscape": false,
+          "numbered": true,
+          "blocks": [
+            {
+              "kind": "text",
+              "id": "t2"
+            }
+          ]
+        }
+      ],
+      "pages": [
+        {
+          "orientation": "portrait",
+          "cover": false,
+          "ids": [
+            "a",
+            "t1"
+          ]
+        },
+        {
+          "orientation": "landscape",
+          "cover": false,
+          "ids": [
+            "wide1",
+            "g1",
+            "wide2",
+            "g2"
+          ]
+        },
+        {
+          "orientation": "portrait",
+          "cover": false,
+          "ids": [
+            "b",
+            "t2"
+          ]
+        }
+      ],
+      "numbers": {
+        "a": "1",
+        "wide1": "2",
+        "wide2": "3",
+        "b": "4"
+      },
+      "captions": {
+        "g1": "Table 1",
+        "g2": "Table 2"
+      }
+    },
+    {
+      "name": "Sections inside an unnumbered section count on with the ones around it",
+      "blocks": [
+        {
+          "kind": "section",
+          "id": "one",
+          "title": "one",
+          "newPage": false,
+          "landscape": false,
+          "numbered": true,
+          "blocks": []
+        },
+        {
+          "kind": "section",
+          "id": "appendix",
+          "title": "appendix",
+          "newPage": false,
+          "landscape": false,
+          "numbered": false,
+          "blocks": [
+            {
+              "kind": "section",
+              "id": "x",
+              "title": "x",
+              "newPage": false,
+              "landscape": false,
+              "numbered": true,
+              "blocks": []
+            },
+            {
+              "kind": "section",
+              "id": "y",
+              "title": "y",
+              "newPage": false,
+              "landscape": false,
+              "numbered": true,
+              "blocks": []
+            }
+          ]
+        },
+        {
+          "kind": "section",
+          "id": "two",
+          "title": "two",
+          "newPage": false,
+          "landscape": false,
+          "numbered": true,
+          "blocks": [
+            {
+              "kind": "section",
+              "id": "p",
+              "title": "p",
+              "newPage": false,
+              "landscape": false,
+              "numbered": true,
+              "blocks": []
+            },
+            {
+              "kind": "section",
+              "id": "plain",
+              "title": "plain",
+              "newPage": false,
+              "landscape": false,
+              "numbered": false,
+              "blocks": [
+                {
+                  "kind": "section",
+                  "id": "q",
+                  "title": "q",
+                  "newPage": false,
+                  "landscape": false,
+                  "numbered": true,
+                  "blocks": []
+                }
+              ]
+            },
+            {
+              "kind": "section",
+              "id": "r",
+              "title": "r",
+              "newPage": false,
+              "landscape": false,
+              "numbered": true,
+              "blocks": []
+            }
+          ]
+        }
+      ],
+      "pages": [
+        {
+          "orientation": "portrait",
+          "cover": false,
+          "ids": [
+            "one",
+            "appendix",
+            "x",
+            "y",
+            "two",
+            "p",
+            "plain",
+            "q",
+            "r"
+          ]
+        }
+      ],
+      "numbers": {
+        "one": "1",
+        "x": "2",
+        "y": "3",
+        "two": "4",
+        "p": "4.1",
+        "q": "4.2",
+        "r": "4.3"
+      }
+    },
+    {
+      "name": "Tables and figures inside columns are counted too, down each column in turn",
+      "blocks": [
+        {
+          "kind": "section",
+          "id": "a",
+          "title": "a",
+          "newPage": false,
+          "landscape": false,
+          "numbered": true,
+          "blocks": [
+            {
+              "kind": "table",
+              "id": "g1"
+            },
+            {
+              "kind": "columns",
+              "id": "cols",
+              "columns": [
+                [
+                  {
+                    "kind": "image",
+                    "id": "f1"
+                  },
+                  {
+                    "kind": "table",
+                    "id": "g2"
+                  }
+                ],
+                [
+                  {
+                    "kind": "text",
+                    "id": "t1"
+                  },
+                  {
+                    "kind": "table",
+                    "id": "g3"
+                  }
+                ]
+              ]
+            },
+            {
+              "kind": "table",
+              "id": "g4"
+            },
+            {
+              "kind": "image",
+              "id": "f2"
+            }
+          ]
+        }
+      ],
+      "pages": [
+        {
+          "orientation": "portrait",
+          "cover": false,
+          "ids": [
+            "a",
+            "g1",
+            "cols",
+            "g4",
+            "f2"
+          ]
+        }
+      ],
+      "numbers": {
+        "a": "1"
+      },
+      "captions": {
+        "g1": "Table 1",
+        "f1": "Figure 1",
+        "g2": "Table 2",
+        "g3": "Table 3",
+        "g4": "Table 4",
+        "f2": "Figure 2"
+      }
     }
   ]
 }

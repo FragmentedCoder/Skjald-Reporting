@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { branding } from "#lib/branding.svelte.js";
   import Where from "#lib/components/builder/Where.svelte";
   import { useDraft } from "#lib/templates/draft.svelte.js";
   import type { Settings, TemplateContent } from "#lib/templates/types.js";
@@ -7,12 +8,17 @@
   // are numbered, how they may be delivered, and which styles they may use.
   const draft = useDraft();
   const settings = $derived((draft.content as TemplateContent).settings);
-  const prefixOk = $derived(/^[A-Z]{2,6}$/.test(settings.prefix));
+  // What's typed as the prefix. Only two to six letters are kept, so the draft always
+  // holds a prefix reports can be numbered with; leaving the field shows what's kept.
+  let typedPrefix = $state<string | null>(null);
+  const prefixOk = $derived(typedPrefix === null || /^[A-Z]{2,6}$/.test(typedPrefix));
 
-  function toggle<K extends "delivery" | "styles">(key: K, value: Settings[K][number], on: boolean) {
+  // One of each must stay: the last box ticked can't be unticked, and shows so.
+  function toggle<K extends "delivery" | "styles">(key: K, value: Settings[K][number], box: HTMLInputElement) {
     const list = settings[key] as string[];
-    const next = on ? [...new Set([...list, value])] : list.filter((v) => v !== value);
+    const next = box.checked ? [...new Set([...list, value])] : list.filter((v) => v !== value);
     if (next.length) (settings[key] as string[]) = next;
+    else box.checked = true;
   }
 
   const year = new Date().getFullYear();
@@ -28,9 +34,15 @@
     <div class="field narrow">
       <label for="prefix">Report number prefix</label>
       <input id="prefix" class="input mono" value={settings.prefix} maxlength="6" aria-invalid={prefixOk ? undefined : "true"}
-        oninput={(e) => (settings.prefix = e.currentTarget.value.toUpperCase().replace(/[^A-Z]/g, ""))} />
+        oninput={(e) => {
+          // Letters only, as capitals, shown as they're kept.
+          typedPrefix = e.currentTarget.value.toUpperCase().replace(/[^A-Z]/g, "");
+          e.currentTarget.value = typedPrefix;
+          if (prefixOk) settings.prefix = typedPrefix;
+        }}
+        onblur={(e) => { typedPrefix = null; e.currentTarget.value = settings.prefix; }} />
       <span class="hint" class:error={!prefixOk}>
-        {prefixOk ? `Reports are numbered ${settings.prefix}-${year}-0001, ${settings.prefix}-${year}-0002 and so on. Templates with the same prefix share the count.` : "Two to six capital letters, such as INC."}
+        {prefixOk ? `Reports are numbered ${settings.prefix}-${year}-0001, ${settings.prefix}-${year}-0002 and so on. Templates with the same prefix share the count.` : `Two to six capital letters, such as INC. It stays ${settings.prefix} until then.`}
       </span>
     </div>
     <div class="field narrow">
@@ -68,9 +80,9 @@
     <h2 class="section-title">Delivery <Where builder /></h2>
     <fieldset class="choices">
       <legend>The technician may deliver reports as</legend>
-      <label class="check"><input type="checkbox" checked={settings.delivery.includes("download")} onchange={(e) => toggle("delivery", "download", e.currentTarget.checked)} /> A download</label>
-      <label class="check"><input type="checkbox" checked={settings.delivery.includes("email")} onchange={(e) => toggle("delivery", "email", e.currentTarget.checked)} /> An email attachment</label>
-      <label class="check"><input type="checkbox" checked={settings.delivery.includes("protected_pdf")} onchange={(e) => toggle("delivery", "protected_pdf", e.currentTarget.checked)} /> A password-protected PDF</label>
+      <label class="check"><input type="checkbox" checked={settings.delivery.includes("download")} onchange={(e) => toggle("delivery", "download", e.currentTarget)} /> A download</label>
+      <label class="check"><input type="checkbox" checked={settings.delivery.includes("email")} onchange={(e) => toggle("delivery", "email", e.currentTarget)} /> An email attachment</label>
+      <label class="check"><input type="checkbox" checked={settings.delivery.includes("protected_pdf")} onchange={(e) => toggle("delivery", "protected_pdf", e.currentTarget)} /> A password-protected PDF</label>
       <label class="check muted"><input type="checkbox" disabled /> A secure link with an access code <span class="small">(release 1.1)</span></label>
     </fieldset>
   </section>
@@ -79,21 +91,32 @@
     <h2 class="section-title">Look <Where pdf /></h2>
     <fieldset class="choices">
       <legend>Styles reports may use</legend>
-      <label class="check"><input type="checkbox" checked={settings.styles.includes("company")} onchange={(e) => toggle("styles", "company", e.currentTarget.checked)} /> The company brand</label>
-      <label class="check"><input type="checkbox" checked={settings.styles.includes("customer")} onchange={(e) => toggle("styles", "customer", e.currentTarget.checked)} /> The customer's own style, where it has one</label>
+      <label class="check"><input type="checkbox" checked={settings.styles.includes("company")} onchange={(e) => toggle("styles", "company", e.currentTarget)} /> The company brand</label>
+      <label class="check"><input type="checkbox" checked={settings.styles.includes("customer")} onchange={(e) => toggle("styles", "customer", e.currentTarget)} /> The customer's own style, where it has one</label>
     </fieldset>
-    <label class="check"><input type="checkbox" bind:checked={settings.customer_background} /> Print on the customer's report background, where it has one</label>
-    <p class="small muted">A customer without a background gets plain pages.</p>
+    <fieldset class="choices">
+      <legend>On the pages</legend>
+      <label class="check"><input type="checkbox" bind:checked={settings.customer_background} /> Print on the customer's report background, where it has one</label>
+      <span class="small muted under">A customer without a background gets plain pages.</span>
+      <label class="check"><input type="checkbox" checked={branding.current.made_with_skjald && (settings.made_with_skjald ?? true)} disabled={!branding.current.made_with_skjald}
+        onchange={(e) => (settings.made_with_skjald = e.currentTarget.checked)} /> Print “Made with Skjald” at the foot of each page</label>
+      <span class="small muted under">
+        {branding.current.made_with_skjald
+          ? "A small line under the page's text. Off here takes it off this template's reports alone."
+          : "An Administrator has turned the line off for every report (Admin, Branding)."}
+      </span>
+    </fieldset>
   </section>
 </fieldset>
 
 <style>
-  /* Two columns of settings where the window is wide enough. */
+  /* Two columns of settings where the window is wide enough; the boxes side by side are
+     as tall as each other. */
   .settings {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 520px), 1fr));
-    gap: var(--space-2);
-    align-items: start;
+    gap: var(--space-4);
+    align-items: stretch;
     margin: var(--space-4) 0 0;
     padding: 0;
     border: 0;
@@ -112,6 +135,10 @@
     margin: 0 0 var(--space-3);
     padding: 0;
     border: 0;
+  }
+  /* What a checkbox means, under its words. */
+  .under {
+    margin: 0 0 var(--space-2) 30px;
   }
   legend {
     margin-bottom: var(--space-1);

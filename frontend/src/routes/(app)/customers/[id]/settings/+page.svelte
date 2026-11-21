@@ -24,33 +24,46 @@
   let deleteName = $state("");
   let deleteError = $state<string | null>(null);
 
-  $effect(() => {
-    if (!customer) return;
+  function fill(from: CustomerDetail) {
     details = {
-      name: customer.name,
-      cvr: customer.cvr ?? "",
-      address: customer.address ?? "",
-      language: customer.language ?? "da",
-      retention_months: customer.retention_months ?? 12,
-      custom: { ...(customer.custom ?? {}) },
+      name: from.name,
+      cvr: from.cvr ?? "",
+      address: from.address ?? "",
+      language: from.language ?? "da",
+      retention_months: from.retention_months ?? 12,
+      custom: { ...(from.custom ?? {}) },
     };
+  }
+
+  // The form is filled in when a customer is opened and when its details are saved, not
+  // whenever the customer changes: a new logo comes back as the whole customer, and
+  // filling the form in from that would throw away what's typed but not yet saved.
+  let filledFor: number | null = null;
+  $effect(() => {
+    if (!customer || customer.id === filledFor) return;
+    filledFor = customer.id;
+    fill(customer);
   });
 
-  async function run(action: () => Promise<CustomerDetail>, done: string) {
+  async function run(action: () => Promise<CustomerDetail>, done: string): Promise<CustomerDetail | null> {
     busy = true;
     try {
-      shared.use(await action());
+      const found = await action();
+      shared.use(found);
       toast(done, "ok", { key: "saved" });
+      return found;
     } catch (e) {
       if (!sessionGone(e)) toast(e instanceof ApiError ? e.message : "Something went wrong.", "critical");
+      return null;
     } finally {
       busy = false;
     }
   }
 
-  function save(event: SubmitEvent) {
+  async function save(event: SubmitEvent) {
     event.preventDefault();
-    run(() => api("PATCH", `/customers/${customer?.id}`, details), "Details saved.");
+    const saved = await run(() => api("PATCH", `/customers/${customer?.id}`, details), "Details saved.");
+    if (saved) fill(saved);
   }
 
   function uploadLogo() {

@@ -33,13 +33,17 @@ export function matching(entries: NameEntry[], query: string, limit = 50): NameE
     .map((r) => r.entry);
 }
 
-/** Text with a typed name completed: "{{" and what follows it up to the caret become "{{name}}". */
+/**
+ * Text with a typed name completed: "{{" and what follows it become "{{name}}". With the
+ * caret inside a reference that's already closed ({{|answers.ip}}), the name takes the
+ * whole reference's place rather than being put in front of what's left of it.
+ */
 export function complete(text: string, caret: number, name: string): { text: string; caret: number } {
   const typed = typedName(text.slice(0, caret));
   const start = typed ? typed.start : caret;
   const after = text.slice(caret);
-  const closing = /^\s*\}\}/.test(after) ? "" : "}}";
-  const inserted = `{{${name}${closing}`;
-  const next = text.slice(0, start) + inserted + after;
-  return { text: next, caret: start + inserted.length + (closing ? 0 : after.indexOf("}}") + 2) };
+  // The rest of the reference the caret is in: up to its "}}", with no other brace before it.
+  const rest = typed ? /^[^{}]*\}\}/.exec(after) : null;
+  const inserted = `{{${name}}}`;
+  return { text: text.slice(0, start) + inserted + (rest ? after.slice(rest[0].length) : after), caret: start + inserted.length };
 }

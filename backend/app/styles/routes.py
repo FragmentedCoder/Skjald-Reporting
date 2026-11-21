@@ -17,7 +17,7 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Response, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -60,8 +60,12 @@ def reader(request: Request, record: FullSession, db: DB) -> UserSession:
 Reader = Annotated[UserSession, Depends(reader)]
 
 
+# Trimmed before it's measured: a name of spaces alone is no name.
+Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
+
+
 class StyleIn(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
+    name: Name
     # None: a company style.
     customer_id: int | None = None
     # A customer style's company style; None: the Skjald default.
@@ -69,7 +73,7 @@ class StyleIn(BaseModel):
 
 
 class StyleUpdate(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
+    name: Name
     based_on: int | None = None
     content: StyleContent
     # The version the change was made from: a change over a newer one is refused.
@@ -370,10 +374,37 @@ def update_style(style_id: int, body: StyleUpdate, request: Request, record: Edi
     return _out(opened, style)
 
 
+def _stacked_on(opened: Opened, record: UserSession, style: Style) -> str | None:
+    """Why a company style can't be removed: the customer styles that stack on it,
+    named for whoever sees their customers and counted for anyone else."""
+    stacked = list(opened.db.scalars(select(Style).where(
+        Style.based_on == style.id, Style.removed_at.is_(None)).order_by(Style.id)))
+    if not stacked:
+        return None
+    names: list[str] = []
+    for held in stacked:
+        customer = opened.db.get(Customer, held.customer_id) if held.customer_id else None
+        if customer and len(names) < 5 and _sees_customer(opened.db, record, customer.id):
+            names.append(f"{opened.name(held)} ({opened.keyring.name(customer)})")
+    more = len(stacked) - len(names)
+    parts = names + ([f"{more} more"] if names and more else [])
+    listed = ", ".join(parts[:-1]) + (" and " if len(parts) > 1 else "") + "".join(parts[-1:])
+    if len(stacked) == 1:
+        return (f"{listed or 'A customer style'} stacks on this style. Choose another style "
+                "for it to stack on, then remove this one.")
+    return (f"{len(stacked)} customer styles stack on this style{': ' if listed else ''}{listed}. "
+            "Choose another style for each to stack on, then remove this one.")
+
+
 @router.delete("/{style_id}", status_code=status.HTTP_204_NO_CONTENT)
 def remove_style(style_id: int, request: Request, record: Editor, db: DB) -> Response:
-    """Mark the style removed: its versions stay, and customers' choices skip it."""
+    """Mark the style removed: its versions stay, and customers' choices skip it. A
+    company style stays while customer styles stack on it: they'd lose its look, and
+    couldn't be saved until they stacked on another."""
     style = _style(db, request, record, style_id)
+    in_use = _stacked_on(Opened(db), record, style)
+    if in_use:
+        raise HTTPException(status.HTTP_409_CONFLICT, in_use)
     style.removed_at, style.removed_by = clock.utcnow(), record.user_id
     style.is_default = False
     _log(db, request, record, "style.removed", style)
@@ -484,7 +515,9 @@ def set_customer_styles(customer_id: int, body: CustomerStylesIn, request: Reque
     customer, _ = visible_customer(db, request, record, customer_id, need="names")
     opened = Opened(db)
     ids = {s.id for s in _customer_choices(opened, customer.id)}
-    chosen = set(body.allowed) | ({body.default_style_id} if body.default_style_id else set())
+    chosen = set(body.allowed)
+    if body.default_style_id is not None:
+        chosen.add(body.default_style_id)
     if chosen - ids:
         raise HTTPException(status.HTTP_400_BAD_REQUEST,
                             "Choose among the company's styles and this customer's own.")
@@ -493,7 +526,7 @@ def set_customer_styles(customer_id: int, body: CustomerStylesIn, request: Reque
         row = CustomerStyles(customer_id=customer.id, allowed="[]")
         db.add(row)
     row.default_style_id = body.default_style_id
-    row.allowed = json.dumps(sorted(set(body.allowed) - {body.default_style_id or 0}))
+    row.allowed = json.dumps(sorted(set(body.allowed) - {body.default_style_id}))
     audit.append(db, "customer.report_style_changed", actor_id=record.user.id,
                  actor_name=record.user.username, target_type="customer",
                  target_id=str(customer.id), ip=client_ip(request),
