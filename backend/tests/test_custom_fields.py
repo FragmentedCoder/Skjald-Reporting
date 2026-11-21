@@ -131,6 +131,44 @@ def test_values_are_checked_and_sealed_with_the_customer(client, admin, manager,
     assert "Gold" not in "".join(u.details for u in updates)
 
 
+def test_a_record_keeps_an_option_since_removed_from_its_dropdown(client, designer, manager,
+                                                                 fields) -> None:
+    customer = client.post(CUSTOMERS, headers=manager, json={
+        "name": "Fjordvik Logistik A/S", "custom": {"agreement": "Gold"}}).json()
+    define(client, designer, "project", "priority", "dropdown", options=["High", "Low"])
+    project = client.post(f"{CUSTOMERS}/{customer['id']}/projects", headers=manager, json={
+        "name": "Firewall incident", "custom": {"priority": "High"}}).json()
+    field = fields["agreement"]
+    client.put(f"{FIELDS}/{field['id']}", headers=designer, json={
+        "label": field["label"], "options": ["Platinum", "Silver"]})
+    priority = next(f for f in client.get(FIELDS, headers=designer).json()
+                    if f["key"] == "priority")
+    client.put(f"{FIELDS}/{priority['id']}", headers=designer, json={
+        "label": priority["label"], "options": ["Urgent", "Low"]})
+
+    # The forms send every value back, the one no longer offered among them.
+    url = f"{CUSTOMERS}/{customer['id']}"
+    saved = client.patch(url, headers=manager, json={
+        "address": "Havnegade 12, 7000 Fjordvik", "custom": {"agreement": "Gold", "hours": 4}})
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["custom"] == {"agreement": "Gold", "hours": 4.0}
+    renamed = client.patch(f"/api/projects/{project['id']}", headers=manager, json={
+        "name": "Firewall", "custom": {"priority": "High"}})
+    assert renamed.status_code == 200, renamed.text
+    assert renamed.json()["custom"] == {"priority": "High"}
+
+    # A new choice is one of today's options, and a removed one can't be chosen again.
+    other = client.patch(url, headers=manager, json={"custom": {"agreement": "Bronze"}})
+    assert (other.status_code, other.json()["detail"]) == (
+        400, "Choose one of Support agreement's options.")
+    assert client.patch(url, headers=manager,
+                        json={"custom": {"agreement": "Platinum"}}).status_code == 200
+    assert client.patch(url, headers=manager,
+                        json={"custom": {"agreement": "Gold"}}).status_code == 400
+    assert client.post(CUSTOMERS, headers=manager, json={
+        "name": "Nordlys IT ApS", "custom": {"agreement": "Gold"}}).status_code == 400
+
+
 def test_archiving_a_field_keeps_its_values(client, designer, manager, fields) -> None:
     customer = client.post(CUSTOMERS, headers=manager, json={
         "name": "Fjordvik Logistik A/S", "custom": {"agreement": "Silver"}}).json()

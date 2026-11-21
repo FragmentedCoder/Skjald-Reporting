@@ -61,3 +61,12 @@ export function sampleCustom(fields: CustomField[], appliesTo: AppliesTo): Recor
   }
   return found;
 }
+
+/** A dropdown's choices on a customer's or project's form: the field's options and, first,
+ *  the one the record holds if it's since been removed from them. The record keeps it until
+ *  another is chosen, so the form shows it rather than an empty box. */
+export function choicesFor(field: CustomField, held: unknown): { value: string; label: string }[] {
+  const choices = field.options.map((option) => ({ value: option, label: option }));
+  if (typeof held === "string" && held !== "" && !field.options.includes(held)) choices.unshift({ value: held, label: `${held} (no longer an option)` });
+  return choices;
+}

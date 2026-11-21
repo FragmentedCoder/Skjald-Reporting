@@ -76,13 +76,17 @@ def custom_names(db: Session) -> dict[str, str]:
             for f in db.scalars(select(CustomField).where(CustomField.archived.is_(False)))}
 
 
-def _value(field: CustomField, raw: Any) -> Any:
-    """One value, checked and tidied for its field; ValueError says what's wrong."""
+def _value(field: CustomField, raw: Any, held: Any = None) -> Any:
+    """One value, checked and tidied for its field; ValueError says what's wrong. The
+    value the record holds already (`held`) is kept as it is: forms send every value
+    back, and a dropdown's option may have been removed since it was chosen."""
     label = field.label
     if field.type in ("text", "long_text", "email", "phone", "dropdown", "date"):
         if not isinstance(raw, str):
             raise ValueError(f"{label} takes text.")
         text = raw.strip()
+        if text == held:
+            return text
         if field.type == "text" and len(text) > 500:
             raise ValueError(f"{label} takes at most 500 characters.")
         if field.type == "long_text" and len(text) > 5000:
@@ -116,9 +120,9 @@ def _value(field: CustomField, raw: Any) -> Any:
 
 def merge_values(db: Session, applies_to: str, stored: dict[str, Any] | None,
                  given: dict[str, Any]) -> dict[str, Any]:
-    """The values after a change: each given one checked for its field, an empty one
-    (None or "") cleared. Values of archived fields are kept but can't be changed.
-    Raises HTTPException 400 with a message fit to show."""
+    """The values after a change: each given one checked for its field unless it's the
+    one held already, an empty one (None or "") cleared. Values of archived fields are
+    kept but can't be changed. Raises HTTPException 400 with a message fit to show."""
     fields = {f.key: f for f in fields_for(db, applies_to)}
     values = dict(stored or {})
     for key, raw in given.items():
@@ -129,7 +133,7 @@ def merge_values(db: Session, applies_to: str, stored: dict[str, Any] | None,
             values.pop(key, None)
             continue
         try:
-            values[key] = _value(field, raw)
+            values[key] = _value(field, raw, values.get(key))
         except ValueError as exc:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from None
     return values

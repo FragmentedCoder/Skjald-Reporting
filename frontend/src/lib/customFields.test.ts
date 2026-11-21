@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { customLabels, customNames, sampleCustom, type CustomField } from "./customFields";
+import { choicesFor, customLabels, customNames, sampleCustom, type CustomField } from "./customFields";
 import { catalogue } from "./templates/catalogue";
 import { sampleContext } from "./templates/preview";
 import type { TemplateContent } from "./templates/types";
@@ -32,6 +32,16 @@ describe("custom fields", () => {
     const context = sampleContext({ project: sampleCustom(FIELDS, "project") });
     expect(context.project.custom).toEqual({ ticket: "SLA-2026-17" });
     expect(context.customer.custom).toEqual({});
+  });
+
+  it("offer a dropdown's options, and the one a record holds though it's been removed", () => {
+    const agreement = FIELDS[0];
+    const options = [{ value: "Gold", label: "Gold" }, { value: "Silver", label: "Silver" }];
+    expect(choicesFor(agreement, "Silver")).toEqual(options);
+    expect(choicesFor(agreement, undefined)).toEqual(options);
+    expect(choicesFor(agreement, "")).toEqual(options);
+    // The server keeps Bronze on the record until another is chosen: the form shows it.
+    expect(choicesFor(agreement, "Bronze")).toEqual([{ value: "Bronze", label: "Bronze (no longer an option)" }, ...options]);
   });
 
   it("show in the Data tab under their own heading", () => {
