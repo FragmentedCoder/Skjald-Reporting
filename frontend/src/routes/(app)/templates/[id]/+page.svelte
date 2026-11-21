@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { goto } from "$app/navigation";
+  import { resolve } from "$app/paths";
   import Plus from "@lucide/svelte/icons/plus";
   import { tick } from "svelte";
   import { dndzone, type DndEvent } from "svelte-dnd-action";
@@ -212,6 +214,10 @@
     if (isStep || isQuestion) {
       select(isStep ? "step" : "question", problem.element);
       void focusPanel();
+    } else if (blocksOf(content.layout).some((b) => b.id === problem.element)) {
+      // A block's problem: the Layout tab opens with that block selected.
+      draft.selection = { kind: "block", id: problem.element };
+      void goto(resolve("/(app)/templates/[id]/layout", { id: String(draft.id) }));
     }
   }
 

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { goto } from "$app/navigation";
+  import { resolve } from "$app/paths";
   import { onDestroy, onMount, tick } from "svelte";
   import { ApiError, sessionGone } from "#lib/api.js";
   import { Engine } from "#lib/cel/engine.js";
@@ -74,7 +76,7 @@
     const group = questionsOf(content).find((q) => `answers.${q.key}` === repeat);
     const columns = group ? (settingsOf(group.type, group.settings).columns as { key: string; label: string; type: string; settings?: Record<string, unknown> }[]) : [];
     const type = (c: { type: string; settings?: Record<string, unknown> }) =>
-      c.type === "number" ? (c.settings?.whole ? "int" : "double") : c.type === "yes_no" ? "bool" : "string";
+      c.type === "number" ? (c.settings?.whole ? "int" : "double") : c.type === "yes_no" ? "bool" : c.type === "datetime" ? "timestamp" : "string";
     return [
       ...columns.map((c) => ({ name: `item.${c.key}`, label: `${c.label}, for this row`, group: "Each row", type: "dyn", shape: shapeOf(type(c)) })),
       ...entries,
@@ -223,11 +225,19 @@
   });
   const hidden = $derived(new Map((live.model?.hidden ?? []).map((h) => [h.id, h.reason])));
 
+  // A problem's link selects what it's about: a block here, a question or step on the
+  // Questions tab (the list shows every problem, whichever tab it's read on).
   function show(problem: Problem) {
     if (locate(content.layout, problem.element)) {
       select(problem.element);
       void focusPanel();
+      return;
     }
+    const step = content.form.find((s) => s.id === problem.element);
+    const question = questionsOf(content).find((q) => q.id === problem.element);
+    if (!step && !question) return;
+    draft.selection = { kind: step ? "step" : "question", id: problem.element };
+    void goto(resolve("/(app)/templates/[id]", { id: String(draft.id) }));
   }
 </script>
 
