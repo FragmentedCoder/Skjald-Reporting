@@ -1,4 +1,5 @@
 import json
+import os
 import re
 
 import pytest
@@ -196,3 +197,57 @@ def test_a_copy_made_under_an_older_key_moves_to_the_current_one(stocked, engine
 
     assert rotation.rewrap_restored(copy, old, master_key_path) == 2
     assert readable(copy, master_key_path) == ["Fjordlys Energi A/S", "Nordlys IT ApS"]
+
+
+def test_a_key_is_never_readable_more_widely_on_the_way(tmp_path, monkeypatch, set_umask) -> None:
+    # No mode can be changed once a file is made and the umask takes nothing away,
+    # so the temporary file still has the mode it was made with as it's moved into
+    # place: the new master key's and each wrapped key's must be private by then.
+    monkeypatch.setattr(os, "chmod", lambda *args, **kwargs: None)
+    monkeypatch.setattr(os, "fchmod", lambda *args, **kwargs: None)
+    set_umask(0)
+    made: list[int] = []
+    replace = os.replace
+
+    def replacing(tmp, path) -> None:
+        made.append(tmp.stat().st_mode & 0o777)
+        replace(tmp, path)
+
+    monkeypatch.setattr(os, "replace", replacing)
+    rotation._write(tmp_path / "master.key.next", b"a new key")
+    assert made == [0o600]
+    assert (tmp_path / "master.key.next").read_bytes() == b"a new key"
+
+
+@pytest.mark.parametrize("umask", [0o022, 0o077, 0o277, 0])
+def test_a_key_file_ends_private_under_any_umask(tmp_path, set_umask, umask) -> None:
+    set_umask(umask)
+    rotation._write(tmp_path / "db.key.enc.next", b"wrapped")
+    assert (tmp_path / "db.key.enc.next").stat().st_mode & 0o777 == 0o600
+
+
+def test_a_temporary_file_left_behind_doesnt_stop_the_next_rotation(tmp_path) -> None:
+    # A rotation cut short (the server stopped, the disk full) can leave one.
+    folder = tmp_path / "keys"
+    folder.mkdir()
+    left = folder / ".master.key.next.tmp"
+    left.write_bytes(b"half a key")
+    left.chmod(0o444)
+    with left.open("rb") as still_open:
+        rotation._write(folder / "master.key.next", b"a new key")
+        assert still_open.read() == b"half a key"
+    assert (folder / "master.key.next").read_bytes() == b"a new key"
+    assert [p.name for p in folder.iterdir()] == ["master.key.next"]
+
+
+def test_a_write_that_fails_leaves_nothing_behind(tmp_path, monkeypatch) -> None:
+    folder = tmp_path / "keys"
+    folder.mkdir()
+
+    def failing(descriptor: int) -> None:
+        raise OSError("the disk is full")
+
+    monkeypatch.setattr(os, "fsync", failing)
+    with pytest.raises(OSError, match="the disk is full"):
+        rotation._write(folder / "master.key.next", b"a new key")
+    assert not list(folder.iterdir())

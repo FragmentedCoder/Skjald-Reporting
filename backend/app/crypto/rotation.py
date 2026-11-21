@@ -71,14 +71,25 @@ def _next(path: Path) -> Path:
 
 
 def _write(path: Path, data: bytes) -> None:
-    """Whole or not at all, and on disk before anything depends on it."""
+    """Whole or not at all, and on disk before anything depends on it. The temporary
+    file is made readable by its owner alone, so a key is never readable more widely
+    on the way."""
     tmp = path.with_name(f".{path.name}.tmp")
-    with open(tmp, "wb") as file:
-        file.write(data)
-        file.flush()
-        os.fsync(file.fileno())
-    tmp.chmod(0o600)
-    os.replace(tmp, path)
+    # One left by a rotation that was cut short goes first: the key needs a new
+    # file, which nobody has open and which has this mode from the start.
+    tmp.unlink(missing_ok=True)
+    descriptor = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with open(descriptor, "wb") as file:
+            # The umask may have taken bits away; the mode is the same under any.
+            os.fchmod(descriptor, 0o600)
+            file.write(data)
+            file.flush()
+            os.fsync(file.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def opens(folder: Path, master_key: bytes) -> bool:
