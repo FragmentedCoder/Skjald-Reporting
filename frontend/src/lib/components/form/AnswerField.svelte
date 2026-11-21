@@ -7,6 +7,7 @@
   import RichTextEditor from "#lib/components/builder/RichTextEditor.svelte";
   import { cvssScore } from "#lib/templates/answers.js";
   import { answerProblem, cellProblem } from "#lib/templates/formChecks.js";
+  import { keepPhoto } from "#lib/templates/localPhotos.js";
   import { COLUMN_TYPES, settingsOf } from "#lib/templates/fields.js";
   import { peopleFor, type Person } from "#lib/templates/preview.js";
   import type { Drawn } from "#lib/templates/signature.js";
@@ -86,7 +87,7 @@
   function files(event: Event) {
     const list = (event.currentTarget as HTMLInputElement).files;
     if (!list?.length) return;
-    const chosen = Array.from(list).map((f) => (question.type === "photo" ? URL.createObjectURL(f) : f.name));
+    const chosen = Array.from(list).map((f) => (question.type === "photo" ? keepPhoto(f) : f.name));
     value = s.multiple ? [...(Array.isArray(value) ? value : []), ...chosen].slice(0, Number(s.max_photos ?? s.max_files ?? 10)) : chosen.slice(0, 1);
   }
 

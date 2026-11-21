@@ -23,6 +23,7 @@
   import type { BlockKind } from "#lib/templates/types.js";
   import { FONT_STACKS, plainLook, pointsToCqi, textKey, type PageLook } from "#lib/reportStyles/look.js";
   import { colourOf, TONE_NAMES, type Element, type PageName } from "#lib/reportStyles/resolve.js";
+  import { drawPhoto, isLocalPhoto } from "#lib/templates/localPhotos.js";
   import type { Paged, Placed } from "#lib/templates/pages.js";
   import { sampleContext, type Grid, type Shown } from "#lib/templates/preview.js";
   import { strokeBox, strokePath } from "#lib/templates/signature.js";
@@ -319,14 +320,16 @@
     </figure>
   {:else if b.kind === "image"}
     <figure class="image" use:widthOf={{ width: b.width, ratio: b.ratio }}>
-      {#if b.url}<img src={b.url} alt={b.caption} />{:else}<div class="placeholder">The technician's photo goes here</div>{/if}
+      {#if isLocalPhoto(b.url)}<canvas use:drawPhoto={b.url}>{b.caption || "The photo chosen"}</canvas>
+      {:else if b.url}<img src={b.url} alt={b.caption} />{:else}<div class="placeholder">The technician's photo goes here</div>{/if}
       {#if placed?.caption}<figcaption>{placed.caption}{b.caption ? `. ${b.caption}` : ""}</figcaption>{/if}
     </figure>
   {:else if b.kind === "gallery"}
     <figure class="gallery per-{b.perRow}">
       <div class="photos">
         {#each b.urls.length ? b.urls : [null, null] as url, i (i)}
-          {#if url}<img src={url} alt="Photo {i + 1}" />{:else}<div class="placeholder">Photo {i + 1}</div>{/if}
+          {#if isLocalPhoto(url)}<canvas use:drawPhoto={url}>Photo {i + 1}</canvas>
+          {:else if url}<img src={url} alt="Photo {i + 1}" />{:else}<div class="placeholder">Photo {i + 1}</div>{/if}
         {/each}
       </div>
       {#if placed?.caption}<figcaption>{placed.caption}{b.caption ? `. ${b.caption}` : ""}</figcaption>{/if}
@@ -708,7 +711,9 @@
     width: var(--share, 100%);
   }
   .image img,
-  .gallery img {
+  .image canvas,
+  .gallery img,
+  .gallery canvas {
     display: block;
     width: 100%;
     height: auto;
