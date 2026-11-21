@@ -609,6 +609,11 @@ _ALLOWED_OVERLOADS = frozenset(SIGNATURES) | frozenset(ENGINE)
 _NEVER_NULL = ("timestamp", "duration")
 
 
+# Nothing can't be added to or put in order either, though the checker would let it
+# stand in for a date there too.
+_SUMS_AND_ORDER = frozenset({"_+_", "_-_", "_*_", "_/_", "_%_", "_<_", "_<=_", "_>_", "_>=_", "-_"})
+
+
 def _null_with(first: str, second: str) -> bool:
     return (first == "null" and second in _NEVER_NULL) or (
         second == "null" and first in _NEVER_NULL)
@@ -720,6 +725,8 @@ class Engine:
                         call.overloads and not _ALLOWED_OVERLOADS.intersection(call.overloads)):
                     raise ExpressionError("compile", function_problem(call.function, types))
             elif call.function in ("_==_", "_!=_") and len(types) == 2 and _null_with(*types):
+                raise ExpressionError("compile", operator_problem(call.function.strip("_"), types))
+            elif call.function in _SUMS_AND_ORDER and "null" in types:
                 raise ExpressionError("compile", operator_problem(call.function.strip("_"), types))
             elif call.function == "_?_:_" and len(types) == 3 and _null_with(*types[1:]):
                 raise ExpressionError("compile", branches(types[1], types[2]))

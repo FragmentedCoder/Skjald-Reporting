@@ -426,6 +426,8 @@ function heldProblem(node: unknown): string | null {
     const [container, key] = (args as Node[]).map(typeOf);
     const [wanted] = typeParts(container);
     if (container.startsWith("map<") && !fitsType(key, wanted)) return keyProblem(wanted, key);
+    // cel-js would look for an item in a date when the expression runs.
+    if (container === "timestamp" || container === "duration") return pickProblem(container);
   }
   if (op === "." && Array.isArray(args)) {
     // cel-js would look for a name in a date when the expression runs.
