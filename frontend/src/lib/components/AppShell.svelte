@@ -307,7 +307,7 @@
   <div class="side-column">
     <aside class="side" id="side-menu" aria-label="Side menu">
       <div class="side-head">
-        <a class="home" href={resolve("/(app)")}><Brand size={30} tagline version={current.version} /></a>
+        <a class="home" href={resolve("/(app)")}><Brand size={30} tagline /></a>
         <button class="icon-button close" type="button" aria-label="Close the menu"
           onclick={() => (menuOpen = false)}>
           <X size={20} aria-hidden="true" />
@@ -400,6 +400,8 @@
         {/if}
       </nav>
 
+      <!-- Which Skjald this is, just above who's signed in. -->
+      {#if current.version}<p class="version small muted" title="Skjald {current.version}">Skjald {current.version}</p>{/if}
       <div class="you">
         <a class="account" href={resolve("/(app)/account")} title="Your account: {user.display_name}"
           aria-current={path === "/account" ? "page" : undefined}>
@@ -571,6 +573,13 @@
   }
   .hint {
     padding: 0 var(--space-2);
+  }
+  .version {
+    margin: 0 0 var(--space-2);
+    padding: 0 var(--space-2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .you {
     display: flex;

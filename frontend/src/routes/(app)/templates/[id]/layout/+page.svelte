@@ -4,6 +4,7 @@
   import { Engine } from "#lib/cel/engine.js";
   import BlockList from "#lib/components/builder/BlockList.svelte";
   import BlockPanel from "#lib/components/builder/BlockPanel.svelte";
+  import { removesSelection } from "#lib/components/builder/keys.js";
   import Palette, { type PaletteEntry } from "#lib/components/builder/Palette.svelte";
   import ProblemList from "#lib/components/builder/ProblemList.svelte";
   import Where from "#lib/components/builder/Where.svelte";
@@ -84,9 +85,13 @@
     draft.selection = { kind: "block", id };
   }
 
+  // The settings panel, to put the cursor in after adding something (only this page's:
+  // the side menu has a panel of its own).
+  let panel = $state<HTMLElement>();
+
   async function focusPanel() {
     await tick();
-    document.querySelector<HTMLElement>(".panel input, .panel textarea, .panel select")?.focus();
+    panel?.querySelector<HTMLElement>("input, textarea, select")?.focus();
   }
 
   // The blocks holding a block, from the PDF's own list down to it.
@@ -166,6 +171,13 @@
     confirming = false;
   }
 
+  // Delete (or the Mac's delete key) removes the selected block, as the panel's × does.
+  function keydown(event: KeyboardEvent) {
+    if (!removesSelection(event) || draft.readonly || !found || confirming) return;
+    event.preventDefault();
+    remove();
+  }
+
   async function upload(file: File): Promise<Asset | null> {
     try {
       const asset = await templatesApi.upload(draft.id, file);
@@ -198,6 +210,8 @@
   }
 </script>
 
+<svelte:window onkeydown={keydown} />
+
 {#if draft.readonly}
   <p class="alert alert-info small">This is version {draft.shownVersion}, which reports use. Choose Edit to change it in a new draft.</p>
 {/if}
@@ -207,31 +221,34 @@
     <Palette entries={palette} type="blocks" title="Blocks" onadd={add} />
   {/if}
 
-  <section class="canvas" aria-labelledby="layout-title">
-    <div class="intro">
-      <div class="title-line">
-        <h2 id="layout-title" class="section-title">The PDF <Where pdf /></h2>
+  <div class="intro">
+    <div class="title-line">
+      <h2 id="layout-title" class="section-title">The PDF <Where pdf /></h2>
+      <!-- At the right end: on the pages, which style they're drawn in; then the switch. -->
+      <div class="tools">
+        {#if view === "pages" && live.paged}<StylePicker {looks} />{/if}
         <div class="views" role="group" aria-label="Show">
           <button type="button" aria-pressed={view === "blocks"} onclick={() => (view = "blocks")}>Blocks</button>
           <button type="button" aria-pressed={view === "pages"} onclick={() => (view = "pages")}>Pages</button>
         </div>
       </div>
-      <p class="small muted">
-        {view === "blocks"
-          ? "Everything here is printed, in this order, for the customer. Drag blocks into place, or click one in the palette."
-          : "What the sample answers print, by the same page rules as the PDF. Click a block to change it, or drag it somewhere else."}
-      </p>
     </div>
-
+    <p class="small muted">
+      {view === "blocks"
+        ? "Everything here is printed, in this order, for the customer. Drag blocks into place, or click one in the palette."
+        : "What the sample answers print, by the same page rules as the PDF. Click a block to change it, or drag it somewhere else."}
+    </p>
+  </div>
+  <section class="canvas" aria-labelledby="layout-title">
     {#if view === "blocks"}
       <BlockList bind:blocks={content.layout} label="Blocks in the PDF" empty="Drag a block here, or click one in the palette."
         selected={selectedId} {hidden} problems={(id) => draft.problemsFor(id).length} readonly={draft.readonly} onselect={select} />
     {:else if live.paged}
+      {#if looks.problem}<p class="alert alert-warning small">{looks.problem}</p>{/if}
       {#if live.problem}<p class="alert alert-warning small">{live.problem}</p>{/if}
       {#if live.model?.errors.length}
         <p class="alert alert-warning small">{live.model.errors.length} expression{live.model.errors.length === 1 ? "" : "s"} failed with the sample answers, shown as ⚠ on the pages.</p>
       {/if}
-      <StylePicker {looks} />
       <PdfPages paged={live.paged} look={looks.look(live.model?.pageTexts)} language={content.settings.language}
         classification={String(draft.sampleContext.project.classification)} selected={selectedId} onselect={select}
         onplace={draft.readonly ? undefined : place} />
@@ -240,7 +257,7 @@
     {/if}
   </section>
 
-  <aside class="panel" aria-label="Settings of what's selected">
+  <aside class="panel" aria-label="Settings of what's selected" bind:this={panel}>
     <fieldset class="unstyled" disabled={draft.readonly}>
       {#if found}
         <BlockPanel block={found.block} {content} engine={repeat ? itemEngine : engine} entries={blockEntries}
@@ -267,15 +284,28 @@
 </Dialog>
 
 <style>
+  /* The title and its line over the middle column only, so the palette, the first
+     card and the settings panel start level. */
   .workspace {
     display: grid;
     grid-template-columns: 210px minmax(0, 1fr) minmax(290px, 380px);
+    grid-template-areas: ". intro ." "palette canvas panel";
     gap: var(--space-4);
     align-items: start;
     margin-top: var(--space-4);
   }
   .workspace.readonly {
     grid-template-columns: minmax(0, 1fr) minmax(290px, 380px);
+    grid-template-areas: "intro ." "canvas panel";
+  }
+  .workspace > :global(.palette) {
+    grid-area: palette;
+  }
+  .intro {
+    grid-area: intro;
+  }
+  .canvas {
+    grid-area: canvas;
   }
   .title-line {
     display: flex;
@@ -290,7 +320,14 @@
     gap: var(--space-2);
   }
   .intro p {
-    margin: var(--space-1) 0 var(--space-3);
+    margin: var(--space-1) 0 0;
+  }
+  .tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-3);
   }
   .views {
     display: inline-flex;
@@ -313,6 +350,7 @@
     color: var(--text);
   }
   .panel {
+    grid-area: panel;
     position: sticky;
     top: var(--space-4);
     max-height: calc(100vh - 2 * var(--space-4));
@@ -329,9 +367,13 @@
     border: 0;
   }
   @media (max-width: 1100px) {
-    .workspace,
+    .workspace {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-areas: "palette" "intro" "canvas" "panel";
+    }
     .workspace.readonly {
       grid-template-columns: minmax(0, 1fr);
+      grid-template-areas: "intro" "canvas" "panel";
     }
     .panel {
       position: static;

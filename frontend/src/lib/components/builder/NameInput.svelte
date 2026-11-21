@@ -78,7 +78,7 @@
   <button class="start" type="button" aria-label="Insert a name" title="Insert a name" onmousedown={(e) => e.preventDefault()} onclick={start}>
     <Braces size={15} aria-hidden="true" />
   </button>
-  {#if open}<NameSuggestions id="{uid}-names" {options} {active} onpick={pick} />{/if}
+  {#if open}<NameSuggestions id="{uid}-names" {options} {active} anchor={input} onpick={pick} />{/if}
 </div>
 
 <style>
