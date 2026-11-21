@@ -157,7 +157,7 @@ Every report gets a PAdES signature with an RFC 3161 timestamp from an independe
 
 The visible part of each signature is set per signer in the template:
 
-- **Handwritten** — the signer's own signature above their name, role and signing time. Each user sets it up once in their profile: drawn in the browser, uploaded as a scan, or generated from their name in a handwriting-style font. It is stored encrypted and used only after MFA.
+- **Handwritten** — the signer's name written in a handwriting-style font, above their name, role and signing time. Skjald writes it from the name on the account: nobody draws a signature or uploads a picture of one, so there is none to store. What makes a report signed is the digital signature, made only after MFA; this is how it looks on the page.
 - **Stamp** — a company stamp with company name, role, signing time and report number, in the company brand.
 
 Appearances are small HTML templates rendered by the same renderer as the reports, so they use the brand fonts and colours and keep the PDF/A output valid.
@@ -324,4 +324,4 @@ install.sh   the installer (the one-line install's; deploy/install.sh links to i
 | 1.3 | Importers and vulnerability data feeds, more built-in templates |
 | 1.4 | HSM support, syslog / SIEM forwarding, custom fonts |
 
-Phases are ordered, not dated: each starts when the one before it works. Two things the requirements gave to 1.0 changed place when Phase 2 closed. There is no separate way to take photos with a phone: a picture is uploaded like any other file. And importing customers, sites and contacts from a spreadsheet waits for Phase 4.
+Phases are ordered, not dated: each starts when the one before it works. Three things the requirements gave to 1.0 changed when Phase 2 closed. There is no separate way to take photos with a phone: a picture is uploaded like any other file. Importing customers, sites and contacts from a spreadsheet waits for Phase 4. And nobody draws a signature, since a mouse or a trackpad makes a poor pen. A signer's handwritten look is their name in a handwriting-style font (see Signing). The signature pad question the builder has today becomes, in Phase 3, a signature question for someone who isn't a user of Skjald: their name is typed and a box is ticked to confirm it, and the report prints the name with the time it was confirmed.
