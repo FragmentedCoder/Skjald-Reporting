@@ -10,11 +10,13 @@ isn't checked here: whether one is needed is the question's "required".
 
 from __future__ import annotations
 
+import math
 import re
 from typing import Any
 
-import re2
 from cvss import CVSS3, CVSS4
+
+from app.cel.library import regex
 
 V31_EXAMPLE = "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
 MESSAGES = {
@@ -29,18 +31,21 @@ MESSAGES = {
     "phone": "Enter a phone number: digits, spaces and + ( ) - only.",
     "cvss": f"Enter a CVSS 3.1 or 4.0 vector, such as {V31_EXAMPLE}.",
     "pattern": "This doesn't match what the template asks for.",
+    "number": "Enter a number.",
 }
 
-_OCTET = re.compile(r"^(0|[1-9][0-9]{0,2})$")
-_HEX = re.compile(r"^[0-9A-Fa-f]{1,4}$")
-_LABEL = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$")
+# Each ends with \Z, not $: Python's $ also matches before a line break at the very
+# end, so "srv-01\n" would pass here and not in the browser.
+_OCTET = re.compile(r"^(0|[1-9][0-9]{0,2})\Z")
+_HEX = re.compile(r"^[0-9A-Fa-f]{1,4}\Z")
+_LABEL = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?\Z")
 _MAC = (
-    re.compile(r"^[0-9A-Fa-f]{2}([:-])[0-9A-Fa-f]{2}(\1[0-9A-Fa-f]{2}){4}$"),
-    re.compile(r"^[0-9A-Fa-f]{12}$"),
-    re.compile(r"^[0-9A-Fa-f]{4}\.[0-9A-Fa-f]{4}\.[0-9A-Fa-f]{4}$"),
+    re.compile(r"^[0-9A-Fa-f]{2}([:-])[0-9A-Fa-f]{2}(\1[0-9A-Fa-f]{2}){4}\Z"),
+    re.compile(r"^[0-9A-Fa-f]{12}\Z"),
+    re.compile(r"^[0-9A-Fa-f]{4}\.[0-9A-Fa-f]{4}\.[0-9A-Fa-f]{4}\Z"),
 )
-_LOCAL = re.compile(r"^[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*$")
-_PHONE = re.compile(r"^\+?[0-9 ()\-.]+$")
+_LOCAL = re.compile(r"^[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*\Z")
+_PHONE = re.compile(r"^\+?[0-9 ()\-.]+\Z")
 
 
 def is_ipv4(text: str) -> bool:
@@ -58,7 +63,9 @@ def is_ipv6(text: str) -> bool:
         groups = text.split(":")
     count = 0
     for index, group in enumerate(groups):
-        if index == len(groups) - 1 and "." in group:
+        # An IPv4 address can only be the very end: not the end of what comes before
+        # a "::" that closes the address, as in 1.2.3.4::.
+        if index == len(groups) - 1 and "." in group and not text.endswith("::"):
             if not is_ipv4(group):
                 return False
             count += 2
@@ -203,6 +210,9 @@ def check_answer(type_: str, settings: dict[str, Any], value: Any) -> str | None
             return f"This template takes CVSS {allowed[0]} vectors only."
         return None
     if type_ == "number":
+        real = isinstance(value, int | float) and not isinstance(value, bool)
+        if not real or not math.isfinite(value):
+            return MESSAGES["number"]
         number = float(value)
         if settings.get("whole") and not number.is_integer():
             return "Enter a whole number."
@@ -222,8 +232,8 @@ def check_answer(type_: str, settings: dict[str, Any], value: Any) -> str | None
         pattern = settings.get("pattern")
         if pattern:
             try:
-                matched = re2.search(pattern, text) is not None
-            except Exception:
+                matched = regex(pattern).search(text) is not None
+            except ValueError:  # the checks ask for a pattern that works before publishing
                 return None
             if not matched:
                 return settings.get("pattern_message") or MESSAGES["pattern"]

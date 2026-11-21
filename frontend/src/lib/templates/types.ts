@@ -19,11 +19,13 @@ export interface RichNode {
 export interface Settings {
   prefix: string;
   language: "da" | "en";
-  signing: "company" | "technician" | "technician_reviewer";
+  signing: "company" | "technician" | "technician_reviewer" | "technician_company" | "technician_reviewer_company";
   review: "mandatory" | "optional";
   delivery: ("download" | "email" | "protected_pdf")[];
   styles: ("company" | "customer")[];
   customer_background: boolean;
+  /** Whether reports carry "Made with Skjald", where the company's branding has it on (on unless set). */
+  made_with_skjald?: boolean;
 }
 
 export interface Question {
@@ -103,6 +105,8 @@ export interface Table extends BlockBase {
   caption: string;
   columns: string[] | null;
   empty_text: string;
+  /** A first column numbering the rows, to find a row again in another table of them. */
+  row_numbers?: boolean;
 }
 
 export interface Image extends BlockBase {
@@ -147,10 +151,22 @@ export interface Sources extends BlockBase {
   question: Id | null;
 }
 
+/** Who signs a report under each signing setting, in order. */
+export const SIGNS: Record<Settings["signing"], ("technician" | "reviewer" | "company")[]> = {
+  company: ["company"],
+  technician: ["technician"],
+  technician_reviewer: ["technician", "reviewer"],
+  technician_company: ["technician", "company"],
+  technician_reviewer_company: ["technician", "reviewer", "company"],
+};
+
 export interface Signer {
-  role: "technician" | "reviewer" | "company";
+  /** Someone who signs the report digitally, or "pad": a signature drawn in the form. */
+  role: "technician" | "reviewer" | "company" | "pad";
   label: string;
   style: "handwritten" | "stamp";
+  /** The signature pad question, for a pad. */
+  question?: Id | null;
 }
 
 export interface Signatures extends BlockBase {
@@ -169,6 +185,21 @@ export interface PageBreak extends BlockBase {
   kind: "page_break";
 }
 
+/** One of a switch's cases: the value that picks it, and what it prints then. */
+export interface SwitchCase {
+  match: string | number;
+  blocks: Block[];
+}
+
+export interface Switch extends BlockBase {
+  kind: "switch";
+  /** What picks the case: text or a whole number, usually an answer. */
+  value: string | null;
+  cases: SwitchCase[];
+  /** Printed when no case matches. */
+  otherwise: Block[];
+}
+
 export type Block =
   | Cover
   | Contents
@@ -184,7 +215,8 @@ export type Block =
   | Sources
   | Signatures
   | Columns
-  | PageBreak;
+  | PageBreak
+  | Switch;
 
 export type BlockKind = Block["kind"];
 
@@ -207,11 +239,15 @@ export function questionsOf(content: TemplateContent): Question[] {
   return content.form.flatMap((step) => step.questions);
 }
 
-/** Every block, depth first, the ones inside sections and columns included. */
+/** The lists of blocks a block holds: a section's, each column's, each case's and a switch's otherwise. */
+export function listsIn(block: Block): Block[][] {
+  if (block.kind === "section") return [block.blocks];
+  if (block.kind === "columns") return block.columns;
+  if (block.kind === "switch") return [...block.cases.map((c) => c.blocks), block.otherwise];
+  return [];
+}
+
+/** Every block, depth first, the ones inside sections, columns and switches included. */
 export function blocksOf(blocks: Block[]): Block[] {
-  return blocks.flatMap((block) => {
-    if (block.kind === "section") return [block, ...blocksOf(block.blocks)];
-    if (block.kind === "columns") return [block, ...block.columns.flatMap(blocksOf)];
-    return [block];
-  });
+  return blocks.flatMap((block) => [block, ...listsIn(block).flatMap(blocksOf)]);
 }

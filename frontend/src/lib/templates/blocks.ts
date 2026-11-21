@@ -15,9 +15,11 @@ import MessageSquareWarning from "@lucide/svelte/icons/message-square-warning";
 import PenTool from "@lucide/svelte/icons/pen-tool";
 import Pilcrow from "@lucide/svelte/icons/pilcrow";
 import SeparatorHorizontal from "@lucide/svelte/icons/separator-horizontal";
+import Signpost from "@lucide/svelte/icons/signpost";
 import SquareSplitVertical from "@lucide/svelte/icons/square-split-vertical";
 import Table2 from "@lucide/svelte/icons/table-2";
 import { newId } from "./edit";
+import { docText } from "./text";
 import type { Icon } from "./fieldIcons";
 import type { Block, BlockKind, RichText, Signer } from "./types";
 
@@ -33,6 +35,7 @@ export const BLOCK_TYPES: Record<BlockKind, BlockType> = {
   cover: { label: "Cover", hint: "The first page: title and key facts", group: "Structure", icon: BookOpenText },
   toc: { label: "Contents", hint: "The sections, with their pages", group: "Structure", icon: ListTree },
   columns: { label: "Columns", hint: "Blocks side by side", group: "Structure", icon: Columns2 },
+  switch: { label: "Switch", hint: "One of several versions, picked by an answer", group: "Structure", icon: Signpost },
   page_break: { label: "Page break", hint: "Starts a new page", group: "Structure", icon: SeparatorHorizontal },
   heading: { label: "Heading", hint: "A sub-heading", group: "Text", icon: Heading2 },
   text: { label: "Text", hint: "Paragraphs with answers and names", group: "Text", icon: Pilcrow },
@@ -70,7 +73,7 @@ export function newBlock(kind: BlockKind, nested = false): Block {
     case "answer":
       return { ...base, kind, question: null, show_label: true };
     case "table":
-      return { ...base, kind, question: null, caption: "", columns: null, empty_text: "No rows." };
+      return { ...base, kind, question: null, caption: "", columns: null, empty_text: "No rows.", row_numbers: false };
     case "image":
       return { ...base, kind, source: "template", asset: null, question: null, caption: "", width: "full" };
     case "gallery":
@@ -87,6 +90,8 @@ export function newBlock(kind: BlockKind, nested = false): Block {
       return { ...base, kind, columns: [[], []] };
     case "page_break":
       return { ...base, kind };
+    case "switch":
+      return { ...base, kind, value: null, cases: [], otherwise: [] };
   }
 }
 
@@ -95,20 +100,24 @@ export const SIGNERS: Record<Signer["role"], Omit<Signer, "role">> = {
   technician: { label: "Technician", style: "handwritten" },
   reviewer: { label: "Reviewer", style: "handwritten" },
   company: { label: "Company seal", style: "stamp" },
+  pad: { label: "Signature", style: "handwritten" },
 };
 
 /** Another signature for a block: the first kind of signer it doesn't have yet. */
 export function nextSigner(signers: Signer[]): Signer {
   const role = (Object.keys(SIGNERS) as Signer["role"][]).find((r) => !signers.some((s) => s.role === r)) ?? "reviewer";
-  return { role, ...SIGNERS[role] };
+  return { role, ...SIGNERS[role], ...(role === "pad" ? { question: null } : {}) };
 }
 
 /** Another signer for a signature: its label and look follow, unless the designer changed them. */
 export function changeSigner(signer: Signer, role: Signer["role"]): void {
   const before = SIGNERS[signer.role];
   if (!signer.label.trim() || signer.label === before.label) signer.label = SIGNERS[role].label;
-  if (signer.style === before.style) signer.style = SIGNERS[role].style;
+  if (signer.style === before.style || role === "pad") signer.style = SIGNERS[role].style;
   signer.role = role;
+  // Only a signature pad names a question.
+  if (role === "pad") signer.question ??= null;
+  else delete signer.question;
 }
 
 /** A short description of a block, for its card. */
@@ -128,6 +137,13 @@ export function blockSummary(block: Block): string {
     case "gallery":
     case "severity_summary":
       return block.caption || BLOCK_TYPES[block.kind].label;
+    case "switch":
+      return block.value?.trim() ? `By ${block.value.trim()}` : "Switch";
+    case "text": {
+      // Its first words, so texts side by side (a switch's cases) can be told apart.
+      const words = docText(block.content).replace(/\s+/g, " ").trim();
+      return words ? (words.length > 160 ? `${words.slice(0, 159).trimEnd()}…` : words) : "Text";
+    }
     default:
       return BLOCK_TYPES[block.kind].label;
   }

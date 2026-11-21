@@ -10,12 +10,14 @@ can be saved half-finished but not published.
 - form: the technician's steps, each with its questions. A question has a fixed ID
   (answers follow it from version to version) and a variable name, its key, which
   expressions read as answers.<key> and which can be renamed.
-- layout: the PDF's blocks, a tree: sections hold blocks, columns hold blocks.
+- layout: the PDF's blocks, a tree: sections hold blocks, columns hold blocks, and a
+  switch holds blocks for each of its cases and for when none matches.
   Blocks name questions by ID, so renaming a question changes no block.
 - sample: answers for "Try it", by question ID; builder only.
 
 Rules are expressions stored on what they act on (visible_when, required_when,
-valid_when, a calculated value, a callout's tone, a section's repeat_for).
+valid_when, a calculated value, a callout's tone, a section's repeat_for, what
+picks a switch's case).
 """
 
 from __future__ import annotations
@@ -27,6 +29,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    StrictInt,
     StringConstraints,
     field_validator,
     model_validator,
@@ -36,7 +39,16 @@ from app.templates.fields import FIELD_TYPES, KEY_PATTERN
 from app.templates.text import check_doc
 
 SCHEMA_VERSION = 1
+# How large a template may be. The builder draws every block and question, checks the
+# whole template as it's changed and works its preview out again, so these keep it
+# quick (measured in docs/architecture.md, "How large a template can be").
 MAX_CONTENT_BYTES = 2 * 1024 * 1024
+MAX_QUESTIONS = 500
+MAX_BLOCKS = 1000
+# Blocks inside blocks (a section in a section, a switch in columns). Ten levels are
+# far more than a report's outline has, and keep every template within what a
+# template file may hold when it's imported.
+MAX_BLOCK_DEPTH = 10
 
 Id = Annotated[str, StringConstraints(pattern=r"^[a-z]_[a-z0-9]{4,32}$")]
 Key = Annotated[str, StringConstraints(pattern=KEY_PATTERN)]
@@ -58,11 +70,22 @@ def _unique(values: list[Any]) -> list[Any]:
     return values
 
 
+# Who signs a report under each signing setting, in order.
+SIGNS: dict[str, tuple[str, ...]] = {
+    "company": ("company",),
+    "technician": ("technician",),
+    "technician_reviewer": ("technician", "reviewer"),
+    "technician_company": ("technician", "company"),
+    "technician_reviewer_company": ("technician", "reviewer", "company"),
+}
+
+
 class Settings(Strict):
     # Reports are numbered <prefix>-<year>-<n>, such as INC-2026-0142.
     prefix: str = Field(default="REP", pattern=r"^[A-Z]{2,6}$")
     language: Literal["da", "en"] = "en"
-    signing: Literal["company", "technician", "technician_reviewer"] = "technician"
+    signing: Literal["company", "technician", "technician_reviewer", "technician_company",
+                     "technician_reviewer_company"] = "technician"
     review: Literal["mandatory", "optional"] = "optional"
     delivery: list[Literal["download", "email", "protected_pdf"]] = Field(
         default=["download"], min_length=1)
@@ -70,6 +93,10 @@ class Settings(Strict):
         default=["company", "customer"], min_length=1)
     # Whether reports print on the customer's report background, if it has one.
     customer_background: bool = True
+    # Whether reports carry the small "Made with Skjald" line. It prints only where the
+    # company's branding has it on too (Admin, Branding); off here takes it off this
+    # template's reports alone.
+    made_with_skjald: bool = True
 
     _delivery = field_validator("delivery")(_unique)
     _styles = field_validator("styles")(_unique)
@@ -80,7 +107,8 @@ class Question(Strict):
     # The variable name; headings have none.
     key: Key | None = None
     type: str
-    label: str = Field(min_length=1, max_length=300)
+    # Empty while it's being typed; the checks ask for it (as for the titles below).
+    label: str = Field(max_length=300)
     help: str = Field(default="", max_length=2000)
     required: bool = False
     required_when: Expr | None = None
@@ -105,7 +133,7 @@ class Question(Strict):
 
 class Step(Strict):
     id: Id
-    title: str = Field(min_length=1, max_length=200)
+    title: str = Field(max_length=200)
     help: str = Field(default="", max_length=2000)
     visible_when: Expr | None = None
     questions: list[Question] = Field(default_factory=list, max_length=300)
@@ -140,7 +168,7 @@ class Contents(BlockBase):
 
 class Section(BlockBase):
     kind: Literal["section"]
-    title: str = Field(min_length=1, max_length=300)
+    title: str = Field(max_length=300)
     intro: RichText | None = None
     new_page: bool = True
     numbered: bool = True
@@ -153,7 +181,7 @@ class Section(BlockBase):
 
 class Heading(BlockBase):
     kind: Literal["heading"]
-    text: str = Field(min_length=1, max_length=300)
+    text: str = Field(max_length=300)
 
 
 class TextBlock(BlockBase):
@@ -174,6 +202,9 @@ class Table(BlockBase):
     # Which columns, in what order; all of them when not set.
     columns: list[Key] | None = Field(default=None, max_length=20)
     empty_text: Line = "No rows."
+    # A first column numbering the rows (1, 2, 3), so a row can be found again in
+    # another table of the same rows.
+    row_numbers: bool = False
 
 
 class Image(BlockBase):
@@ -214,7 +245,7 @@ class SeveritySummary(BlockBase):
 
 
 class Source(Strict):
-    title: str = Field(min_length=1, max_length=500)
+    title: str = Field(max_length=500)
     link: str = Field(default="", max_length=2000)
 
 
@@ -227,9 +258,14 @@ class Sources(BlockBase):
 
 
 class Signer(Strict):
-    role: Literal["technician", "reviewer", "company"]
+    # Someone who signs the report digitally, as the template's signing setting says, or
+    # "pad": a signature drawn in the form, on a signature pad question (someone who
+    # isn't a user of Skjald, such as the customer's witness).
+    role: Literal["technician", "reviewer", "company", "pad"]
     label: Line
     style: Literal["handwritten", "stamp"] = "handwritten"
+    # The signature pad question, for a pad.
+    question: Id | None = None
 
 
 class Signatures(BlockBase):
@@ -248,14 +284,31 @@ class PageBreak(BlockBase):
     kind: Literal["page_break"]
 
 
+class Case(Strict):
+    # The value that picks it: text, or a whole number (never true or false).
+    match: Annotated[str, StringConstraints(max_length=500)] | StrictInt
+    blocks: list[Block] = Field(default_factory=list, max_length=300)
+
+
+class Switch(BlockBase):
+    """Prints the blocks of the first case whose value is what value gives, else otherwise."""
+
+    kind: Literal["switch"]
+    value: Expr | None = None
+    cases: list[Case] = Field(default_factory=list, max_length=50)
+    otherwise: list[Block] = Field(default_factory=list, max_length=300)
+
+
 Block = Annotated[
     Cover | Contents | Section | Heading | TextBlock | Answer | Table | Image | Gallery
-    | Callout | SeveritySummary | Sources | Signatures | Columns | PageBreak,
+    | Callout | SeveritySummary | Sources | Signatures | Columns | PageBreak | Switch,
     Field(discriminator="kind"),
 ]
 
 Section.model_rebuild()
 Columns.model_rebuild()
+Case.model_rebuild()
+Switch.model_rebuild()
 
 
 class Sample(Strict):
@@ -274,6 +327,41 @@ class TemplateContent(Strict):
 
     def dump(self) -> dict[str, Any]:
         return self.model_dump(by_alias=True, mode="json")
+
+
+def inner_blocks(block: Block) -> list[Block]:
+    """The blocks a block holds: a section's, each column's, each case's."""
+    if isinstance(block, Section):
+        return block.blocks
+    if isinstance(block, Columns):
+        return [child for column in block.columns for child in column]
+    if isinstance(block, Switch):
+        return [child for case in block.cases for child in case.blocks] + block.otherwise
+    return []
+
+
+class TooLarge(ValueError):
+    """The template is over a size limit; the message says which, in plain words."""
+
+
+def check_size(content: TemplateContent) -> None:
+    """Refuses a template with more questions or blocks, or deeper nesting, than allowed."""
+    asked = sum(len(step.questions) for step in content.form)
+    if asked > MAX_QUESTIONS:
+        raise TooLarge(f"A template takes up to {MAX_QUESTIONS:,} questions and headings; "
+                       f"this one has {asked:,}.")
+    count = 0
+    level = list(content.layout)
+    depth = 1
+    while level:
+        if depth > MAX_BLOCK_DEPTH:
+            raise TooLarge(f"Blocks can sit inside each other up to {MAX_BLOCK_DEPTH} levels deep; "
+                           "this template goes deeper.")
+        count += len(level)
+        level = [child for block in level for child in inner_blocks(block)]
+        depth += 1
+    if count > MAX_BLOCKS:
+        raise TooLarge(f"A template takes up to {MAX_BLOCKS:,} blocks; this one has {count:,}.")
 
 
 def starter_content() -> TemplateContent:

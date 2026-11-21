@@ -43,9 +43,15 @@ export interface Not {
 
 export type Condition = Compare | Group | Not;
 
+/** A condition as a group: itself, or a group of the one comparison it is. */
+export function grouped(condition: Condition): Group {
+  return condition.kind === "compare" || condition.kind === "not" ? { kind: "all", items: [condition] } : condition;
+}
+
 export interface IfValue {
   kind: "if";
-  branches: { when: Condition; value: Literal }[];
+  /** Each IF's condition is a group, even of one, so the editor has a list to add to. */
+  branches: { when: Group; value: Literal }[];
   otherwise: Literal;
 }
 
@@ -61,7 +67,18 @@ export interface FixedValue {
   value: Literal;
 }
 
-export type ValueRule = IfValue | SwitchValue | FixedValue;
+/** The same as another name's value, such as when the report was started. */
+export interface NameValue {
+  kind: "name";
+  name: string;
+}
+
+export type ValueRule = IfValue | SwitchValue | FixedValue | NameValue;
+
+/** Whether a name of one shape can stand in for a value of another: numbers for numbers, else the same. */
+export function fitsShape(name: Shape, result: Shape): boolean {
+  return name === result || (result === "number" && name === "whole");
+}
 
 /** The kind of value a name holds, as the editors offer comparisons for it. */
 export type Shape = "text" | "number" | "whole" | "bool" | "date" | "texts" | "rows" | "other";
@@ -108,7 +125,7 @@ export const OPS: Record<Shape, { op: Op; label: string }[]> = {
   bool: [{ op: "yes", label: "is yes" }, { op: "no", label: "is no" }],
   date: [
     { op: "lt", label: "is before" }, { op: "le", label: "is on or before" }, { op: "gt", label: "is after" },
-    { op: "ge", label: "is on or after" },
+    { op: "ge", label: "is on or after" }, { op: "between", label: "is between" },
   ],
   texts: [
     { op: "includes", label: "includes" }, { op: "excludes", label: "doesn't include" },
@@ -145,25 +162,59 @@ export function literal(value: Literal | undefined, shape: Shape): string {
 const wrap = (text: string, condition: Condition) =>
   condition.kind === "compare" && condition.op !== "between" ? text : `(${text})`;
 
+/**
+ * The shapes as a condition on one list's rows reads them: the list's own columns as
+ * row.<key> (catalogue.ts keeps them as "<list>>row.<key>"), over everything else.
+ */
+function inRows(shapes: Record<string, Shape>, list: string): Record<string, Shape> {
+  const prefix = `${list}>`;
+  const own: Record<string, Shape> = {};
+  for (const [name, shape] of Object.entries(shapes)) if (name.startsWith(prefix)) own[name.slice(prefix.length)] = shape;
+  return { ...shapes, ...own };
+}
+
+/**
+ * A condition as it's written, which may be simpler than it was built: a group of one
+ * is that one, a group inside a group of its own kind joins it (a AND (b AND c) is a
+ * AND b AND c), and NOT on "is yes" is "is no". Each means the same, and is what reading
+ * the text back gives, so a rule built this way stays one the visual editor can open.
+ */
+function tidy(condition: Condition): Condition {
+  if (condition.kind === "compare") return condition;
+  if (condition.kind === "not") {
+    const item = tidy(condition.item);
+    if (item.kind === "not") return item.item;
+    if (item.kind === "compare" && (item.op === "yes" || item.op === "no")) return { ...item, op: item.op === "yes" ? "no" : "yes" };
+    return { kind: "not", item };
+  }
+  const items = condition.items.map(tidy).flatMap((item) =>
+    item.kind === condition.kind && item.kind !== "one" ? item.items : [item]);
+  return items.length === 1 ? items[0] : { kind: condition.kind, items };
+}
+
 export function conditionToCel(condition: Condition, shapes: Record<string, Shape>): string {
+  return written(tidy(condition), shapes);
+}
+
+function written(condition: Condition, shapes: Record<string, Shape>): string {
   switch (condition.kind) {
     case "all":
     case "any": {
       if (!condition.items.length) return condition.kind === "all" ? "true" : "false";
-      if (condition.items.length === 1) return conditionToCel(condition.items[0], shapes);
+      if (condition.items.length === 1) return written(condition.items[0], shapes);
       // A range needs no brackets among other ANDs: it's an AND itself.
       const bare = (item: Condition) => condition.kind === "all" && item.kind === "compare";
       return condition.items
-        .map((item) => (bare(item) ? conditionToCel(item, shapes) : wrap(conditionToCel(item, shapes), item)))
+        .map((item) => (bare(item) ? written(item, shapes) : wrap(written(item, shapes), item)))
         .join(condition.kind === "all" ? " && " : " || ");
     }
     case "one": {
-      const items = condition.items.map((item) => conditionToCel(item, shapes));
+      const items = condition.items.map((item) => written(item, shapes));
       if (items.length === 2) return `xor(${items[0]}, ${items[1]})`;
       return `[${items.join(", ")}].exists_one(x, x)`;
     }
     case "not":
-      return `!(${conditionToCel(condition.item, shapes)})`;
+      return `!(${written(condition.item, shapes)})`;
     case "compare":
       return compareToCel(condition, shapes[condition.name] ?? "text", shapes);
   }
@@ -201,7 +252,8 @@ function compareToCel(c: Compare, shape: Shape, shapes: Record<string, Shape>): 
     case "every_row":
     case "rows_where_at_least": {
       const row = c.row ?? { kind: "compare", name: "row.value", op: "filled" };
-      const inner = compareToCel(row, shapes[row.name] ?? "text", shapes);
+      const rows = inRows(shapes, n);
+      const inner = compareToCel(row, rows[row.name] ?? "text", rows);
       if (c.op === "any_row") return `${n}.exists(row, ${inner})`;
       if (c.op === "every_row") return `${n}.all(row, ${inner})`;
       return `${n}.filter(row, ${inner}).size() >= ${Math.max(0, Math.trunc(c.count ?? 1))}`;
@@ -213,6 +265,8 @@ export function valueToCel(rule: ValueRule, result: Shape, shapes: Record<string
   switch (rule.kind) {
     case "fixed":
       return literal(rule.value, result);
+    case "name":
+      return rule.name;
     case "if": {
       let text = literal(rule.otherwise, result);
       for (const branch of [...rule.branches].reverse()) {
@@ -222,7 +276,11 @@ export function valueToCel(rule: ValueRule, result: Shape, shapes: Record<string
     }
     case "switch": {
       const key = shapes[rule.name] === "whole" ? "whole" : "text";
-      const cases = rule.cases.map((c) => `${literal(c.match, key)}: ${literal(c.value, result)}`).join(", ");
+      // The first case of a value is the one that counts: a second one (two left
+      // blank, say) could never be picked, and a map can't hold a key twice.
+      const seen = new Set<string>();
+      const cases = rule.cases.map((c) => [literal(c.match, key), literal(c.value, result)])
+        .filter(([match]) => !seen.has(match) && seen.add(match)).map(([match, value]) => `${match}: ${value}`).join(", ");
       return `switch(${rule.name}, {${cases}}, ${literal(rule.otherwise, result)})`;
     }
   }
@@ -377,7 +435,7 @@ function rowCondition(node: Node, fn: string, shapes: Record<string, Shape>): Co
   const [called, receiver, args] = node.args as [string, unknown, unknown[]];
   if (called !== fn || args.length !== 2 || nameOf(args[0]) !== "row") return null;
   const name = nameOf(receiver);
-  const row = isNode(args[1]) ? compareFrom(args[1], shapes) : null;
+  const row = isNode(args[1]) ? compareFrom(args[1], name === null ? shapes : inRows(shapes, name)) : null;
   if (name === null || row === null || !row.name.startsWith("row.")) return null;
   return { kind: "compare", name, op: "any_row", row };
 }
@@ -414,7 +472,8 @@ function conditionFrom(node: Node, shapes: Record<string, Shape>): Condition | n
   if (compared) return compared;
   if (node.op === "!_" && isNode(node.args)) {
     const inner = conditionFrom(node.args, shapes);
-    return inner ? { kind: "not", item: inner } : null;
+    // A NOT of a NOT is nothing the editor writes: it stays text.
+    return inner && inner.kind !== "not" ? { kind: "not", item: inner } : null;
   }
   return null;
 }
@@ -452,6 +511,8 @@ export function valueFromCel(expr: string, result: Shape, shapes: Record<string,
 function valueFrom(node: Node, shapes: Record<string, Shape>): ValueRule | null {
   const fixed = valueOf(node);
   if (fixed !== undefined) return { kind: "fixed", value: fixed };
+  const name = nameOf(node);
+  if (name !== null) return name in shapes ? { kind: "name", name } : null;
   if (node.op === "?:") {
     const branches: IfValue["branches"] = [];
     let current: unknown = node;
@@ -460,7 +521,7 @@ function valueFrom(node: Node, shapes: Record<string, Shape>): ValueRule | null 
       const when = isNode(test) ? conditionFrom(test, shapes) : null;
       const value = valueOf(yes);
       if (when === null || value === undefined) return null;
-      branches.push({ when, value });
+      branches.push({ when: grouped(when), value });
       current = no;
     }
     const otherwise = valueOf(current);

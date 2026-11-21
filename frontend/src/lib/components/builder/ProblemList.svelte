@@ -11,11 +11,12 @@
 
   const names = $derived.by(() => {
     const found: Record<string, string> = {};
-    content.form.forEach((step, i) => (found[step.id] = `Step ${i + 1}: ${step.title}`));
-    for (const q of questionsOf(content)) found[q.id] = q.label;
+    // What has no name yet (that's its problem) goes by what it is.
+    content.form.forEach((step, i) => (found[step.id] = `Step ${i + 1}${step.title.trim() ? `: ${step.title}` : ""}`));
+    for (const q of questionsOf(content)) found[q.id] = q.label.trim() || (q.key ? `answers.${q.key}` : "A heading");
     for (const b of blocksOf(content.layout)) {
-      const title = "title" in b && b.title ? b.title : "text" in b && typeof b.text === "string" ? b.text : b.kind.replace("_", " ");
-      found[b.id] = String(title);
+      const title = "title" in b && b.title ? b.title : "text" in b && typeof b.text === "string" ? b.text : "";
+      found[b.id] = String(title).trim() || `${b.kind[0].toUpperCase()}${b.kind.slice(1).replace("_", " ")}`;
     }
     return found;
   });

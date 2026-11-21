@@ -4,13 +4,15 @@
 // answers; it runs in the expression worker, which stops it if it takes too long.
 // Phase 3's renderer does the same work on the server for the real PDF.
 
-import { Engine, ExpressionError, plain, type EngineOptions } from "#lib/cel/engine.js";
-import { formatDate } from "#lib/cel/dates.js";
+import { CelValue, Engine, ExpressionError, human, isSpan, plain, toCel, type EngineOptions } from "#lib/cel/engine.js";
+import { formatDate, formatDuration, isMidnight, startOfDay } from "#lib/cel/dates.js";
 import { LOCALES, type Table as LookupTable } from "#lib/cel/library.js";
 import { formatNumber } from "#lib/cel/numbers.js";
-import { fieldType, settingsOf } from "./fields";
+import { fieldType, PERSON_PARTS, settingsOf } from "./fields";
+import { repeatedColumns, shownAs, type LabelColumn, type LabelContext } from "./labels";
 import { CONTEXT_GROUPS, declarations, ITEM } from "./names";
 import { printed } from "./secrets";
+import { drawn } from "./signature";
 import { docText, interpolations } from "./text";
 import { questionsOf, type Block, type Id, type Question, type RichNode, type RichText, type Signer, type TemplateContent, type Tone } from "./types";
 
@@ -34,14 +36,14 @@ export type Shown =
   | { kind: "section"; id: Id; title: string; intro: RichText | null; newPage: boolean; numbered: boolean; landscape: boolean; blocks: Shown[] }
   | { kind: "heading"; id: Id; text: string }
   | { kind: "text"; id: Id; content: RichText }
-  | { kind: "answer"; id: Id; label: string | null; text: string | null; rich: RichText | null; rows: Grid | null }
+  | { kind: "answer"; id: Id; label: string | null; text: string | null; rich: RichText | null; rows: Grid | null; strokes?: number[][] }
   | { kind: "table"; id: Id; caption: string; grid: Grid; emptyText: string }
   | { kind: "image"; id: Id; url: string | null; caption: string; width: string; ratio: number }
   | { kind: "gallery"; id: Id; urls: string[]; caption: string; perRow: number }
   | { kind: "callout"; id: Id; tone: Tone; colour: string | null; title: string; content: RichText }
   | { kind: "severity_summary"; id: Id; caption: string; counts: { level: string; count: number }[] }
   | { kind: "sources"; id: Id; intro: string; items: { title: string; link: string }[] }
-  | { kind: "signatures"; id: Id; signers: Signer[]; layout: "row" | "stack"; showDate: boolean }
+  | { kind: "signatures"; id: Id; signers: ShownSigner[]; layout: "row" | "stack"; showDate: boolean }
   | { kind: "columns"; id: Id; columns: Shown[][] }
   | { kind: "page_break"; id: Id };
 
@@ -49,6 +51,9 @@ export interface Grid {
   headers: string[];
   rows: string[][];
 }
+
+/** A signature as it's drawn: one from a signature pad with its strokes, or null while it isn't signed. */
+export type ShownSigner = Signer & { strokes?: number[][] | null };
 
 export interface PreviewModel {
   blocks: Shown[];
@@ -58,6 +63,8 @@ export interface PreviewModel {
   errors: { element: Id; message: string }[];
   /** The values expressions read: answers by variable name, calculated ones included. */
   values: Record<string, unknown>;
+  /** What questions not answered yet start as ("Starts as"), by question ID, as answers are kept. */
+  defaults: Record<Id, unknown>;
   /** Questions and steps the form hides, and those it requires, for "Try it". */
   formHidden: Id[];
   formRequired: Id[];
@@ -82,6 +89,25 @@ export function sampleContext(custom: { customer?: Record<string, unknown>; proj
   return context;
 }
 
+/** Someone a person question can pick: their business details, as author and reviewer have them. */
+export type Person = { id: string; role: "technician" | "reviewer" } & Record<(typeof PERSON_PARTS)[number], string>;
+
+/**
+ * The people a person question offers in the builder: the sample report's author (a
+ * technician) and reviewer. In a report they're the company's own people.
+ */
+export function samplePeople(context: Record<string, Record<string, unknown>>): Person[] {
+  const one = (id: string, role: Person["role"], from: Record<string, unknown> = {}) =>
+    ({ id, role, ...Object.fromEntries(PERSON_PARTS.map((part) => [part, String(from[part] ?? "")])) }) as Person;
+  return [one("sample-author", "technician", context.author), one("sample-reviewer", "reviewer", context.reviewer)].filter((p) => p.display_name);
+}
+
+/** The people a person question lets the technician pick among. */
+export function peopleFor(question: Question, people: Person[]): Person[] {
+  const who = settingsOf(question.type, question.settings).who;
+  return people.filter((p) => (who === "technicians" ? p.role === "technician" : who === "reviewers" ? p.role === "reviewer" : true));
+}
+
 // Answers as expressions read them
 
 /** One answer as expressions see it: a secret only as it prints, a photo only whether there is one. */
@@ -100,7 +126,13 @@ export function answerValue(question: Question, raw: unknown): unknown {
       return { filled: count > 0, count };
     }
     case "signature":
-      return { filled: Boolean(raw) };
+      return { filled: drawn(raw) !== null };
+    case "person": {
+      // The person as they were when picked: their details, each text.
+      const picked = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+      const parts = Object.fromEntries(PERSON_PARTS.map((part) => [part, typeof picked[part] === "string" ? picked[part] : ""]));
+      return { filled: parts.display_name !== "", ...parts };
+    }
     case "cvss": {
       const value = (raw ?? {}) as { vector?: string; score?: number; severity?: string };
       return { vector: value.vector ?? "", score: Number(value.score ?? 0), severity: value.severity ?? "" };
@@ -108,9 +140,58 @@ export function answerValue(question: Question, raw: unknown): unknown {
     case "number":
       if (typeof raw !== "number") return null;
       return settings.whole ? Math.trunc(raw) : raw;
+    case "repeating":
+    case "table": {
+      // Each cell as its column's kind of value, so rules over the rows work whatever
+      // was typed: 3 in a decimal column multiplies with 1.5, a date compares with a
+      // date, and a cell left blank is the empty value of its kind.
+      const columns = (settings.columns ?? []) as RowColumn[];
+      const rows = Array.isArray(raw) ? (raw as (Record<string, unknown> | null)[]) : [];
+      return new CelValue(rows.map((row) => Object.fromEntries(columns.map((c) => [c.key, cellValue(c, row?.[c.key])]))));
+    }
     default:
       return raw ?? null;
   }
+}
+
+type RowColumn = { key: string; type: string; settings?: Record<string, unknown> };
+
+/** One cell of a row as expressions read it, by its column's type; an empty one as that type's empty value. */
+function cellValue(column: RowColumn, raw: unknown): unknown {
+  switch (column.type) {
+    case "number":
+      if (column.settings?.whole) return typeof raw === "number" && Number.isFinite(raw) ? BigInt(Math.trunc(raw)) : 0n;
+      return typeof raw === "number" && Number.isFinite(raw) ? raw : 0;
+    case "yes_no":
+      return raw === true;
+    case "datetime": {
+      const moment = typeof raw === "string" && raw ? new Date(raw) : NO_DATE;
+      return Number.isNaN(moment.getTime()) ? NO_DATE : moment;
+    }
+    default:
+      return raw === null || raw === undefined ? "" : String(raw);
+  }
+}
+
+/** The date a date not filled in reaches expressions as (see noDate). */
+const NO_DATE = new Date(0);
+
+/**
+ * What a question starts as, from what its rule gives, kept as its answers are: a date
+ * question takes the day (midnight where the report is written), a date and time
+ * question the minute. Nothing (null) when the rule gives nothing the question holds.
+ */
+export function startValue(question: Question, value: unknown, zone: string): unknown {
+  const settings = settingsOf(question.type, question.settings);
+  if (value === null || value === undefined || value === "") return null;
+  if (question.type === "datetime") {
+    if (!(value instanceof Date) || noDate(value)) return null;
+    const moment = settings.mode === "date" ? startOfDay(value, zone) : new Date(Math.floor(value.getTime() / 60_000) * 60_000);
+    return moment.toISOString();
+  }
+  if (question.type === "number") return typeof value === "number" ? (settings.whole ? Math.trunc(value) : value) : null;
+  if (question.type === "yes_no") return typeof value === "boolean" ? value : null;
+  return typeof value === "string" ? value : null;
 }
 
 /** The order calculated values are worked out in: each after the ones it reads. */
@@ -142,14 +223,28 @@ function calculationOrder(questions: Question[], engine: Engine): Question[] {
 
 // Printing
 
-function printValue(value: unknown, language: string, zone: string): string {
+/**
+ * Whether a date is no date: one that can't be (out of range), or the one a date
+ * question not answered yet reaches expressions as (the first moment of 1970, since an
+ * expression's date can't be empty). Neither is printed or taken as a start value.
+ */
+export function noDate(value: Date): boolean {
+  return Number.isNaN(value.getTime()) || value.getTime() === 0;
+}
+
+/** A value as text in {{ }} prints it, in the report's language. */
+export function printValue(value: unknown, language: string, zone: string): string {
   const locale = LOCALES[language] ?? LOCALES.en;
   if (value === null || value === undefined) return "";
+  if (value instanceof Date && noDate(value)) return "";
   if (typeof value === "boolean") return language === "da" ? (value ? "Ja" : "Nej") : value ? "Yes" : "No";
   if (typeof value === "number") return Number.isInteger(value) ? String(value) : String(value).replace(".", locale.decimal);
   if (typeof value === "bigint") return value.toString();
-  if (value instanceof Date) return formatDate(value, "d MMMM yyyy, HH:mm", zone, locale);
+  // A moment at midnight is a date with no time of day (a date question's answer, a
+  // project's dates): the time is left out.
+  if (value instanceof Date) return formatDate(value, isMidnight(value, zone) ? "d MMMM yyyy" : "d MMMM yyyy, HH:mm", zone, locale);
   if (Array.isArray(value)) return value.map((v) => printValue(v, language, zone)).join(", ");
+  if (isSpan(value)) return formatDuration(value["@duration"], locale);
   if (typeof value === "object") return "";
   return String(value);
 }
@@ -157,6 +252,14 @@ function printValue(value: unknown, language: string, zone: string): string {
 interface Scope {
   engine: Engine;
   values: Record<string, unknown>;
+  /**
+   * Inside a repeated section: which repetition, as "~0", "~1" (and "~0~2" inside one in
+   * another). It ends the ID of everything printed there, so each printed block has an
+   * ID of its own; the part before the first ~ is the layout's block.
+   */
+  suffix?: string;
+  /** Inside a section repeated for each row of a list: that list's columns, so {{item.x}} prints as its column shows it. */
+  item?: LabelColumn[];
 }
 
 class Worker {
@@ -165,6 +268,7 @@ class Worker {
   readonly language: string;
   readonly zone: string;
   readonly byId: Map<Id, Question>;
+  readonly byKey: Map<string, Question>;
 
   constructor(
     readonly input: PreviewInput,
@@ -174,6 +278,12 @@ class Worker {
     this.language = input.content.settings.language;
     this.zone = input.timezone ?? "Europe/Copenhagen";
     this.byId = new Map(questionsOf(input.content).map((q) => [q.id, q]));
+    this.byKey = new Map(questionsOf(input.content).filter((q) => q.key).map((q) => [q.key as string, q]));
+  }
+
+  /** What's printed where a signature pad isn't signed. */
+  get unsigned(): string {
+    return this.language === "da" ? "Ikke underskrevet" : "Not signed";
   }
 
   run(scope: Scope, element: Id, expr: string): unknown {
@@ -183,6 +293,28 @@ class Worker {
       this.errors.push({ element, message: error instanceof ExpressionError ? error.message : String(error) });
       return undefined;
     }
+  }
+
+  /** What {{ expr }} prints: its value as text, or ⚠ when it fails or gives what can't be printed. */
+  print(scope: Scope, element: Id, expr: string): string {
+    const value = this.run(scope, element, expr);
+    if (value === undefined) return "⚠";
+    if (value instanceof Date && Number.isNaN(value.getTime())) {
+      this.errors.push({ element, message: "This gives a date outside the years a report can print." });
+      return "⚠";
+    }
+    try {
+      // A name standing on its own prints as its question shows it (labels.ts).
+      return printValue(shownAs(expr, plain(value), this.labels(scope)), this.language, this.zone);
+    } catch (error) {
+      this.errors.push({ element, message: error instanceof Error ? error.message : String(error) });
+      return "⚠";
+    }
+  }
+
+  /** What labels.ts needs to print a choice as its question shows it. */
+  labels(scope: Scope): LabelContext {
+    return { questions: this.byKey, item: scope.item, answer: (key) => plain((scope.values.answers as Record<string, unknown> | undefined)?.[key]) };
   }
 
   shows(scope: Scope, element: Id, rule: string | null | undefined): boolean {
@@ -196,10 +328,7 @@ class Worker {
     let last = 0;
     for (const found of interpolations(text)) {
       out += text.slice(last, found.start);
-      if (found.closed && found.expr) {
-        const value = this.run(scope, element, found.expr);
-        out += value === undefined ? "⚠" : printValue(plain(value), this.language, this.zone);
-      }
+      if (found.closed && found.expr) out += this.print(scope, element, found.expr);
       last = found.end;
     }
     return out + text.slice(last);
@@ -209,8 +338,7 @@ class Worker {
     if (!doc) return null;
     const visit = (node: RichNode): RichNode[] => {
       if (node.type === "variable") {
-        const value = this.run(scope, element, String(node.attrs?.expr ?? ""));
-        const text = value === undefined ? "⚠" : printValue(plain(value), this.language, this.zone);
+        const text = this.print(scope, element, String(node.attrs?.expr ?? ""));
         return text ? [{ type: "text", text }] : [];
       }
       if (node.type === "text") {
@@ -223,11 +351,12 @@ class Worker {
   }
 
   /** An answer as the PDF prints it. */
-  answer(question: Question, raw: unknown): { text: string | null; rich: RichText | null; rows: Grid | null } {
+  answer(question: Question, raw: unknown): { text: string | null; rich: RichText | null; rows: Grid | null; strokes?: number[][] } {
     const s = settingsOf(question.type, question.settings);
     const locale = LOCALES[this.language] ?? LOCALES.en;
     const none = { text: null, rich: null, rows: null };
     if (raw === null || raw === undefined || raw === "") {
+      if (question.type === "signature") return { ...none, text: this.unsigned };
       if (question.type !== "calculated") return { ...none, text: "" };
     }
     switch (question.type) {
@@ -260,9 +389,14 @@ class Worker {
       case "repeating":
       case "table":
         return { ...none, rows: this.grid(question, null) };
+      case "person":
+        return { ...none, text: String((raw as { display_name?: unknown }).display_name ?? "") };
+      case "signature": {
+        const strokes = drawn(raw);
+        return strokes ? { ...none, strokes } : { ...none, text: this.unsigned };
+      }
       case "photo":
       case "file":
-      case "signature":
         return { ...none, text: Array.isArray(raw) ? `${raw.length} ${question.type === "photo" ? "photo" : "file"}${raw.length === 1 ? "" : "s"}` : "" };
       default:
         return { ...none, text: printValue(raw, this.language, this.zone) };
@@ -276,30 +410,32 @@ class Worker {
     if (column.type === "dropdown") return (s.options as { value: string; label: string }[]).find((o) => o.value === value)?.label ?? String(value);
     if (column.type === "yes_no") return value ? String(s.yes_label) : String(s.no_label);
     if (column.type === "number" && typeof value === "number") {
-      return s.whole ? formatNumber(BigInt(Math.trunc(value)), 0, locale.decimal, locale.group) : formatNumber(value, Number(s.decimals ?? 1), locale.decimal, locale.group);
+      const text = s.whole ? formatNumber(BigInt(Math.trunc(value)), 0, locale.decimal, locale.group) : formatNumber(value, Number(s.decimals ?? 1), locale.decimal, locale.group);
+      return s.unit ? `${text} ${s.unit}` : text;
     }
     if (column.type === "datetime") {
       const date = new Date(String(value));
-      return Number.isNaN(date.getTime()) ? "" : formatDate(date, "d MMM yyyy, HH:mm", this.zone, locale);
+      return Number.isNaN(date.getTime()) ? "" : formatDate(date, s.mode === "date" ? "d MMM yyyy" : "d MMM yyyy, HH:mm", this.zone, locale);
     }
     return String(value);
   }
 
-  grid(question: Question, keys: string[] | null): Grid {
+  /** A repeating group's or table's rows as printed; with numbers, a first column counts them. */
+  grid(question: Question, keys: string[] | null, numbers = false): Grid {
     const s = settingsOf(question.type, question.settings);
     type Col = { key: string; label: string; type: string; settings?: Record<string, unknown> };
     const all = s.columns as Col[];
     const columns = keys ? keys.map((k) => all.find((c) => c.key === k)).filter((c): c is Col => !!c) : all;
     const raw = this.input.answers[question.id];
     const rows = Array.isArray(raw) ? (raw as Record<string, unknown>[]) : [];
-    if (question.type === "table") {
-      const fixed = s.rows as { key: string; label: string }[];
-      return {
-        headers: ["", ...columns.map((c) => c.label)],
-        rows: fixed.map((row, i) => [row.label, ...columns.map((c) => this.cell(c, rows[i]?.[c.key]))]),
-      };
-    }
-    return { headers: columns.map((c) => c.label), rows: rows.map((row) => columns.map((c) => this.cell(c, row[c.key]))) };
+    const grid: Grid = question.type === "table"
+      ? {
+          headers: ["", ...columns.map((c) => c.label)],
+          rows: (s.rows as { key: string; label: string }[]).map((row, i) => [row.label, ...columns.map((c) => this.cell(c, rows[i]?.[c.key]))]),
+        }
+      : { headers: columns.map((c) => c.label), rows: rows.map((row) => columns.map((c) => this.cell(c, row[c.key]))) };
+    if (!numbers) return grid;
+    return { headers: [this.language === "da" ? "Nr." : "No.", ...grid.headers], rows: grid.rows.map((row, i) => [String(i + 1), ...row]) };
   }
 
   blocks(scope: Scope, blocks: Block[], item: boolean): Shown[] {
@@ -312,15 +448,17 @@ class Worker {
       const items = Array.isArray(list) ? list : [];
       if (!items.length) this.hidden.push({ id: b.id, reason: "Repeated for each item, and there are none" });
       return items.flatMap((entry, i) => {
-        const inner: Scope = { engine: this.itemEngine, values: { ...scope.values, item: entry } };
-        return this.section(inner, b, `${b.id}~${i}`, true);
+        // The item as the list gave it: its cells keep their kinds (see answerValue).
+        const inner: Scope = { engine: this.itemEngine, values: { ...scope.values, item: new CelValue(entry) }, suffix: `${scope.suffix ?? ""}~${i}`,
+          item: repeatedColumns(b.repeat_for, this.byKey) ?? scope.item };
+        return this.section(inner, b, `${b.id}${inner.suffix}`, true);
       });
     }
     if (!this.shows(scope, b.id, b.visible_when)) {
       this.hidden.push({ id: b.id, reason: b.kind === "section" ? "Section hidden by its rule, with what's in it" : "Hidden by its rule" });
       return [];
     }
-    const id = b.id;
+    const id = `${b.id}${scope.suffix ?? ""}`;
     switch (b.kind) {
       case "section":
         return this.section(scope, b, id, item);
@@ -342,7 +480,7 @@ class Worker {
       case "table": {
         const q = b.question ? this.byId.get(b.question) : undefined;
         if (!q || !(q.type === "repeating" || q.type === "table")) return [];
-        return [{ kind: "table", id, caption: this.text(scope, id, b.caption), grid: this.grid(q, b.columns), emptyText: this.text(scope, id, b.empty_text) }];
+        return [{ kind: "table", id, caption: this.text(scope, id, b.caption), grid: this.grid(q, b.columns, b.row_numbers ?? false), emptyText: this.text(scope, id, b.empty_text) }];
       }
       case "image": {
         const asset = b.source === "template" && b.asset ? this.input.assets[b.asset] : undefined;
@@ -366,7 +504,14 @@ class Worker {
         const q = b.question ? this.byId.get(b.question) : undefined;
         const raw = q ? this.input.answers[q.id] : undefined;
         const rows = Array.isArray(raw) ? (raw as Record<string, unknown>[]) : [];
-        const counts = b.levels.map((level) => ({ level, count: rows.filter((r) => String(r[b.column ?? ""] ?? "").toLowerCase() === level.toLowerCase()).length }));
+        // A level is named as the column shows it ("Høj"); a dropdown keeps a value of
+        // its own for each choice ("hoej"), so a row counts by either.
+        const column = q ? (settingsOf(q.type, q.settings).columns as { key: string; type: string; settings?: Record<string, unknown> }[] | undefined)?.find((c) => c.key === b.column) : undefined;
+        const shown = (row: Record<string, unknown>) => {
+          const value = row[b.column ?? ""];
+          return [String(value ?? ""), column ? this.cell(column, value) : ""].map((text) => text.trim().toLowerCase());
+        };
+        const counts = b.levels.map((level) => ({ level, count: rows.filter((r) => shown(r).includes(level.trim().toLowerCase())).length }));
         return [{ kind: "severity_summary", id, caption: this.text(scope, id, b.caption), counts }];
       }
       case "sources": {
@@ -382,12 +527,31 @@ class Worker {
         return [{ kind: "sources", id, intro: this.text(scope, id, b.intro), items }];
       }
       case "signatures":
-        return [{ kind: "signatures", id, signers: b.signers.map((s) => ({ ...s, label: this.text(scope, id, s.label) })), layout: b.layout, showDate: b.show_date }];
+        return [{ kind: "signatures", id, layout: b.layout, showDate: b.show_date, signers: b.signers.map((s) => ({
+          ...s, label: this.text(scope, id, s.label),
+          // A signature pad's drawing, or null while it isn't signed.
+          ...(s.role === "pad" ? { strokes: drawn(s.question ? this.input.answers[s.question] : null) } : {}),
+        })) }];
       case "columns":
         return [{ kind: "columns", id, columns: b.columns.map((column) => this.blocks(scope, column, item)) }];
       case "page_break":
         return [{ kind: "page_break", id }];
+      case "switch":
+        return this.blocks(scope, this.picked(scope, b), item);
     }
+  }
+
+  /** The blocks of the switch's case for these answers; the others say why they're left out. */
+  picked(scope: Scope, b: Extract<Block, { kind: "switch" }>): Block[] {
+    const value = b.value?.trim() ? plain(this.run(scope, b.id, b.value)) : undefined;
+    const given = value === null || value === "" ? "nothing" : `“${String(value)}”`;
+    const at = b.cases.findIndex((c) => c.match === value);
+    const chosen = value === undefined ? null : at < 0 ? b.otherwise : b.cases[at].blocks;
+    const reason = value === undefined ? "What picks the case can't be worked out" : `The answers give ${given}`;
+    for (const list of [...b.cases.map((c) => c.blocks), b.otherwise]) {
+      if (list !== chosen) for (const inner of list) this.hidden.push({ id: inner.id, reason });
+    }
+    return chosen ?? [];
   }
 
   section(scope: Scope, b: Extract<Block, { kind: "section" }>, id: Id, item: boolean): Shown[] {
@@ -412,14 +576,48 @@ export function preview(input: PreviewInput): PreviewModel {
   for (const q of questions) if (q.key && q.type !== "calculated") answers[q.key] = answerValue(q, input.answers[q.id]);
   const values: Record<string, unknown> = { ...input.context, ...(input.library?.values ?? {}), answers };
   const errors: PreviewModel["errors"] = [];
-  for (const q of calculationOrder(questions, engine)) {
+  // Calculated values, each kept as the kind of value it's declared to give. One that
+  // gives another kind (a whole number that works out as 0.75) is its own question's
+  // problem and stays empty, rather than failing every expression that reads the answers.
+  const calculate = (report: boolean) => {
+    for (const q of calculationOrder(questions, engine)) {
+      const name = `answers.${q.key}`;
+      const spec = engine.declarations.get(name);
+      try {
+        const value = engine.evaluateRaw(q.value ?? "", values);
+        try {
+          answers[q.key as string] = spec ? toCel(value, spec, name) : value;
+        } catch {
+          answers[q.key as string] = null;
+          if (report) errors.push({ element: q.id, message: `This should give ${human(spec?.name ?? "")}, but with these answers it gives ${printValue(plain(value), content.settings.language, input.timezone ?? "Europe/Copenhagen") || "something else"}.` });
+        }
+      } catch (error) {
+        if (report) errors.push({ element: q.id, message: error instanceof ExpressionError ? error.message : String(error) });
+      }
+    }
+  };
+  // What a question starts as may read a calculated value, and a calculated value what
+  // a question starts as: the calculated values are worked out, then the start values
+  // (in the form's order), then the calculated values again.
+  const starting = questions.filter((q) => q.key && q.type !== "calculated" && q.default?.trim() && input.answers[q.id] === undefined);
+  if (starting.length) calculate(false);
+  // A question not answered yet starts as its rule says (one cleared on purpose is kept
+  // as null, and stays empty).
+  const defaults: PreviewModel["defaults"] = {};
+  for (const q of starting) {
     try {
-      answers[q.key as string] = engine.evaluateRaw(q.value ?? "", values);
+      const start = startValue(q, plain(engine.evaluateRaw(q.default as string, values)), input.timezone ?? "Europe/Copenhagen");
+      if (start === null) continue;
+      defaults[q.id] = start;
+      answers[q.key as string] = answerValue(q, start);
     } catch (error) {
       errors.push({ element: q.id, message: error instanceof ExpressionError ? error.message : String(error) });
     }
   }
-  const worker = new Worker(input, { engine, values }, itemEngine);
+  calculate(true);
+  // Blocks that print an answer as it's kept (an Answer block, a table) read what a
+  // question starts as too, as text and rules do.
+  const worker = new Worker({ ...input, answers: { ...input.answers, ...defaults } }, { engine, values }, itemEngine);
   worker.errors.push(...errors);
   const blocks = worker.blocks({ engine, values }, content.layout, false);
 
@@ -448,6 +646,7 @@ export function preview(input: PreviewInput): PreviewModel {
     hidden: worker.hidden,
     errors: worker.errors,
     values: plain(answers) as Record<string, unknown>,
+    defaults,
     formHidden,
     formRequired,
     invalid,

@@ -4,13 +4,14 @@
   import X from "@lucide/svelte/icons/x";
   import type { Engine } from "#lib/cel/engine.js";
   import { RESERVED } from "#lib/templates/checks.js";
-  import { KEY_PATTERN, usage } from "#lib/templates/edit.js";
+  import { freeKey, KEY_PATTERN, keyFrom, usage } from "#lib/templates/edit.js";
   import { fieldIcon } from "#lib/templates/fieldIcons.js";
-  import { fieldType } from "#lib/templates/fields.js";
+  import { fieldType, typeCode } from "#lib/templates/fields.js";
   import { questionNames } from "#lib/templates/names.js";
   import { questionsOf, type Problem, type Question, type TemplateContent } from "#lib/templates/types.js";
   import type { NameEntry } from "#lib/templates/catalogue.js";
   import RuleField from "./RuleField.svelte";
+  import TypeCode from "./TypeCode.svelte";
   import TypeSettings from "./TypeSettings.svelte";
   import Where from "./Where.svelte";
 
@@ -47,6 +48,17 @@
   const own = $derived(question.key ? questionNames(question)[`answers.${question.key}`] ?? null : null);
   const names = $derived(Object.keys(questionNames(question)));
 
+  // Other questions with the same label: easy to mix up among many.
+  const twins = $derived(questionsOf(content).filter((q) => q.id !== question.id && fieldType(q.type).asks && q.label.trim().toLowerCase() === question.label.trim().toLowerCase()));
+  // A variable name made of the type's shorthand and the label, such as yn_attacker_ip,
+  // offered until the name starts with the shorthand.
+  const suggested = $derived.by(() => {
+    const prefix = `${typeCode(question.type).toLowerCase()}_`;
+    if (!question.key || question.key.startsWith(prefix) || question.label === `New ${type.label.toLowerCase()} question`) return null;
+    const name = freeKey(`${prefix}${keyFrom(question.label)}`.slice(0, 47).replace(/_+$/, ""), questionsOf(content).filter((q) => q.id !== question.id).map((q) => q.key));
+    return KEY_PATTERN.test(name) ? name : null;
+  });
+
   // What's typed, until Rename: the question's own name again when another is selected.
   let key = $derived(question.key ?? "");
   const keyProblem = $derived.by(() => {
@@ -62,11 +74,11 @@
 </script>
 
 <div class="panel-head">
-  <span class="type"><Icon size={16} aria-hidden="true" /> {type.label}</span>
+  <span class="type"><Icon size={16} aria-hidden="true" /> {type.label} <TypeCode type={question.type} /></span>
   <span class="head-actions">
     <button class="mini" type="button" aria-label="Move up" title="Move up" disabled={first} onclick={() => onmove(-1)}><ArrowUp size={16} aria-hidden="true" /></button>
     <button class="mini" type="button" aria-label="Move down" title="Move down" disabled={last} onclick={() => onmove(1)}><ArrowDown size={16} aria-hidden="true" /></button>
-    <button class="mini" type="button" aria-label="Remove the question" title="Remove" onclick={onremove}><X size={16} aria-hidden="true" /></button>
+    <button class="mini" type="button" aria-label="Remove the question" title="Remove (Delete)" aria-keyshortcuts="Delete" onclick={onremove}><X size={16} aria-hidden="true" /></button>
   </span>
 </div>
 
@@ -75,6 +87,13 @@
   <div class="field">
     <label for="{id}-label">{question.type === "heading" ? "Heading" : "Question"}</label>
     <input id="{id}-label" class="input" bind:value={question.label} maxlength="300" required />
+    {#if twins.length && type.asks}
+      <span class="hint">
+        {twins.length === 1 ? "Another question has" : `${twins.length} other questions have`} this label too:
+        {#each twins as twin, i (twin.id)}<TypeCode type={twin.type} /> <span class="mono">{twin.key ?? ""}</span>{i < twins.length - 1 ? ", " : ""}{/each}.
+        The shorthands tell them apart here; a label of its own helps the technician.
+      </span>
+    {/if}
   </div>
   <div class="field">
     <label for="{id}-help">Help for the technician <span class="muted">(optional)</span></label>
@@ -103,6 +122,11 @@
       <span class="hint" class:error={keyProblem || problem("key")}>
         {keyProblem ?? problem("key") ?? "Renaming changes every rule and text that reads it."}
       </span>
+      {#if suggested}
+        <button class="link-button small start" type="button" onclick={() => { if (suggested) { key = suggested; onrename(suggested); } }}>
+          Name it <span class="mono">{suggested}</span>: the type's shorthand and the label
+        </button>
+      {/if}
     </div>
     {#if names.length > 1 || (names.length === 1 && names[0] !== `answers.${question.key}`)}
       <p class="small muted">Gives rules: {#each names as name, i (name)}<span class="mono">{name}</span>{i < names.length - 1 ? ", " : ""}{/each}</p>
@@ -121,8 +145,10 @@
       <RuleField id="{id}-required" label="Required only when" bind:value={question.required_when} kind="condition" {engine} {entries}
         problem={problem("required_when")} hint="Required or not, as set above." />
       {#if own && ["string", "double", "int", "bool", "timestamp"].includes(own)}
-        <RuleField id="{id}-default" label="Starts as" bind:value={question.default} kind="value" expects={own} {engine} {entries}
-          problem={problem("default")} hint="Starts empty." />
+        <RuleField id="{id}-default" label="Starts as" bind:value={question.default} kind="value" expects={own} {engine}
+          entries={entries.filter((e) => e.name !== `answers.${question.key}`)}
+          problem={problem("default")}
+          hint={question.type === "datetime" ? "Starts empty. Add a rule to start it as the day or the moment the report is started." : "Starts empty."} />
         {#if question.default}
           <button class="link-button small clear" type="button" onclick={() => (question.default = null)}>Start empty instead</button>
         {/if}
@@ -143,7 +169,11 @@
     {#if used.blocks.length}
       <p class="small">Printed by {#each used.blocks as b, i (b.id)}{blockName(b.kind, "title" in b ? String(b.title) : undefined)}{i < used.blocks.length - 1 ? ", " : ""}{/each}.</p>
     {:else}
-      <p class="small muted">No block prints this answer. Add one on the Layout tab, or use it in text and rules.</p>
+      <p class="small muted">
+        {question.type === "signature"
+          ? "No block prints this signature. On the Layout tab, add a Signatures block and choose “A signature pad in the form”, or an Answer block."
+          : "No block prints this answer. Add one on the Layout tab, or use it in text and rules."}
+      </p>
     {/if}
     {#if used.expressions}
       <p class="small muted">Read by {used.expressions} rule{used.expressions === 1 ? "" : "s"} or text{used.expressions === 1 ? "" : "s"}.</p>
@@ -228,6 +258,10 @@
   .clear {
     justify-self: start;
     margin-top: calc(-1 * var(--space-2));
+  }
+  .start {
+    justify-self: start;
+    text-align: left;
   }
   p {
     margin: 0;

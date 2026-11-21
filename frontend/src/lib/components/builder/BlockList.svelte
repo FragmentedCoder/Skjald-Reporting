@@ -3,11 +3,12 @@
   import { BLOCK_TYPES, blockSummary, newBlock } from "#lib/templates/blocks.js";
   import type { Block, BlockKind } from "#lib/templates/types.js";
   import BlockList from "./BlockList.svelte";
+  import { DRAG_OPTIONS, dragLook, Hooks, whileDragging } from "./drag.svelte.js";
   import type { Dragged } from "./Palette.svelte";
 
-  // The layout's blocks as an outline, in the order they print: sections and columns
-  // hold blocks of their own, and blocks drag between them.
-  let { blocks = $bindable(), depth = 0, label, empty, selected, hidden, problems, readonly, onselect }: {
+  // The layout's blocks as an outline, in the order they print: sections, columns and
+  // a switch's cases hold blocks of their own, and blocks drag between them.
+  let { blocks = $bindable(), depth = 0, label, empty, selected, hidden, problems, readonly, onselect, room = () => true }: {
     blocks: Block[];
     depth?: number;
     label: string;
@@ -19,6 +20,8 @@
     problems: (id: string) => number;
     readonly: boolean;
     onselect: (id: string) => void;
+    /** Whether a new block fits in a list: the template and each list have a largest size. */
+    room?: (list: Block[]) => boolean;
   } = $props();
 
   type Item = Block | Dragged;
@@ -30,6 +33,9 @@
   const items = $derived(dragging ?? (blocks as Item[]));
   const placeholder = (item: Item) => "palette" in item || SHADOW_ITEM_MARKER_PROPERTY_NAME in item;
 
+  /** A case's value as the outline shows it. */
+  const caseValue = (match: string | number) => (match === "" ? "empty" : typeof match === "string" ? `“${match}”` : String(match));
+
   // What kind of block it is, and what it does besides printing.
   function meta(b: Block): string {
     const section = b.kind === "section" ? b : null;
@@ -38,17 +44,29 @@
       b.visible_when && "printed when a rule says so",
       section?.repeat_for && "once for each row",
       section?.new_page && "new page",
+      b.kind === "switch" && `${b.cases.length} case${b.cases.length === 1 ? "" : "s"} and otherwise`,
     ].filter(Boolean).join(" · ");
   }
 
   function consider(event: CustomEvent<DndEvent<Item>>) {
-    dragging = event.detail.items;
+    dragging = whileDragging(event.detail.items, blocks);
   }
+
+  const hooks = new Hooks();
+  const look = dragLook<Item>((b) => ("palette" in b ? b.label : `${BLOCK_TYPES[b.kind].label}: ${blockSummary(b)}`));
+  const zone = $derived.by(() => {
+    hooks.watch();
+    return { items, type: "blocks", flipDurationMs: 150, dragDisabled: readonly, dropTargetClasses: ["dropping"],
+      dropTargetStyle: {}, transformDraggedElement: look, ...DRAG_OPTIONS };
+  });
 
   function finalize(event: CustomEvent<DndEvent<Item>>) {
     let added: Block | null = null;
     dragging = null;
-    blocks = event.detail.items.map((item) => {
+    hooks.again();
+    // A new block dropped where there's no room for it isn't added (room says why).
+    const fits = !event.detail.items.some((item) => "palette" in item) || room(blocks);
+    blocks = event.detail.items.filter((item) => fits || !("palette" in item)).map((item) => {
       if ("palette" in item) {
         added = newBlock(item.kind as BlockKind, depth > 0);
         return added;
@@ -60,9 +78,7 @@
 </script>
 
 <ol class="blocks" class:nested={depth > 0} class:empty={!items.length} aria-label={label} data-empty={empty}
-  use:dndzone={{ items, type: "blocks", flipDurationMs: 150, dragDisabled: readonly, centreDraggedOnCursor: true,
-                 dropTargetClasses: ["dropping"], dropTargetStyle: {} }}
-  onconsider={consider} onfinalize={finalize}>
+  use:dndzone={zone} onconsider={consider} onfinalize={finalize}>
   {#each items as b (b.id)}
     {#if placeholder(b)}
       <!-- Where it would land: one line, whatever it holds, so nothing drops into the block being moved. -->
@@ -72,7 +88,8 @@
       {@const flagged = problems(b.id)}
       {@const why = hidden.get(b.id)}
       <li class="block kind-{b.kind}" class:selected={selected === b.id} class:hidden={why}>
-        <button class="pick" type="button" onclick={() => onselect(b.id)} aria-label="{type.label}: {blockSummary(b)}, edit">
+        <!-- The drag library keeps a press from focusing the card, so the click does: keys such as Delete then go to it. -->
+        <button class="pick" type="button" onclick={(e) => { e.currentTarget.focus(); onselect(b.id); }} aria-label="{type.label}: {blockSummary(b)}, edit">
           <span class="pick-in">
             <span class="icon" aria-hidden="true"><type.icon size={15} aria-hidden="true" /></span>
             <span class="body">
@@ -86,16 +103,32 @@
         {#if b.kind === "section"}
           <div class="inside">
             <BlockList bind:blocks={b.blocks} depth={depth + 1} label="Blocks in “{b.title}”" empty="Drag blocks into this section."
-              {selected} {hidden} {problems} {readonly} {onselect} />
+              {selected} {hidden} {problems} {readonly} {onselect} {room} />
           </div>
         {:else if b.kind === "columns"}
           <div class="columns">
             {#each b.columns as _column, c (c)}
               <div class="column">
                 <BlockList bind:blocks={b.columns[c]} depth={depth + 1} label="Column {c + 1}" empty="Drag blocks here."
-                  {selected} {hidden} {problems} {readonly} {onselect} />
+                  {selected} {hidden} {problems} {readonly} {onselect} {room} />
               </div>
             {/each}
+          </div>
+        {:else if b.kind === "switch"}
+          <!-- Each case's blocks, then those printed when no case matches. -->
+          <div class="cases">
+            {#each b.cases as c, i (i)}
+              <div class="case">
+                <span class="case-head small">When it's {caseValue(c.match)}</span>
+                <BlockList bind:blocks={b.cases[i].blocks} depth={depth + 1} label="Blocks when it's {caseValue(c.match)}" empty="Drag the blocks for this case here."
+                  {selected} {hidden} {problems} {readonly} {onselect} {room} />
+              </div>
+            {/each}
+            <div class="case">
+              <span class="case-head small">Otherwise</span>
+              <BlockList bind:blocks={b.otherwise} depth={depth + 1} label="Blocks when no case matches" empty="Drag blocks here for when no case matches, or leave it empty."
+                {selected} {hidden} {problems} {readonly} {onselect} {room} />
+            </div>
           </div>
         {/if}
       </li>
@@ -203,6 +236,15 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  /* A text's first words over two lines: texts often start alike, as a switch's cases do. */
+  .kind-text > .pick .label {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    white-space: normal;
+  }
   .kind-section > .pick .label {
     font-family: var(--font-display);
     font-size: 17px;
@@ -238,5 +280,21 @@
     padding: var(--space-1);
     border: 1px dashed var(--border-strong);
     border-radius: var(--radius-md);
+  }
+  .cases {
+    display: grid;
+    gap: var(--space-2);
+    padding: 0 var(--space-2) var(--space-2) var(--space-6);
+  }
+  .case {
+    display: grid;
+    gap: var(--space-1);
+    padding: var(--space-1);
+    border-left: 3px solid var(--border-strong);
+  }
+  .case-head {
+    padding-left: var(--space-1);
+    color: var(--text-muted);
+    font-weight: 600;
   }
 </style>

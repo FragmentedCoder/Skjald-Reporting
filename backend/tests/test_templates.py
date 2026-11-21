@@ -13,6 +13,7 @@ from sqlalchemy.exc import DBAPIError
 
 from app.audit import AuditEntry
 from app.roles import Role, grant_role
+from tests.conftest import PASSWORD
 
 TEMPLATES = "/api/templates"
 INCIDENT = json.loads((Path(__file__).resolve().parents[2] / "shared" / "templates"
@@ -58,17 +59,23 @@ def save(client, headers, template_id, content, revision):
 def test_only_designers_and_administrators_build_templates(client, person, session, role,
                                                            template) -> None:
     _, headers = person(f"someone_{role}", role)
-    for method, path in [("get", TEMPLATES), ("post", TEMPLATES),
+    for method, path in [("post", TEMPLATES), ("get", f"{TEMPLATES}/{template['id']}"),
                          ("get", f"{TEMPLATES}/{template['id']}/draft")]:
         response = client.request(method, path, headers=headers, json={"name": "x"})
         assert response.status_code == 403, (role, path)
+    # Managers see the list, to delete retired templates; nobody else does.
+    listed = client.get(TEMPLATES, headers=headers)
+    assert listed.status_code == (200 if role == "manager" else 403)
     assert entries(session, "auth.access_denied")
 
 
 def test_administrators_build_templates_too(client, admin, template) -> None:
     _, headers = admin
-    assert [t["name"] for t in client.get(TEMPLATES, headers=headers).json()] == [
-        "Security incident report"]
+    listed = client.get(TEMPLATES, headers=headers).json()
+    assert [t["name"] for t in listed] == ["Security incident report"]
+    # Who made it and when, for the Templates page's cards.
+    assert listed[0]["created_by"] == template["created_by"] is not None
+    assert listed[0]["created_at"] == template["created_at"]
 
 
 def test_a_new_template_has_a_starter_draft(client, designer, template, session) -> None:
@@ -81,6 +88,37 @@ def test_a_new_template_has_a_starter_draft(client, designer, template, session)
     assert draft["problems"] == []
     [created] = entries(session, "template.created")
     assert created.target_id == str(template["id"])
+
+
+def test_a_template_needs_a_name_with_something_to_see(client, designer, template) -> None:
+    """Spaces alone passed the length check and were kept as an empty name."""
+    _, headers = designer
+    for name in ("   ", "\t\n", "\u200b \ufeff"):
+        assert client.post(TEMPLATES, headers=headers,
+                           json={"name": name, "description": ""}).status_code == 422, name
+        assert client.patch(f"{TEMPLATES}/{template['id']}", headers=headers,
+                            json={"name": name}).status_code == 422, name
+        assert client.post(f"{TEMPLATES}/{template['id']}/copy", headers=headers,
+                           json={"name": name}).status_code == 422, name
+    renamed = client.patch(f"{TEMPLATES}/{template['id']}", headers=headers,
+                           json={"name": "  Incident report  "})
+    assert renamed.status_code == 200
+    assert renamed.json()["name"] == "Incident report"
+
+
+def test_half_a_character_in_a_sample_answer_is_refused_not_a_crash(client, designer,
+                                                                   template) -> None:
+    """A lone surrogate (half an emoji) can't be written out to be stored: it was an
+    HTTP 500 when the draft was saved."""
+    _, headers = designer
+    content = json.loads(json.dumps(INCIDENT))
+    content["sample"]["answers"]["q_summary"] = "Half an emoji: \ud83d"
+    # As a browser sends it: the half written as an escape, which JSON allows.
+    body = json.dumps({"content": content, "revision": 1}).encode()
+    refused = client.put(f"{TEMPLATES}/{template['id']}/draft", content=body,
+                         headers={**headers, "Content-Type": "application/json"})
+    assert refused.status_code == 422
+    assert "half of a character" in refused.json()["detail"]
 
 
 def test_saving_a_draft_reports_its_problems_and_counts_revisions(client, designer, template,
@@ -146,6 +184,92 @@ def test_a_draft_must_have_the_right_shape(client, designer, template, change, m
     refused = save(client, headers, template["id"], content, 1)
     assert refused.status_code == 422
     assert refused.json()["detail"].startswith(message)
+
+
+def _breaks(count: int, start: int = 0) -> list[dict]:
+    return [{"id": f"b_brk{start + i:05d}", "kind": "page_break"} for i in range(count)]
+
+
+def _nested(levels: int) -> dict:
+    """A section holding a section, so many levels deep."""
+    block: dict = {"id": "b_deep00000", "kind": "heading", "text": "At the bottom"}
+    for level in range(levels - 1):
+        block = {"id": f"b_deep{level + 1:05d}", "kind": "section", "title": "Deeper",
+                 "blocks": [block]}
+    return block
+
+
+def _questions(count: int) -> list[dict]:
+    return [{"id": f"q_many{i:04d}", "key": f"many_{i}", "type": "text", "label": f"Question {i}"}
+            for i in range(count)]
+
+
+def test_a_template_has_a_largest_size_said_in_plain_words(client, designer, template) -> None:
+    """Up to 500 questions, 1,000 blocks and ten levels of blocks in blocks: one more of
+    any is refused, saying which, and nothing nested past reading is ever stored."""
+    _, headers = designer
+    base = json.loads(json.dumps(INCIDENT))
+    base["layout"] = []
+    base["form"] = [{"id": "s_many", "title": "Many", "questions": []}]
+
+    def attempt(change):
+        content = json.loads(json.dumps(base))
+        change(content)
+        return save(client, headers, template["id"], content, 1)
+
+    def blocks(count):
+        # Sections of up to 300, as a list of blocks takes.
+        def change(content):
+            content["layout"] = [
+                {"id": f"b_sec{n:05d}", "kind": "section", "title": "Part", "blocks":
+                 _breaks(min(250, count - 1 - n * 251), n * 1000)}
+                for n in range(-(-count // 251))]
+            assert sum(1 + len(s["blocks"]) for s in content["layout"]) == count
+        return change
+
+    refused = attempt(blocks(1004))
+    assert refused.status_code == 422
+    assert refused.json()["detail"] == "A template takes up to 1,000 blocks; this one has 1,004."
+    refused = attempt(lambda c: c["form"][0].update(questions=_questions(300))
+                      or c["form"].append({"id": "s_more", "title": "More",
+                                           "questions": _questions(201)}))
+    assert refused.status_code == 422
+    assert refused.json()["detail"] == (
+        "A template takes up to 500 questions and headings; this one has 501.")
+    refused = attempt(lambda c: c["layout"].append(_nested(11)))
+    assert refused.status_code == 422
+    assert refused.json()["detail"] == (
+        "Blocks can sit inside each other up to 10 levels deep; this template goes deeper.")
+    # Far past the limit is refused the same way, not a crash, whichever of the server's
+    # own guards meets it first (its count of blocks, the depth of what was sent, or a
+    # library's limit on how deep it reads).
+    for levels in (12, 50, 61, 120, 127, 128, 400, 3000):
+        refused = attempt(lambda c, levels=levels: c["layout"].append(_nested(levels)))
+        assert refused.status_code == 422, levels
+        assert "levels deep" in refused.json()["detail"], levels
+
+    # The stored document, with every default written out, is what's measured.
+    def nearly(content):
+        content["layout"] = [{"id": "b_big00", "kind": "text", "content": {
+            "type": "doc", "content": [{"type": "paragraph", "content": [
+                {"type": "text", "text": "x" * (2 * 1024 * 1024 - 12_000)}]}]}},
+            {"id": "b_sec00000", "kind": "section", "title": "", "blocks": _breaks(250)}]
+    refused = attempt(nearly)
+    assert refused.status_code == 422
+    assert refused.json()["detail"] == "The template is larger than 2 MB."
+
+    # At the limits it saves, and opens again.
+    def full(content):
+        blocks(1000)(content)
+        content["layout"][0]["blocks"][0] = _nested(9)
+        content["layout"][0]["blocks"] = content["layout"][0]["blocks"][:250 - 8]
+        content["form"] = [{"id": "s_many", "title": "Many", "questions": _questions(300)},
+                           {"id": "s_more", "title": "More", "questions": [
+                               dict(q, id=q["id"].replace("many", "more"), key=q["key"] + "_b")
+                               for q in _questions(200)]}]
+    saved = attempt(full)
+    assert saved.status_code == 200, saved.text
+    assert client.get(f"{TEMPLATES}/{template['id']}/draft", headers=headers).status_code == 200
 
 
 def test_publishing_freezes_the_draft_as_the_next_version(client, designer, template, session
@@ -222,8 +346,57 @@ def test_a_draft_is_discarded_and_a_never_published_template_deleted(client, des
 def test_retiring_and_restoring(client, designer, template) -> None:
     _, headers = designer
     tid = template["id"]
-    assert client.post(f"{TEMPLATES}/{tid}/retire", headers=headers).json()["retired"] is True
-    assert client.post(f"{TEMPLATES}/{tid}/restore", headers=headers).json()["retired"] is False
+    retired = client.post(f"{TEMPLATES}/{tid}/retire", headers=headers).json()
+    assert retired["retired"] is True
+    assert retired["retired_by"] == "Dagny" and retired["retired_at"]
+    restored = client.post(f"{TEMPLATES}/{tid}/restore", headers=headers).json()
+    assert restored["retired"] is False and restored["retired_by"] is None
+
+
+def test_the_list_gives_each_template_its_report_language(client, designer, template) -> None:
+    _, headers = designer
+    assert client.get(TEMPLATES, headers=headers).json()[0]["language"] == "en"
+    danish = json.loads(json.dumps(INCIDENT))
+    danish["settings"]["language"] = "da"
+    save(client, headers, template["id"], danish, 1)
+    assert client.get(TEMPLATES, headers=headers).json()[0]["language"] == "da"
+
+
+def test_administrators_and_managers_delete_a_retired_template(client, designer, person,
+                                                               template, session, engine) -> None:
+    _, as_designer = designer
+    _, as_manager = person("maja", "manager")
+    tid = template["id"]
+    save(client, as_designer, tid, INCIDENT, 1)
+    client.post(f"{TEMPLATES}/{tid}/publish", headers=as_designer, json={"revision": 2})
+    client.post(f"{TEMPLATES}/{tid}/assets", content=png(),
+                headers={**as_designer, "Content-Type": "application/octet-stream"})
+    confirm = {"confirm_name": "Security incident report"}
+    url = f"{TEMPLATES}/{tid}"
+
+    # In use, it's kept: for everyone, and in the database itself.
+    in_use = client.request("DELETE", url, headers=as_manager, json=confirm)
+    assert in_use.status_code == 409
+    with engine.connect() as conn, pytest.raises(DBAPIError, match="published template"):
+        conn.execute(text("DELETE FROM template_versions WHERE number = 1"))
+
+    client.post(f"{url}/retire", headers=as_designer)
+    # Retired, those who build templates still can't delete it.
+    assert client.request("DELETE", url, headers=as_designer, json=confirm).status_code == 403
+    wrong = client.request("DELETE", url, headers=as_manager, json={"confirm_name": "Security"})
+    assert wrong.status_code == 400
+    unconfirmed = client.request("DELETE", url, headers=as_manager, json=confirm)
+    assert unconfirmed.headers["X-Skjald-Reason"] == "step_up_required"
+
+    client.post("/api/auth/confirm-password", headers=as_manager, json={"password": PASSWORD})
+    assert client.request("DELETE", url, headers=as_manager, json=confirm).status_code == 204
+    assert client.get(url, headers=as_designer).status_code == 404
+    for table in ("templates", "template_versions", "template_assets"):
+        assert session.execute(text(f"SELECT count(*) FROM {table}")).scalar() == 0, table
+    session.commit()
+    deleted = json.loads(entries(session, "template.deleted")[0].details)
+    assert deleted["name"] == "Security incident report"
+    assert list(deleted["versions"]) == ["1"] and len(deleted["versions"]["1"]) == 64
 
 
 def test_changes_since_the_newest_version(client, designer, template) -> None:

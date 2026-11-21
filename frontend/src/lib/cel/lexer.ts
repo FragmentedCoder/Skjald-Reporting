@@ -16,6 +16,32 @@ export interface Token {
 
 export class LexError extends Error {}
 
+// Characters a message can't show: controls, spaces of every kind, marks with no
+// width and halves of a pair. They're named by code point instead (U+00A0).
+const UNSEEN = [[0x00, 0x20], [0x7f, 0xa0], [0xad, 0xad], [0x1680, 0x1680], [0x2000, 0x200f], [0x2028, 0x202f],
+  [0x205f, 0x206f], [0x3000, 0x3000], [0xd800, 0xdfff], [0xfe00, 0xfe0f], [0xfeff, 0xfeff]];
+
+/** A character as a message names it: in quotes, or by code point if it can't be seen. */
+export function shown(code: number): string {
+  if (UNSEEN.some(([low, high]) => low <= code && code <= high)) return `U+${code.toString(16).toUpperCase().padStart(4, "0")}`;
+  return `'${String.fromCodePoint(code)}'`;
+}
+
+/** How many characters a text has, as the server counts them: an emoji is one. */
+export function characters(text: string): number {
+  let count = 0;
+  for (let i = 0; i < text.length; i++) {
+    const unit = text.charCodeAt(i);
+    const next = text.charCodeAt(i + 1);
+    if (unit >= 0xd800 && unit <= 0xdbff && next >= 0xdc00 && next <= 0xdfff) i += 1;
+    count += 1;
+  }
+  return count;
+}
+
+/** The place of an index in a text, counted in characters from 1, as the server counts. */
+const position = (expr: string, index: number) => characters(expr.slice(0, index)) + 1;
+
 const PUNCT2 = ["==", "!=", "<=", ">=", "&&", "||"];
 const PUNCT1 = "<>+-*/%!?:.,[]{}()";
 const isIdentStart = (c: string) => /^[_a-zA-Z]$/.test(c);
@@ -53,7 +79,7 @@ function stringEnd(expr: string, i: number): number {
     if (quote.length === 1 && expr[j] === "\n") break;
     j += 1;
   }
-  throw new LexError(`Text starting at position ${i + 1} has no closing quote.`);
+  throw new LexError(`Text starting at position ${position(expr, i)} has no closing quote.`);
 }
 
 function numberEnd(expr: string, i: number): number {
@@ -115,7 +141,7 @@ export function tokenize(expr: string): Token[] {
       tokens.push({ kind: "punct", text: c, start: i, end: i + 1 });
       i += 1;
     } else {
-      throw new LexError(`Unexpected character '${c}' at position ${i + 1}.`);
+      throw new LexError(`Unexpected character ${shown(expr.codePointAt(i) as number)} at position ${position(expr, i)}.`);
     }
   }
   return tokens;

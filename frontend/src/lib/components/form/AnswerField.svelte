@@ -5,23 +5,32 @@
   import X from "@lucide/svelte/icons/x";
   import { instantOf, wallAt } from "#lib/cel/dates.js";
   import RichTextEditor from "#lib/components/builder/RichTextEditor.svelte";
-  import { checkAnswer, cvssScore } from "#lib/templates/answers.js";
+  import { cvssScore } from "#lib/templates/answers.js";
+  import { answerProblem, cellProblem } from "#lib/templates/formChecks.js";
+  import { keepPhoto } from "#lib/templates/localPhotos.js";
   import { COLUMN_TYPES, settingsOf } from "#lib/templates/fields.js";
+  import { peopleFor, type Person } from "#lib/templates/preview.js";
+  import type { Drawn } from "#lib/templates/signature.js";
   import type { Question, RichText } from "#lib/templates/types.js";
   import SignaturePad from "./SignaturePad.svelte";
 
   // One question as the technician answers it, with its own check as they type. Files,
   // photos and signatures stay in the browser here: uploading them is the report's job.
-  let { question, value = $bindable(), required, hidden, invalid, computed, zone = "Europe/Copenhagen" }: {
+  let { question, value = $bindable(), required, hidden, invalid, computed, checked = false, people = [], zone }: {
     question: Question;
     value: unknown;
     required: boolean;
     hidden: boolean;
+    /** The answers have been checked: a required question left empty says so, visited or not. */
+    checked?: boolean;
     /** The question's own rule saying the answer isn't valid. */
     invalid: string | null;
     /** A calculated value, worked out. */
     computed: unknown;
-    zone?: string;
+    /** The people a person question can pick. */
+    people?: Person[];
+    /** The company's time zone, which dates are typed in. */
+    zone: string;
   } = $props();
 
   const s = $derived(settingsOf(question.type, question.settings));
@@ -37,23 +46,20 @@
 
   const empty = $derived(value === null || value === undefined || value === "" || (Array.isArray(value) && value.length === 0)
     || (question.type === "cvss" && !(value as { vector?: string } | null)?.vector));
-  const typeProblem = $derived.by(() => {
-    if (question.type === "cvss") return checkAnswer("cvss", s, (value as { vector?: string } | null)?.vector ?? "");
-    if (question.type === "multi_select" && Array.isArray(value)) {
-      const n = value.length;
-      if (s.min_selected !== null && n < Number(s.min_selected)) return `Choose at least ${s.min_selected}.`;
-      if (s.max_selected !== null && n > Number(s.max_selected)) return `Choose at most ${s.max_selected}.`;
-    }
-    return checkAnswer(question.type, s, value);
-  });
-  const problem = $derived(typeProblem ?? invalid ?? (touched && required && empty ? "This is required." : null));
+  // The answer's own problem. A list's are said in its cells; under the list only once
+  // the answers are checked (too few rows, say, isn't a mistake while rows are being added).
+  const listed = $derived(question.type === "repeating" || question.type === "table");
+  const typeProblem = $derived(listed && !checked ? null : answerProblem(question, value));
+  const problem = $derived(typeProblem ?? invalid ?? ((touched || checked) && required && empty ? "This is required." : null));
 
   // Dates are typed in the company's time zone and kept as an instant.
   function toInput(iso: unknown, date: boolean): string {
     if (typeof iso !== "string" || !iso) return "";
     const w = wallAt(new Date(iso).getTime(), zone);
     const pad = (n: number) => String(n).padStart(2, "0");
-    const day = `${w.year}-${pad(w.month)}-${pad(w.day)}`;
+    // Four digits for the year, as the field writes it: a year half typed (0002 on
+    // the way to 2026) then comes back as it was typed, and the typing isn't disturbed.
+    const day = `${String(w.year).padStart(4, "0")}-${pad(w.month)}-${pad(w.day)}`;
     return date ? day : `${day}T${pad(w.hour)}:${pad(w.minute)}`;
   }
   function fromInput(text: string): string | null {
@@ -81,7 +87,7 @@
   function files(event: Event) {
     const list = (event.currentTarget as HTMLInputElement).files;
     if (!list?.length) return;
-    const chosen = Array.from(list).map((f) => (question.type === "photo" ? URL.createObjectURL(f) : f.name));
+    const chosen = Array.from(list).map((f) => (question.type === "photo" ? keepPhoto(f) : f.name));
     value = s.multiple ? [...(Array.isArray(value) ? value : []), ...chosen].slice(0, Number(s.max_photos ?? s.max_files ?? 10)) : chosen.slice(0, 1);
   }
 
@@ -100,7 +106,8 @@
       {#each (c.settings?.options ?? []) as Option[] as o (o.value)}<option value={o.value}>{o.label}</option>{/each}
     </select>
   {:else if c.type === "datetime"}
-    <input class="input" type="datetime-local" aria-label={c.label} value={toInput(c.current, false)} oninput={(e) => c.set(fromInput(e.currentTarget.value))} />
+    {@const day = c.settings?.mode === "date"}
+    <input class="input" type={day ? "date" : "datetime-local"} aria-label={c.label} value={toInput(c.current, day)} oninput={(e) => c.set(fromInput(e.currentTarget.value))} />
   {:else}
     <input class="input" aria-label={c.label} value={String(c.current ?? "")} oninput={(e) => c.set(e.currentTarget.value)} />
   {/if}
@@ -138,6 +145,15 @@
             <option value="">Choose…</option>
             {#each options as o (o.value)}<option value={o.value}>{o.label}</option>{/each}
           </select>
+        {:else if question.type === "person"}
+          {@const choices = peopleFor(question, people)}
+          {@const picked = (value as Person | null)?.id ?? ""}
+          <select class="input" aria-labelledby="{id}-label" value={picked}
+            onchange={(e) => (value = choices.find((p) => p.id === e.currentTarget.value) ?? null)}>
+            <option value="">Choose…</option>
+            {#each choices as p (p.id)}<option value={p.id}>{p.display_name}{p.job_title ? `, ${p.job_title}` : ""}</option>{/each}
+            {#if picked && !choices.some((p) => p.id === picked)}<option value={picked}>{(value as Person).display_name}</option>{/if}
+          </select>
         {:else if question.type === "multi_select"}
           <span class="choices">
             {#each options as o (o.value)}
@@ -166,19 +182,19 @@
           {/if}
           <span class="small muted">Here they stay in your browser. In a report they're uploaded, scanned and encrypted{question.type === "photo" ? ", and their location data removed" : ""}.</span>
         {:else if question.type === "signature"}
-          <SignaturePad bind:value={() => (value as string | null) ?? null, (v) => (value = v)} label={question.label} />
+          <SignaturePad bind:value={() => (value as Drawn | null) ?? null, (v) => (value = v)} label={question.label} />
         {:else if question.type === "repeating" || question.type === "table"}
           {@const fixed = question.type === "table" ? ((s.rows ?? []) as { key: string; label: string }[]) : null}
           <div class="grid-wrap">
             <table class="grid">
-              <thead><tr>{#if fixed}<th></th>{/if}{#each columns as c (c.key)}<th>{c.label}</th>{/each}{#if !fixed}<th><span class="visually-hidden">Remove</span></th>{/if}</tr></thead>
+              <thead><tr>{#if fixed}<th></th>{/if}{#each columns as c (c.key)}<th>{c.label}{c.type === "number" && c.settings?.unit ? ` (${c.settings.unit})` : ""}</th>{/each}{#if !fixed}<th><span class="visually-hidden">Remove</span></th>{/if}</tr></thead>
               <tbody>
                 {#each fixed ?? rows as row, r (r)}
                   <tr>
                     {#if fixed}<th scope="row">{(row as { label: string }).label}</th>{/if}
                     {#each columns as c (c.key)}
                       {@const current = (rows[r] ?? {})[c.key]}
-                      {@const message = checkAnswer(c.type, settingsOf(c.type, c.settings ?? {}), current)}
+                      {@const message = current === null || current === undefined || current === "" ? (checked ? cellProblem(c, current) : null) : cellProblem(c, current)}
                       <td class:bad={message}>
                         {@render input(cell(COLUMN_TYPES.includes(c.type) ? c.type : "text", current, (v) => setGridCell(fixed?.length ?? null, r, c.key, v),
                           `${c.label}, row ${r + 1}`, settingsOf(c.type, c.settings ?? {})))}

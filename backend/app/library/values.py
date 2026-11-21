@@ -78,43 +78,89 @@ def parse_value(kind: str, raw: Any) -> dict[str, Any]:
     return MODELS[kind].model_validate(raw).model_dump()
 
 
+def _delimiter(line: str) -> str:
+    """Commas, unless the header has none and is split by semicolons (as spreadsheets
+    write CSV where the comma is the decimal sign) or tabs."""
+    if "," in line:
+        return ","
+    return ";" if ";" in line else "\t" if "\t" in line else ","
+
+
+def _keyed(rows: Iterable[tuple[str, list[str]]]) -> dict[str, list[str]]:
+    """The rows by key: each needs one, and one of its own."""
+    found: dict[str, list[str]] = {}
+    for number, (key, cells) in enumerate(rows, start=1):
+        if not key:
+            raise ValueError(f"Row {number} has no key.")
+        if key in found:
+            raise ValueError(f"The key {key!r} is there twice: each row needs a key of its "
+                             "own.")
+        found[key] = cells
+    return found
+
+
 def table_from_csv(text: str) -> dict[str, Any]:
     """A CSV file's rows as a table: the first row names the columns, the first column
-    holds the keys."""
-    rows = list(csv.reader(io.StringIO(text.lstrip("﻿"))))
+    holds the keys. Semicolons or tabs separate where the header has no commas."""
+    text = text.lstrip("\ufeff").replace("\r\n", "\n").replace("\r", "\n")
+    first = next((line for line in text.split("\n") if line.strip()), "")
+    try:
+        rows = list(csv.reader(io.StringIO(text), delimiter=_delimiter(first), strict=True))
+    except csv.Error as exc:
+        raise ValueError("That file can't be read as CSV: check its quotes, and that no cell "
+                         "is longer than 2,000 characters.") from exc
     rows = [row for row in rows if any(cell.strip() for cell in row)]
     if len(rows) < 2 or len(rows[0]) < 2:
         raise ValueError("The file needs a header row and at least one row, each with a key "
                          "and a value.")
     header = [cell.strip() for cell in rows[0]]
     width = len(header)
-    found: dict[str, list[str]] = {}
-    for row in rows[1:]:
-        cells = [cell.strip() for cell in row] + [""] * (width - len(row))
-        found[cells[0]] = cells[1:width]
+    for number, row in enumerate(rows[1:], start=1):
+        if any(cell.strip() for cell in row[width:]):
+            raise ValueError(f"Row {number} has more cells than the header names columns.")
+    found = _keyed((cells[0], cells[1:width]) for cells in (
+        [cell.strip() for cell in row[:width]] + [""] * (width - len(row)) for row in rows[1:]))
     return parse_value("table", {"key_label": header[0], "columns": header[1:], "rows": found})
+
+
+def _cell(value: Any) -> str:
+    """A JSON value as a cell: text and numbers as written, nothing as empty."""
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, str | int | float):
+        return str(value)
+    raise ValueError("Each value must be text or a number, not a list or an object.")
 
 
 def table_from_json(text: str) -> dict[str, Any]:
     """{"key": "value"}, {"key": {"column": "value"}} or [{"key": ..., "column": ...}]."""
-    data = json.loads(text)
-    if isinstance(data, dict) and all(isinstance(v, str) for v in data.values()):
-        return parse_value("table", {"columns": ["Value"],
-                                     "rows": {k: [v] for k, v in data.items()}})
-    records: list[dict[str, Any]]
-    if isinstance(data, dict):
-        records = [{"key": k, **v} for k, v in data.items() if isinstance(v, dict)]
-        key_name = "key"
-    elif isinstance(data, list) and data and all(isinstance(r, dict) for r in data):
-        records = data
-        key_name = next(iter(records[0]))
-    else:
-        raise ValueError("Use an object of keys and values, or a list of objects.")
-    columns = [c for c in records[0] if c != key_name]
-    return parse_value("table", {
-        "key_label": key_name, "columns": columns,
-        "rows": {str(r.get(key_name, "")): [str(r.get(c, "")) for c in columns] for r in records},
-    })
+    try:
+        data = json.loads(text.lstrip("\ufeff"))
+    except RecursionError as exc:
+        raise ValueError("That file is nested too deeply to be a table.") from exc
+    shape = "Use an object of keys and values, or a list of objects."
+    if isinstance(data, dict) and data:
+        inner = [isinstance(v, dict) for v in data.values()]
+        if not any(inner):
+            return parse_value("table", {"columns": ["Value"], "rows": _keyed(
+                (str(k), [_cell(v)]) for k, v in data.items())})
+        if not all(inner):
+            raise ValueError("Give every key a value, or every key an object of columns, "
+                             "not some of each.")
+        columns = list(next(iter(data.values())))
+        if not columns:
+            raise ValueError(shape)
+        return parse_value("table", {"columns": columns, "rows": _keyed(
+            (str(k), [_cell(v.get(c)) for c in columns]) for k, v in data.items())})
+    if isinstance(data, list) and data and all(isinstance(r, dict) for r in data):
+        key_name, *columns = list(data[0]) or [""]
+        if not columns:
+            raise ValueError("Each object needs a key first, then at least one value.")
+        return parse_value("table", {"key_label": key_name, "columns": columns, "rows": _keyed(
+            (_cell(r.get(key_name)), [_cell(r.get(c)) for c in columns]) for r in data)})
+    raise ValueError(shape)
 
 
 def library_names(entries: Iterable[LibraryEntry]) -> dict[str, str]:

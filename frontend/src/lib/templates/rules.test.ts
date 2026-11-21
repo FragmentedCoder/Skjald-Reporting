@@ -7,6 +7,7 @@ import {
   valueFromCel,
   valueToCel,
   type Condition,
+  type Group,
   type Shape,
   type ValueRule,
 } from "./rules";
@@ -21,11 +22,17 @@ const TYPES: Record<string, string> = {
   "answers.detected": "timestamp",
   "answers.tags": "list<string>",
   "answers.rows": "list<map<string, dyn>>",
+  "answers.costs": "list<map<string, dyn>>",
 };
+// A list's columns by the list they're in (as catalogue.ts shapes() gives them): both
+// lists have a column "value", text in one and a number in the other.
 const SHAPES: Record<string, Shape> = {
   ...Object.fromEntries(Object.entries(TYPES).map(([n, t]) => [n, shapeOf(t)])),
-  "row.attempts": "whole",
-  "row.ip": "text",
+  "answers.rows>row.attempts": "whole",
+  "answers.rows>row.ip": "text",
+  "answers.rows>row.value": "text",
+  "answers.costs>row.value": "number",
+  "answers.costs>row.paid": "bool",
 };
 const engine = new Engine(TYPES);
 
@@ -54,6 +61,10 @@ const CONDITIONS: [Condition, string][] = [
   [c("answers.rows", "rows_at_least", { count: 3 }), "answers.rows.size() >= 3"],
   [c("answers.rows", "any_row", { row: c("row.attempts", "gt", { value: 1000 }) }), "answers.rows.exists(row, row.attempts > 1000)"],
   [c("answers.rows", "every_row", { row: c("row.ip", "filled") }), 'answers.rows.all(row, row.ip != "")'],
+  // A column is read as its own list has it, whatever another list's column of that name is.
+  [c("answers.costs", "any_row", { row: c("row.value", "ge", { value: 5 }) }), "answers.costs.exists(row, row.value >= 5.0)"],
+  [c("answers.rows", "any_row", { row: c("row.value", "eq", { value: "web" }) }), 'answers.rows.exists(row, row.value == "web")'],
+  [c("answers.costs", "every_row", { row: c("row.paid", "yes") }), "answers.costs.all(row, row.paid)"],
   [c("answers.rows", "rows_where_at_least", { count: 2, row: c("row.ip", "starts", { value: "10." }) }),
     'answers.rows.filter(row, row.ip.startsWith("10.")).size() >= 2'],
   [{ kind: "all", items: [c("answers.found", "yes"), c("answers.cvss", "ge", { value: 9 })] }, "answers.found && answers.cvss >= 9.0"],
@@ -76,9 +87,32 @@ describe("conditions", () => {
     expect(conditionFromCel(cel, SHAPES)).toEqual(condition);
   });
 
+  it("writes a rule the simplest way that means the same, so it reads back", () => {
+    const yes = c("answers.found", "yes");
+    const high = c("answers.cvss", "ge", { value: 9 });
+    const titled = c("answers.title", "filled");
+    const simpler: [Condition, string, Condition][] = [
+      // NOT on "is yes" is "is no".
+      [{ kind: "not", item: yes }, "!answers.found", c("answers.found", "no")],
+      [{ kind: "not", item: { kind: "not", item: high } }, "answers.cvss >= 9.0", high],
+      // The group "Add a group" makes, while it holds one condition.
+      [{ kind: "all", items: [yes, { kind: "any", items: [high] }] }, "answers.found && answers.cvss >= 9.0", { kind: "all", items: [yes, high] }],
+      // A group inside a group of its own kind.
+      [{ kind: "any", items: [yes, { kind: "any", items: [high, titled] }] }, 'answers.found || answers.cvss >= 9.0 || answers.title != ""', { kind: "any", items: [yes, high, titled] }],
+    ];
+    for (const [built, cel, read] of simpler) {
+      expect(conditionToCel(built, SHAPES)).toBe(cel);
+      expect(conditionFromCel(cel, SHAPES)).toEqual(read);
+    }
+    // A date between two days, which the date list offers too.
+    const between = c("answers.detected", "between", { value: "2026-10-01", until: "2026-10-31" });
+    expect(conditionToCel(between, SHAPES)).toBe('answers.detected >= date("2026-10-01") && answers.detected <= date("2026-10-31")');
+    expect(conditionFromCel(conditionToCel(between, SHAPES), SHAPES)).toEqual(between);
+  });
+
   it("reads back what it wrote, whatever the spacing", () => {
     expect(conditionFromCel("answers.found&&answers.cvss   >= 9.0", SHAPES)).toBeNull();
-    expect(conditionFromCel("answers.found &&\n  answers.cvss >= 9.0", SHAPES)).toEqual(CONDITIONS[22][0]);
+    expect(conditionFromCel("answers.found &&\n  answers.cvss >= 9.0", SHAPES)).toEqual(CONDITIONS.find(([, cel]) => cel === "answers.found && answers.cvss >= 9.0")?.[0]);
   });
 
   it.each([
@@ -94,10 +128,13 @@ describe("conditions", () => {
   });
 });
 
+// An IF's condition is held as a group, even of one: the editor adds to its list.
+const all = (...items: Condition[]): Group => ({ kind: "all", items });
+
 const VALUES: [ValueRule, Shape, string][] = [
   [{ kind: "fixed", value: "Low" }, "text", '"Low"'],
   [{ kind: "fixed", value: 2 }, "number", "2.0"],
-  [{ kind: "if", branches: [{ when: c("answers.cvss", "ge", { value: 9 }), value: "Critical" }, { when: c("answers.cvss", "ge", { value: 7 }), value: "High" }], otherwise: "Lower" },
+  [{ kind: "if", branches: [{ when: all(c("answers.cvss", "ge", { value: 9 })), value: "Critical" }, { when: all(c("answers.cvss", "ge", { value: 7 })), value: "High" }], otherwise: "Lower" },
     "text", 'answers.cvss >= 9.0 ? "Critical" : answers.cvss >= 7.0 ? "High" : "Lower"'],
   [{ kind: "if", branches: [{ when: { kind: "any", items: [c("answers.found", "yes"), c("answers.monitored", "yes")] }, value: "critical" }], otherwise: "info" },
     "text", 'answers.found || answers.monitored ? "critical" : "info"'],
@@ -107,7 +144,7 @@ const VALUES: [ValueRule, Shape, string][] = [
     "text", 'switch(answers.count, {1: "One"}, "Several")'],
   [{ kind: "switch", name: "answers.status", cases: [{ match: "blocked", value: 1.5 }], otherwise: 0 },
     "number", 'switch(answers.status, {"blocked": 1.5}, 0.0)'],
-  [{ kind: "if", branches: [{ when: c("answers.found", "yes"), value: true }], otherwise: false }, "bool", "answers.found ? true : false"],
+  [{ kind: "if", branches: [{ when: all(c("answers.found", "yes")), value: true }], otherwise: false }, "bool", "answers.found ? true : false"],
 ];
 
 describe("values", () => {
@@ -115,6 +152,23 @@ describe("values", () => {
     expect(valueToCel(rule, shape, SHAPES)).toBe(cel);
     expect(engine.check(cel)).toBe({ text: "string", number: "double", bool: "bool" }[shape as string]);
     expect(valueFromCel(cel, shape, SHAPES)).toEqual(rule);
+  });
+
+  it("reads another name's value, as a date question starting when the report is started does", () => {
+    expect(valueToCel({ kind: "name", name: "answers.status" }, "text", SHAPES)).toBe("answers.status");
+    expect(valueFromCel("answers.status", "text", SHAPES)).toEqual({ kind: "name", name: "answers.status" });
+    expect(valueFromCel("answers.nothing_here", "text", SHAPES)).toBeNull();
+  });
+
+  it("writes each SWITCH case once: the first of a value is the one that counts", () => {
+    const rule: ValueRule = { kind: "switch", name: "answers.status", cases: [{ match: "", value: "a" }, { match: "", value: "b" }, { match: "x", value: "c" }], otherwise: "d" };
+    expect(valueToCel(rule, "text", SHAPES)).toBe('switch(answers.status, {"": "a", "x": "c"}, "d")');
+    expect(engine.check(valueToCel(rule, "text", SHAPES))).toBe("string");
+  });
+
+  it("reads each IF's condition as a group, so a condition can be added to it", () => {
+    const rule = valueFromCel('answers.found ? "yes" : "no"', "text", SHAPES);
+    expect(rule).toMatchObject({ kind: "if", branches: [{ when: { kind: "all", items: [{ kind: "compare", name: "answers.found" }] } }] });
   });
 
   it("leaves other expressions as text", () => {

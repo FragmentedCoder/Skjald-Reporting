@@ -141,14 +141,20 @@ class CustomerSummary(BaseModel):
     # Only with full sight.
     people: int | None = None
     logo_url: str | None = None
+    address: str | None = None
+    language: str | None = None
+    created_at: datetime | None = None
+    # People assigned as technicians and as reviewers (someone may be both), and how
+    # many sites and contacts it has: for the list of customers.
+    technicians: int | None = None
+    reviewers: int | None = None
+    sites_count: int | None = None
+    contacts_count: int | None = None
 
 
 class CustomerDetail(CustomerSummary):
     # Only with full sight.
-    address: str | None = None
-    language: str | None = None
     retention_months: int | None = None
-    created_at: datetime | None = None
     custom: dict[str, Any] | None = None
     sites: list[SiteOut] | None = None
     contacts: list[ContactOut] | None = None
@@ -228,7 +234,8 @@ def _project_counts(db: Session, user_id: int) -> dict[int, tuple[int, int]]:
 
 
 def _summary(db: Session, keyring: Keyring, customer: Customer, level: Visibility,
-             counts: dict[int, tuple[int, int]], people: dict[int, int]) -> dict[str, Any]:
+             counts: dict[int, tuple[int, int]], tallies: dict[int, dict[str, int]]
+             ) -> dict[str, Any]:
     details = keyring.details(customer)
     fields: dict[str, Any] = {"id": customer.id, "name": details["name"], "visibility": level}
     if level != "names":
@@ -236,15 +243,35 @@ def _summary(db: Session, keyring: Keyring, customer: Customer, level: Visibilit
         fields |= {"active_projects": active, "archived_projects": archived}
     if level == "full":
         fields |= {"cvr": details["cvr"], "logo_url": _logo_url(db, customer.id),
-                   "people": people.get(customer.id, 0)}
+                   "address": details["address"], "language": customer.language,
+                   "created_at": customer.created_at,
+                   **tallies.get(customer.id, dict.fromkeys(TALLIES, 0))}
     return fields
 
 
-def _people_counts(db: Session) -> dict[int, int]:
-    """How many people are assigned to each customer."""
-    rows = db.execute(select(CustomerAssignment.customer_id, func.count())
-                      .group_by(CustomerAssignment.customer_id))
-    return {customer_id: count for customer_id, count in rows}
+TALLIES = ("people", "technicians", "reviewers", "sites_count", "contacts_count")
+
+
+def _tallies(db: Session) -> dict[int, dict[str, int]]:
+    """Per customer: the people assigned to it, as technicians and as reviewers, and how
+    many sites and contacts it has."""
+    found: dict[int, dict[str, int]] = {}
+
+    def of(customer_id: int) -> dict[str, int]:
+        return found.setdefault(customer_id, dict.fromkeys(TALLIES, 0))
+
+    for customer_id, as_technician, as_reviewer in db.execute(select(
+            CustomerAssignment.customer_id, CustomerAssignment.as_technician,
+            CustomerAssignment.as_reviewer)):
+        tally = of(customer_id)
+        tally["people"] += 1
+        tally["technicians"] += int(as_technician)
+        tally["reviewers"] += int(as_reviewer)
+    for model, key in ((CustomerSite, "sites_count"), (CustomerContact, "contacts_count")):
+        for customer_id, count in db.execute(select(model.customer_id, func.count())
+                                             .group_by(model.customer_id)):
+            of(customer_id)[key] = count
+    return found
 
 
 def _people(db: Session, user_ids: list[int]) -> list[Person]:
@@ -283,7 +310,7 @@ def contacts_of(db: Session, sealer: Sealer, customer_id: int) -> list[ContactOu
 def _detail(db: Session, record: UserSession, keyring: Keyring, customer: Customer,
             level: Visibility) -> CustomerDetail:
     summary = _summary(db, keyring, customer, level, _project_counts(db, record.user_id),
-                       _people_counts(db))
+                       _tallies(db))
     if level != "full":
         return CustomerDetail(**summary)
     roles = roles_of(db, record.user_id)
@@ -296,11 +323,8 @@ def _detail(db: Session, record: UserSession, keyring: Keyring, customer: Custom
     details = keyring.details(customer)
     return CustomerDetail(
         **summary,
-        address=details["address"],
         custom=shown_values(db, "customer", details.get("custom")),
-        language=customer.language,
         retention_months=customer.retention_months,
-        created_at=customer.created_at,
         sites=sites_of(db, sealer, customer.id),
         contacts=contacts_of(db, sealer, customer.id),
         assigned=assigned,
@@ -321,7 +345,7 @@ def list_customers(record: FullSession, db: DB, q: str = "") -> list[CustomerSum
     sight = sights(roles_of(db, record.user_id))
     assigned = assigned_customer_ids(db, record.user_id)
     counts = _project_counts(db, record.user_id)
-    people = _people_counts(db)
+    tallies = _tallies(db)
     keyring = Keyring()
     needle = q.strip().casefold().replace(" ", "")
     found = []
@@ -329,7 +353,7 @@ def list_customers(record: FullSession, db: DB, q: str = "") -> list[CustomerSum
         level = level_for(sight, customer.id in assigned)
         if level is None:
             continue
-        summary = CustomerSummary(**_summary(db, keyring, customer, level, counts, people))
+        summary = CustomerSummary(**_summary(db, keyring, customer, level, counts, tallies))
         details = keyring.details(customer)
         haystack = (details["name"] + " " + (details["cvr"] or "")).casefold().replace(" ", "")
         if needle in haystack:

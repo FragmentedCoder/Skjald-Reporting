@@ -2,7 +2,7 @@
 // the report's context by what it is, the library by its name. Repeating groups carry
 // their columns, and dropdowns their choices, so a rule can pick from them.
 
-import { settingsOf } from "./fields";
+import { settingsOf, typeCode } from "./fields";
 import { CONTEXT_GROUPS, questionNames } from "./names";
 import { shapeOf, type Shape } from "./rules";
 import { questionsOf, type TemplateContent } from "./types";
@@ -27,6 +27,13 @@ export interface NameEntry {
   shape: Shape;
   choices?: Choice[];
   columns?: Column[];
+  /** For an answer, its question's field type. */
+  field?: string;
+  /**
+   * For a name read from a list's rows (rowNames): the list, and the column read, from
+   * the first row or, with every, from each row; no column for how many rows.
+   */
+  of?: { list: string; column: string | null; every?: boolean };
 }
 
 const PARTS: Record<string, string> = {
@@ -36,6 +43,15 @@ const PARTS: Record<string, string> = {
   ".filled": "is filled in",
   ".printed": "as printed",
   ".count": "how many",
+  ".display_name": "name",
+  ".first_name": "first name",
+  ".middle_name": "middle name",
+  ".last_name": "last name",
+  ".job_title": "job title",
+  ".department": "department",
+  ".company": "company",
+  ".email": "email",
+  ".phone": "phone",
 };
 
 type RawColumn = { key: string; label: string; type: string; settings?: Record<string, unknown> };
@@ -56,10 +72,11 @@ function columnType(column: RawColumn): string {
   return "string";
 }
 
-export function catalogue(content: TemplateContent, library: Record<string, string> = {}, labels: Record<string, string> = {}): NameEntry[] {
+/** Every name, labelled and grouped: a template's answers first (none without a template). */
+export function catalogue(content: TemplateContent | null, library: Record<string, string> = {}, labels: Record<string, string> = {}): NameEntry[] {
   const entries: NameEntry[] = [];
   const seen = new Set<string>();
-  for (const q of questionsOf(content)) {
+  for (const q of content ? questionsOf(content) : []) {
     const settings = settingsOf(q.type, q.settings);
     for (const [name, type] of Object.entries(questionNames(q))) {
       if (seen.has(name)) continue;
@@ -73,6 +90,7 @@ export function catalogue(content: TemplateContent, library: Record<string, stri
         shape: shapeOf(type),
         choices: q.type === "dropdown" || q.type === "multi_select" ? (settings.options as Choice[]) : undefined,
         columns: q.type === "repeating" || q.type === "table" ? columnsOf(settings) : undefined,
+        field: q.type,
       });
     }
   }
@@ -88,12 +106,44 @@ export function catalogue(content: TemplateContent, library: Record<string, stri
   return entries;
 }
 
-/** The shapes of every name, row columns included (as row.<key>), for rules.ts. */
+const COLUMN_TYPES: Record<Shape, string> = { text: "string", number: "double", whole: "int", bool: "bool", date: "timestamp", texts: "list<string>", rows: "dyn", other: "dyn" };
+
+/**
+ * What text can print from a repeating group's or table's rows, which can't be printed
+ * whole: how many rows there are, each column of the first row (answers.x[0], counting
+ * from 0), and a text column from every row, joined.
+ */
+export function rowNames(entry: NameEntry): NameEntry[] {
+  if (entry.shape !== "rows" || !entry.columns) return [];
+  const base = { group: entry.group, field: entry.field };
+  return [
+    { ...base, name: `size(${entry.name})`, label: `${entry.label}: how many rows`, type: "int", shape: "whole", of: { list: entry.name, column: null } },
+    ...entry.columns.map((c): NameEntry => ({
+      ...base, name: `${entry.name}[0].${c.key}`, label: `${entry.label}: ${c.label}, first row`, type: COLUMN_TYPES[c.shape], shape: c.shape, choices: c.choices,
+      of: { list: entry.name, column: c.key },
+    })),
+    ...entry.columns.filter((c) => c.shape === "text").map((c): NameEntry => ({
+      ...base, name: `${entry.name}.map(row, row.${c.key}).join(", ")`, label: `${entry.label}: ${c.label}, every row`, type: "string", shape: "text",
+      of: { list: entry.name, column: c.key, every: true },
+    })),
+  ];
+}
+
+/** A name as lists to choose from show it: an answer with its question's shorthand. */
+export function entryChoice(entry: NameEntry): string {
+  return entry.field ? `${typeCode(entry.field)} · ${entry.label}` : entry.label;
+}
+
+/**
+ * The shapes of every name, for rules.ts. A list's columns are in it as
+ * "<list>>row.<key>", since two lists may each have a column of one key and different
+ * kinds; rules.ts reads a row's column by its own list (inRows).
+ */
 export function shapes(entries: NameEntry[]): Record<string, Shape> {
   const found: Record<string, Shape> = {};
   for (const entry of entries) {
     found[entry.name] = entry.shape;
-    for (const column of entry.columns ?? []) found[`row.${column.key}`] ??= column.shape;
+    for (const column of entry.columns ?? []) found[`${entry.name}>row.${column.key}`] = column.shape;
   }
   return found;
 }

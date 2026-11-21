@@ -31,6 +31,9 @@ const field = (
 ): FieldType => ({ label, hint, group, settings, names, asks });
 
 const none = () => ({});
+/** What a picked person gives expressions, as author and reviewer do. */
+export const PERSON_PARTS = ["display_name", "first_name", "middle_name", "last_name", "job_title", "department", "company", "email", "phone"] as const;
+const person = () => ({ ".filled": "bool", ...Object.fromEntries(PERSON_PARTS.map((part) => [`.${part}`, "string"])) });
 const pattern = () => ({ pattern: null, pattern_message: "" });
 
 export const FIELD_TYPES: Record<string, FieldType> = {
@@ -39,6 +42,7 @@ export const FIELD_TYPES: Record<string, FieldType> = {
   dropdown: field("Dropdown", "Pick one from a list", "Choices", () => ({ options: [{ value: "option_1", label: "Option 1" }, { value: "option_2", label: "Option 2" }] }), one("string")),
   multi_select: field("Multi-select", "Pick any from a list", "Choices", () => ({ options: [{ value: "option_1", label: "Option 1" }, { value: "option_2", label: "Option 2" }], min_selected: null, max_selected: null }), one("list<string>")),
   yes_no: field("Yes or no", "A single choice", "Choices", () => ({ yes_label: "Yes", no_label: "No" }), one("bool")),
+  person: field("Person", "A colleague, picked from Skjald's users", "Choices", () => ({ who: "technicians" }), person),
   number: field("Number", "Scores, counts, amounts", "Numbers and dates", () => ({ whole: false, min: null, max: null, decimals: 1, unit: "" }), (s) => ({ "": s.whole ? "int" : "double" })),
   datetime: field("Date and time", "When something happened", "Numbers and dates", () => ({ mode: "datetime" }), one("timestamp")),
   cvss: field("CVSS", "Vector and score, 3.1 or 4.0", "Numbers and dates", () => ({ versions: ["3.1", "4.0"] }), () => ({ ".score": "double", ".vector": "string", ".severity": "string" })),
@@ -58,6 +62,45 @@ export const FIELD_TYPES: Record<string, FieldType> = {
   table: field("Table", "Fixed rows to fill in", "Structure", () => ({ rows: [{ key: "row_1", label: "Row 1" }], columns: [{ key: "value", label: "Value", type: "text", required: false, settings: FIELD_TYPES.text.settings() }] }), one("list<map<string, dyn>>")),
   heading: field("Heading", "Splits a step into parts", "Structure", none, () => ({}), false),
 };
+
+/**
+ * Each field type's two-letter shorthand, shown beside questions and their names so
+ * two with similar labels or names are told apart at a glance, and offered as the
+ * start of a variable name (yn_attacker_ip beside tb_attacker_ip).
+ */
+export const TYPE_CODES: Record<string, string> = {
+  text: "ST",
+  rich_text: "LT",
+  dropdown: "DD",
+  multi_select: "MS",
+  yes_no: "YN",
+  person: "PE",
+  number: "NU",
+  datetime: "DT",
+  cvss: "CV",
+  calculated: "CA",
+  ip: "IP",
+  hostname: "HN",
+  mac: "MA",
+  serial: "SN",
+  email: "EM",
+  phone: "PN",
+  secret: "SE",
+  photo: "PH",
+  file: "FI",
+  barcode: "BC",
+  signature: "SG",
+  repeating: "RG",
+  table: "TB",
+  heading: "HD",
+};
+
+export const typeCode = (type: string): string => TYPE_CODES[type] ?? TYPE_CODES.text;
+
+/** A question as lists to choose from show it: shorthand, label and variable name. */
+export function questionChoice(q: { type: string; label: string; key: string | null }): string {
+  return `${typeCode(q.type)} · ${q.label}${q.key ? ` (${q.key})` : ""}`;
+}
 
 export const FIELD_GROUPS: FieldGroup[] = ["Text", "Choices", "Numbers and dates", "Technical", "Files and signing", "Structure"];
 

@@ -173,8 +173,9 @@ def test_business_details_can_be_filled_in_and_cleared(astrid, session) -> None:
     filled = browser.patch("/api/account", headers=csrf, json={
         "first_name": "Astrid", "middle_name": "Marie", "last_name": "Fjeld",
         "job_title": "Senior technician", "department": "Field service",
-        "phone": "+45 12 34 56 78",
+        "company": "Fjeldsted Sikkerhed ApS", "phone": "+45 12 34 56 78",
     }).json()
+    assert filled["company"] == "Fjeldsted Sikkerhed ApS"
     assert (filled["first_name"], filled["last_name"], filled["phone"]) == (
         "Astrid", "Fjeld", "+45 12 34 56 78"
     )
@@ -226,6 +227,29 @@ def test_a_huge_picture_is_refused(astrid) -> None:
     big = browser.put("/api/account/avatar", content=b"\0" * (2 * 1024 * 1024 + 1),
                       headers=csrf | {"Content-Type": "application/octet-stream"})
     assert big.status_code == 400 and "2 MB" in big.json()["detail"]
+
+
+# app.images silences Pillow's warning for pictures over half the limit as it's imported;
+# pytest drops filters set while it collects, so the test sets it again.
+@pytest.mark.filterwarnings("ignore::PIL.Image.DecompressionBombWarning")
+def test_a_picture_of_too_many_pixels_is_refused(astrid) -> None:
+    """Pillow alone warns above its limit and refuses only at twice it: a 5 KB file
+    of 80 million pixels would be decoded, at about a gigabyte of memory."""
+    browser, csrf = astrid
+    headers = csrf | {"Content-Type": "application/octet-stream"}
+
+    def bitmap(width: int, height: int) -> bytes:
+        out = io.BytesIO()
+        Image.new("1", (width, height)).save(out, format="PNG")
+        return out.getvalue()
+
+    refused = browser.put("/api/account/avatar", content=bitmap(6400, 6300), headers=headers)
+    assert refused.status_code == 400
+    assert refused.json()["detail"] == (
+        "The image has more than 40 million pixels. Use a smaller one.")
+    # Under the limit it's taken, though over Pillow's own (half of Skjald's).
+    taken = browser.put("/api/account/avatar", content=bitmap(6000, 5000), headers=headers)
+    assert taken.status_code == 200
 
 
 def test_pictures_need_a_signed_in_user(astrid, new_client) -> None:

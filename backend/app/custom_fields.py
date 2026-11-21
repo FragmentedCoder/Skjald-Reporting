@@ -8,11 +8,13 @@ are plain; the values go into the customer's or project's sealed details, under
 "custom", so they're sealed with the customer's key like the rest. Templates read
 them as customer.custom.<key> and project.custom.<key>. A field's key and type never
 change once made, since templates read them; a field no longer wanted is archived,
-which keeps the values already filled in.
+which keeps the values already filled in. A change says which state of the field it
+was made from, and is refused if someone has changed the field since (409).
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import re
@@ -20,7 +22,7 @@ from datetime import date, datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, StringConstraints, field_validator, model_validator
 from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, UniqueConstraint, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
@@ -42,6 +44,7 @@ CEL_TYPES: dict[str, str] = {
 MAX_FIELDS = 100
 _EMAIL = re.compile(r"^[^@\s]{1,64}@[^@\s]+\.[^@\s]+$")
 _PHONE = re.compile(r"^\+?[0-9 ()./-]{3,30}$")
+_DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 
 
 class CustomField(Base):
@@ -76,13 +79,17 @@ def custom_names(db: Session) -> dict[str, str]:
             for f in db.scalars(select(CustomField).where(CustomField.archived.is_(False)))}
 
 
-def _value(field: CustomField, raw: Any) -> Any:
-    """One value, checked and tidied for its field; ValueError says what's wrong."""
+def _value(field: CustomField, raw: Any, held: Any = None) -> Any:
+    """One value, checked and tidied for its field; ValueError says what's wrong. The
+    value the record holds already (`held`) is kept as it is: forms send every value
+    back, and a dropdown's option may have been removed since it was chosen."""
     label = field.label
     if field.type in ("text", "long_text", "email", "phone", "dropdown", "date"):
         if not isinstance(raw, str):
             raise ValueError(f"{label} takes text.")
         text = raw.strip()
+        if text == held:
+            return text
         if field.type == "text" and len(text) > 500:
             raise ValueError(f"{label} takes at most 500 characters.")
         if field.type == "long_text" and len(text) > 5000:
@@ -94,15 +101,25 @@ def _value(field: CustomField, raw: Any) -> Any:
         if field.type == "dropdown" and text not in json.loads(field.options):
             raise ValueError(f"Choose one of {label}'s options.")
         if field.type == "date":
+            # Year, month and day, as the forms send it: fromisoformat alone also takes
+            # 20270301 and week dates (2027-W09-1), which nothing that reads it expects.
             try:
+                if not _DATE.fullmatch(text):
+                    raise ValueError
                 date.fromisoformat(text)
             except ValueError:
-                raise ValueError(f"{label} needs a date.") from None
+                raise ValueError(f"{label} needs a date, such as 2027-03-01.") from None
         return text
     if field.type == "number":
-        if isinstance(raw, bool) or not isinstance(raw, int | float) or not math.isfinite(raw):
+        if isinstance(raw, bool) or not isinstance(raw, int | float):
             raise ValueError(f"{label} takes a number.")
-        return float(raw)
+        try:
+            number = float(raw)
+        except OverflowError:  # a whole number of hundreds of digits
+            number = math.inf
+        if not math.isfinite(number):
+            raise ValueError(f"{label} takes a number.")
+        return number
     if not isinstance(raw, bool):
         raise ValueError(f"{label} is yes or no.")
     return raw
@@ -110,9 +127,9 @@ def _value(field: CustomField, raw: Any) -> Any:
 
 def merge_values(db: Session, applies_to: str, stored: dict[str, Any] | None,
                  given: dict[str, Any]) -> dict[str, Any]:
-    """The values after a change: each given one checked for its field, an empty one
-    (None or "") cleared. Values of archived fields are kept but can't be changed.
-    Raises HTTPException 400 with a message fit to show."""
+    """The values after a change: each given one checked for its field unless it's the
+    one held already, an empty one (None or "") cleared. Values of archived fields are
+    kept but can't be changed. Raises HTTPException 400 with a message fit to show."""
     fields = {f.key: f for f in fields_for(db, applies_to)}
     values = dict(stored or {})
     for key, raw in given.items():
@@ -123,7 +140,7 @@ def merge_values(db: Session, applies_to: str, stored: dict[str, Any] | None,
             values.pop(key, None)
             continue
         try:
-            values[key] = _value(field, raw)
+            values[key] = _value(field, raw, values.get(key))
         except ValueError as exc:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from None
     return values
@@ -142,23 +159,25 @@ Definer = Annotated[UserSession, Depends(require(Capability.BUILD_TEMPLATES))]
 NOT_FOUND = "That custom field doesn't exist."
 
 
+# A label or an option, trimmed before it's measured: spaces alone are nothing.
+Label = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
+
+
 class FieldIn(BaseModel):
     applies_to: AppliesTo
     key: str = Field(pattern=KEY_PATTERN)
-    label: str = Field(min_length=1, max_length=100)
+    label: Label
     type: FieldType
     help: str = Field(default="", max_length=300)
-    options: list[Annotated[str, Field(min_length=1, max_length=100)]] = Field(
-        default_factory=list, max_length=100)
+    options: list[Label] = Field(default_factory=list, max_length=100)
 
-    @field_validator("label", "help")
+    @field_validator("help")
     @classmethod
     def _strip(cls, value: str) -> str:
         return value.strip()
 
     @model_validator(mode="after")
     def _options(self) -> FieldIn:
-        self.options = [o.strip() for o in self.options]
         if self.type == "dropdown" and not self.options:
             raise ValueError("A dropdown needs at least one option.")
         if self.type != "dropdown":
@@ -169,12 +188,14 @@ class FieldIn(BaseModel):
 
 
 class FieldUpdate(BaseModel):
-    label: str = Field(min_length=1, max_length=100)
+    label: Label
     help: str = Field(default="", max_length=300)
-    options: list[Annotated[str, Field(min_length=1, max_length=100)]] = Field(
-        default_factory=list, max_length=100)
+    options: list[Label] = Field(default_factory=list, max_length=100)
     position: int = Field(default=0, ge=0, le=10_000)
     archived: bool = False
+    # The field as the change was made from (FieldOut.version): a change over a newer
+    # one is refused.
+    version: str = Field(max_length=64)
 
 
 class FieldOut(BaseModel):
@@ -187,13 +208,22 @@ class FieldOut(BaseModel):
     options: list[str]
     position: int
     archived: bool
+    version: str
+
+
+def _version(field: CustomField) -> str:
+    """What stands for the field as it is now, for a change to say what it was made
+    from: a digest of everything about it that can change."""
+    held = json.dumps([field.label, field.help, json.loads(field.options), field.position,
+                       field.archived])
+    return hashlib.sha256(held.encode()).hexdigest()[:16]
 
 
 def _out(field: CustomField) -> FieldOut:
     return FieldOut(id=field.id, applies_to=field.applies_to,  # type: ignore[arg-type]
                     key=field.key, label=field.label, type=field.type,  # type: ignore[arg-type]
                     help=field.help, options=json.loads(field.options), position=field.position,
-                    archived=field.archived)
+                    archived=field.archived, version=_version(field))
 
 
 def _log(db: Session, request: Request, record: UserSession, action: str, field: CustomField,
@@ -240,17 +270,21 @@ def update_field(field_id: int, body: FieldUpdate, request: Request, record: Def
     field = db.get(CustomField, field_id)
     if field is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, NOT_FOUND)
-    options = [o.strip() for o in body.options] if field.type == "dropdown" else []
+    if body.version != _version(field):
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            "Someone changed this field since you opened it. Look at their "
+                            "changes before making yours.")
+    options = body.options if field.type == "dropdown" else []
     if field.type == "dropdown" and not options:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A dropdown needs at least one option.")
     if len(set(options)) != len(options):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Each option can be listed once.")
     changed = [name for name, before, after in (
-        ("label", field.label, body.label.strip()), ("help", field.help, body.help.strip()),
+        ("label", field.label, body.label), ("help", field.help, body.help.strip()),
         ("options", json.loads(field.options), options), ("position", field.position,
                                                            body.position),
         ("archived", field.archived, body.archived)) if before != after]
-    field.label, field.help = body.label.strip(), body.help.strip()
+    field.label, field.help = body.label, body.help.strip()
     field.options, field.position = json.dumps(options), body.position
     field.archived = body.archived
     if changed:

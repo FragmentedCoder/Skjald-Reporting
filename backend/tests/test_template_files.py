@@ -191,8 +191,10 @@ def test_a_translator_edits_strings_json_alone(client, designer, published) -> N
     texts = json.loads(inside["strings.json"])
     texts["q_summary/label"] = "Resumé af hændelsen"
     texts["b_summary/title"] = "Resumé"
-    inside["strings.json"] = json.dumps(texts).encode()
-    came = import_(client, designer, pack(inside)).json()
+    # Saved from an editor that adds a byte-order mark, and zipped again as it is: the
+    # manifest still has the old strings.json's hash, which doesn't hold it back.
+    inside["strings.json"] = "\ufeff".encode() + json.dumps(texts).encode()
+    came = import_(client, designer, pack(inside, rehash=False)).json()
     draft = client.get(f"{TEMPLATES}/{came['template']['id']}/draft", headers=designer).json()
     assert draft["content"]["form"][0]["questions"][0]["label"] == "Resumé af hændelsen"
     assert draft["content"]["layout"][1]["title"] == "Resumé"
@@ -228,6 +230,44 @@ def test_an_import_adds_library_entries_and_a_style_and_changes_none(client, des
     assert made.is_default is False
     assert session.scalars(select(LibraryEntry).where(
         LibraryEntry.key == "support_phone")).one().current == 1
+
+
+def test_an_imported_style_is_checked_like_a_saved_one(client, designer, published) -> None:
+    tid, _, _ = published
+    style = client.post("/api/styles", headers=designer, json={"name": "Nordlys brand"}).json()
+    client.put("/api/styles/company-default", headers=designer, json={"style_id": style["id"]})
+    inside = unpack(export(client, designer, tid).content)
+    styles = json.loads(inside["styles.json"])
+    styles["company_default"]["name"] = "Smuggled"
+    element = {"id": "e_text1", "kind": "text", "x": 20, "y": 20, "w": 100, "h": 10,
+               "text": "{{ answers.admin_password }}"}
+    styles["company_default"]["content"].setdefault("pages", {})["cover"] = {"elements": [element]}
+    inside["styles.json"] = json.dumps(styles).encode()
+    refusal = import_(client, designer, pack(inside))
+    assert refusal.status_code == 400, refusal.text
+    assert "The style in the file isn't valid" in refusal.json()["detail"]
+    assert all(s["name"] != "Smuggled" for s in client.get("/api/styles", headers=designer).json())
+
+
+def test_a_snippet_goes_out_with_the_variables_it_reads(client, designer, published) -> None:
+    tid, _, _ = published
+    for kind, key, value in (("variable", "support_phone", {"value": "+45 70 20 30 40"}),
+                             ("variable", "unused", {"value": "x"}),
+                             ("snippet", "contact_us", {"text": "Call {{vars.support_phone}}."})):
+        made = client.post("/api/library", headers=designer,
+                           json={"kind": kind, "key": key, "value": value})
+        assert made.status_code == 201, made.text
+    client.post(f"{TEMPLATES}/{tid}/draft", headers=designer)
+    draft = client.get(f"{TEMPLATES}/{tid}/draft", headers=designer).json()
+    draft["content"]["layout"][1]["title"] = "Summary {{text.contact_us}}"
+    saved = client.put(f"{TEMPLATES}/{tid}/draft", headers=designer,
+                       json={"content": draft["content"], "revision": draft["revision"]})
+    assert saved.json()["problems"] == []
+    client.post(f"{TEMPLATES}/{tid}/publish", headers=designer,
+                json={"revision": saved.json()["revision"], "note": ""})
+    library = json.loads(unpack(export(client, designer, tid).content)["library.json"])
+    assert sorted((e["kind"], e["key"]) for e in library) == [
+        ("snippet", "contact_us"), ("table", "severity"), ("variable", "support_phone")]
 
 
 def test_copy_for_translation(client, designer, published) -> None:
@@ -291,6 +331,63 @@ def test_folders_and_links_are_refused(client, designer, published) -> None:
                 link.external_attr = (0o120777 << 16)
                 archive.writestr(link, b"/etc/passwd")
         assert "doesn't accept" in refused(client, designer, out.getvalue())
+
+
+def test_a_damaged_file_is_refused_not_a_crash(client, designer, published) -> None:
+    sent = export(client, designer, published[0]).content
+    # A byte flipped inside an entry's data, and a compression method nobody reads.
+    start = sent.index(b"layout.json") + 40
+    flipped = sent[:start] + bytes([sent[start] ^ 0xFF]) + sent[start + 1:]
+    assert import_(client, designer, flipped).status_code == 400
+    unknown = bytearray(sent)
+    at = unknown.index(b"PK\x01\x02") + 10  # the first entry's method, in the directory
+    unknown[at:at + 2] = (99).to_bytes(2, "little")
+    assert import_(client, designer, bytes(unknown)).status_code == 400
+
+    inside = unpack(sent)
+    def paragraph(node: dict[str, Any]) -> dict[str, Any]:
+        return {"type": "doc", "content": [{"type": "paragraph", "content": [node]}]}
+
+    for broken in ({"type": "doc", "content": 5}, paragraph({"type": "variable"}),
+                   paragraph({"type": "text"})):
+        texts = json.loads(inside["strings.json"])
+        texts["b_callout/content"] = broken
+        changed = pack({**inside, "strings.json": json.dumps(texts).encode()})
+        gone = import_(client, designer, changed)
+        assert gone.status_code == 400 and "can't be imported" in gone.json()["detail"], gone.text
+
+
+def test_words_with_braces_in_the_form_go_out_and_come_back(client, designer, published) -> None:
+    tid, content, _ = published
+    client.post(f"{TEMPLATES}/{tid}/draft", headers=designer)
+    draft = client.get(f"{TEMPLATES}/{tid}/draft", headers=designer).json()
+    words = "Names in text are written {{sådan}}."
+    draft["content"]["form"][0]["questions"][0]["help"] = words
+    saved = client.put(f"{TEMPLATES}/{tid}/draft", headers=designer,
+                       json={"content": draft["content"], "revision": draft["revision"]})
+    assert saved.status_code == 200 and saved.json()["problems"] == []
+    client.post(f"{TEMPLATES}/{tid}/publish", headers=designer,
+                json={"revision": saved.json()["revision"], "note": ""})
+    came = import_(client, designer, export(client, designer, tid).content)
+    assert came.status_code == 201, came.text
+    new_id = came.json()["template"]["id"]
+    again = client.get(f"{TEMPLATES}/{new_id}/draft", headers=designer).json()
+    assert again["content"]["form"][0]["questions"][0]["help"] == words
+
+
+def test_an_export_holds_the_pictures_it_prints_by_name(client, designer, published) -> None:
+    tid, _, sha = published
+    # Another picture, uploaded and never used: it stays behind.
+    unused = Image.new("RGB", (9, 9), (200, 30, 30))
+    out = io.BytesIO()
+    unused.save(out, format="PNG")
+    extra = client.post(f"{TEMPLATES}/{tid}/assets?name=unused.png", content=out.getvalue(),
+                        headers={**designer, "Content-Type": "application/octet-stream"}).json()
+    inside = unpack(export(client, designer, tid).content)
+    assert {n for n in inside if n.startswith("assets/")} == {f"assets/{sha}.png"}
+    assert extra["sha256"] != sha
+    came = import_(client, designer, pack(inside)).json()
+    assert [(a["sha256"], a["name"]) for a in came["template"]["assets"]] == [(sha, "graph.png")]
 
 
 def test_changed_or_extra_files_are_refused(client, designer, published) -> None:

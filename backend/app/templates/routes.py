@@ -1,7 +1,8 @@
 """The templates API: templates, their drafts and published versions, and their images.
 
 Everything here is for those who build templates (BUILD_TEMPLATES: Administrators
-and Report Designers). Drafts save whatever their problems, so a designer can stop
+and Report Designers), except that Managers, who may delete retired templates
+(DELETE_TEMPLATES), see the list too. Drafts save whatever their problems, so a designer can stop
 halfway; a save over someone else's newer one is refused (409) rather than lost.
 Publishing needs a draft without problems, freezes it as the next version and logs
 its SHA-256. Saves while someone works are logged once every few minutes per
@@ -19,11 +20,17 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, Field, ValidationError, field_validator
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app import audit, clock
-from app.auth.dependencies import DB, client_ip, require
+from app.auth.dependencies import (
+    DB,
+    client_ip,
+    effective_capabilities,
+    require,
+    require_step_up,
+)
 from app.auth.sessions import UserSession
 from app.branding import company_timezone
 from app.custom_fields import custom_names
@@ -34,17 +41,24 @@ from app.templates.assets import AssetRejected, clean_asset
 from app.templates.changes import Changes, changes
 from app.templates.checks import Problem, check
 from app.templates.content import (
+    MAX_BLOCK_DEPTH,
     MAX_CONTENT_BYTES,
     SCHEMA_VERSION,
     TemplateContent,
+    TooLarge,
+    check_size,
     starter_content,
 )
 from app.templates.models import Template, TemplateAsset, TemplateVersion
+from app.templates.text import trimmed
 from app.users import User
 
 router = APIRouter(prefix="/templates")
 
 Designer = Annotated[UserSession, Depends(require(Capability.BUILD_TEMPLATES))]
+# The list and deleting: for those who build templates, and those who delete retired ones.
+Viewer = Annotated[UserSession, Depends(require(Capability.BUILD_TEMPLATES,
+                                                Capability.DELETE_TEMPLATES))]
 
 NOT_FOUND = "That template doesn't exist."
 # Saves while someone works on a draft are logged at most this often per person.
@@ -55,18 +69,31 @@ def _stripped(value: str | None) -> str | None:
     return None if value is None else value.strip()
 
 
+def _named(value: str | None) -> str | None:
+    """A name without what isn't seen at either end; one with nothing to see is no name
+    (spaces alone passed the length check, and were kept as an empty name)."""
+    if value is None:
+        return None
+    name = trimmed(value)
+    if not name:
+        raise ValueError("Give the template a name.")
+    return name
+
+
 class TemplateIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: str = Field(default="", max_length=1000)
 
-    _strip = field_validator("name", "description")(_stripped)
+    _name = field_validator("name")(_named)
+    _strip = field_validator("description")(_stripped)
 
 
 class TemplateUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = Field(default=None, max_length=1000)
 
-    _strip = field_validator("name", "description")(_stripped)
+    _name = field_validator("name")(_named)
+    _strip = field_validator("description")(_stripped)
 
 
 class DraftSummary(BaseModel):
@@ -101,6 +128,12 @@ class TemplateSummary(BaseModel):
     published_at: datetime | None
     draft: DraftSummary | None
     retired: bool
+    retired_at: datetime | None
+    retired_by: str | None
+    # The report language of its draft, else its newest version.
+    language: str
+    created_at: datetime
+    created_by: str | None
     updated_at: datetime
 
 
@@ -146,12 +179,17 @@ class VersionOut(VersionSummary):
     content: dict[str, Any]
 
 
+class DeleteIn(BaseModel):
+    # For a published template: its name, typed to confirm.
+    confirm_name: str = Field(default="", max_length=200)
+
+
 class CopyIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     # For a translation: the copy's report language.
     language: Literal["da", "en"] | None = None
 
-    _strip = field_validator("name")(_stripped)
+    _name = field_validator("name")(_named)
 
 
 # Helpers
@@ -175,17 +213,69 @@ def sha256(text: str) -> str:
 
 def parse_content(raw: dict[str, Any]) -> TemplateContent:
     """The content as submitted, checked for structure; 422 with where it went wrong."""
-    if len(json.dumps(raw, separators=(",", ":"))) > MAX_CONTENT_BYTES:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT,
-                            "The template is larger than 2 MB.")
+    too_large = HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT,
+                              "The template is larger than 2 MB.")
     try:
-        return TemplateContent.model_validate(raw)
+        if _deeper_than(raw, MAX_JSON_DEPTH):
+            raise _too_deep()
+        if len(json.dumps(raw, separators=(",", ":"))) > MAX_CONTENT_BYTES:
+            raise too_large
+        content = TemplateContent.model_validate(raw)
+        check_size(content)
+    except TooLarge as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from None
     except ValidationError as exc:
         first = exc.errors()[0]
+        if "recursion" in first["type"] or first["msg"].lower().startswith("recursion"):
+            raise _too_deep() from None
         where = ".".join(str(part) for part in first["loc"])
         message = re.sub(r"^Value error, ", "", first["msg"])
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT,
                             f"The template isn't valid at {where}: {message}") from None
+    except RecursionError:
+        # Nested far past the limit: said the same way, before anything is stored
+        # that couldn't be read again.
+        raise _too_deep() from None
+    # The stored document has the defaults written out, so it's the one measured. Half
+    # of a character pair (a lone surrogate, in a sample answer, say) can't be written
+    # out at all: refused here, not a failure when the draft is stored.
+    try:
+        stored = canonical(content).encode()
+    except UnicodeEncodeError:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "The template holds half of a character, such as half an emoji, in one of its "
+            "texts or sample answers: take it out and type it again.") from None
+    if len(stored) > MAX_CONTENT_BYTES:
+        raise too_large
+    return content
+
+
+# How deep the document as sent may nest, counted before anything reads it by calling
+# itself: ten levels of blocks are at most four of these each, and rich text a dozen
+# more, so nothing a template can hold comes near, and what's past it is refused the
+# same way whatever the libraries' own limits are.
+MAX_JSON_DEPTH = 120
+
+
+def _deeper_than(value: Any, limit: int) -> bool:
+    """Whether lists and objects nest deeper than the limit; walked without recursion."""
+    stack: list[tuple[Any, int]] = [(value, 1)]
+    while stack:
+        node, depth = stack.pop()
+        if isinstance(node, dict | list):
+            if depth > limit:
+                return True
+            children = node.values() if isinstance(node, dict) else node
+            stack.extend((child, depth + 1) for child in children)
+    return False
+
+
+def _too_deep() -> HTTPException:
+    return HTTPException(
+        status.HTTP_422_UNPROCESSABLE_CONTENT,
+        f"Blocks can sit inside each other up to {MAX_BLOCK_DEPTH} levels deep; "
+        "this template goes deeper.")
 
 
 def _names(db: Session, user_ids: set[int | None]) -> dict[int, str]:
@@ -243,6 +333,9 @@ def _summary(db: Session, template: Template, names: dict[int, str]) -> dict[str
     latest = db.scalar(select(TemplateVersion).where(TemplateVersion.template_id == template.id,
                                                      TemplateVersion.number.is_not(None))
                        .order_by(TemplateVersion.number.desc()).limit(1))
+    shown = draft or latest
+    language = db.scalar(select(func.json_extract(TemplateVersion.content, "$.settings.language"))
+                         .where(TemplateVersion.id == shown.id)) if shown else None
     return {
         "id": template.id, "uuid": template.uuid, "name": template.name,
         "description": template.description,
@@ -251,6 +344,11 @@ def _summary(db: Session, template: Template, names: dict[int, str]) -> dict[str
         "draft": DraftSummary(revision=draft.revision, saved_at=draft.saved_at,
                               saved_by=names.get(draft.saved_by or 0)) if draft else None,
         "retired": template.retired_at is not None,
+        "retired_at": template.retired_at,
+        "retired_by": names.get(template.retired_by or 0) if template.retired_at else None,
+        "language": language or "en",
+        "created_at": template.created_at,
+        "created_by": names.get(template.created_by or 0),
         "updated_at": template.updated_at,
     }
 
@@ -258,7 +356,8 @@ def _summary(db: Session, template: Template, names: dict[int, str]) -> dict[str
 def _detail(db: Session, template: Template) -> TemplateDetail:
     versions = _published(db, template.id)
     draft = _draft(db, template.id)
-    names = _names(db, {v.published_by for v in versions} | {draft.saved_by if draft else None})
+    names = _names(db, {v.published_by for v in versions}
+                   | {draft.saved_by if draft else None, template.created_by})
     return TemplateDetail(
         **_summary(db, template, names),
         versions=[VersionSummary(number=v.number or 0, published_at=v.published_at or v.saved_at,
@@ -301,10 +400,11 @@ def _conflict(db: Session, draft: TemplateVersion) -> HTTPException:
 
 
 @router.get("")
-def list_templates(record: Designer, db: DB) -> list[TemplateSummary]:
+def list_templates(record: Viewer, db: DB) -> list[TemplateSummary]:
     templates = list(db.scalars(select(Template)))
     drafts = list(db.scalars(select(TemplateVersion).where(TemplateVersion.number.is_(None))))
-    names = _names(db, {d.saved_by for d in drafts})
+    names = _names(db, {d.saved_by for d in drafts} | {t.created_by for t in templates}
+                   | {t.retired_by for t in templates})
     found = [TemplateSummary(**_summary(db, t, names)) for t in templates]
     return sorted(found, key=lambda t: (t.retired, t.name.casefold()))
 
@@ -372,13 +472,38 @@ def restore_template(template_id: int, request: Request, record: Designer, db: D
 
 
 @router.delete("/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_template(template_id: int, request: Request, record: Designer, db: DB) -> Response:
+def delete_template(template_id: int, request: Request, record: Viewer, db: DB,
+                    body: Annotated[DeleteIn | None, Body()] = None) -> Response:
+    """Delete a template. One never published goes with its draft, for those who build
+    templates. A published one only once it's retired, for Administrators and Managers,
+    who type its name and confirm it's them: its versions and images go with it, and the
+    audit log keeps its name and each version's SHA-256. (Phase 3: refused while a
+    report is pinned to one of its versions.)"""
     template = _template(db, template_id)
-    if _published(db, template.id):
-        raise HTTPException(status.HTTP_409_CONFLICT,
-                            "A published template is kept: retire it instead.")
+    published = _published(db, template.id)
+    details: dict[str, object] = {"name": template.name}
+    if not published:
+        retired_for_them = (template.retired_at is not None and Capability.DELETE_TEMPLATES
+                            in effective_capabilities(db, record, request))
+        if not retired_for_them:
+            require(Capability.BUILD_TEMPLATES)(request, record, db)
+    else:
+        if template.retired_at is None:
+            raise HTTPException(status.HTTP_409_CONFLICT,
+                                "A published template is kept: retire it instead. An "
+                                "administrator or manager can then delete it.")
+        require(Capability.DELETE_TEMPLATES)(request, record, db)
+        if body is None or body.confirm_name.strip() != template.name:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                                "Type the template's name exactly to confirm.")
+        require_step_up(record, "Confirm it's you to delete a published template.")
+        details["versions"] = {str(v.number): v.content_sha256 for v in published}
+        # The guard on published versions lets them go only while their template is
+        # retired (migration 0020): before the template itself, then.
+        db.execute(delete(TemplateVersion).where(TemplateVersion.template_id == template.id))
+        db.execute(delete(TemplateAsset).where(TemplateAsset.template_id == template.id))
     db.delete(template)
-    _log(db, request, record, "template.deleted", template_id, {"name": template.name})
+    _log(db, request, record, "template.deleted", template_id, details)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

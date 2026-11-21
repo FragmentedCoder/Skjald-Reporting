@@ -1,0 +1,9 @@
+{
+  "_": "How large a template may be. The server enforces these on every save and import (backend/app/templates/content.py); the builder checks them before adding (frontend/src/lib/templates/limits.ts). A test on each side holds its numbers to these.",
+  "questions": 500,
+  "blocks": 1000,
+  "block_depth": 10,
+  "in_one_list": 300,
+  "steps": 50,
+  "bytes": 2097152
+}

@@ -1,13 +1,14 @@
 <script lang="ts">
   import Plus from "@lucide/svelte/icons/plus";
   import X from "@lucide/svelte/icons/x";
-  import type { Choice, NameEntry } from "#lib/templates/catalogue.js";
-  import { OPS, type Condition, type Group, type Shape, type ValueRule } from "#lib/templates/rules.js";
+  import { entryChoice, type Choice, type NameEntry } from "#lib/templates/catalogue.js";
+  import { fitsShape, OPS, type Group, type Shape, type ValueRule } from "#lib/templates/rules.js";
   import ConditionEditor from "./ConditionEditor.svelte";
   import LiteralInput from "./LiteralInput.svelte";
 
-  // A value worked out by rules: always the same, IF / ELSE IF / ELSE, or SWITCH on one
-  // answer's value.
+  // A value worked out by rules: always the same, the same as another value (a date
+  // question starting as the moment the report is started), IF / ELSE IF / ELSE, or
+  // SWITCH on one answer's value.
   let { rule = $bindable(), result, entries, choices, label = "Value" }: {
     rule: ValueRule;
     result: Shape;
@@ -17,15 +18,16 @@
     label?: string;
   } = $props();
 
-  const switchable = $derived(entries.filter((e) => e.shape === "text" || e.shape === "whole"));
+  // SWITCH looks at a text answer for any result, and at a whole number for a text
+  // result (the cases the function has: shared/cel/functions.json).
+  const switchable = $derived(entries.filter((e) => e.shape === "text" || (e.shape === "whole" && result === "text")));
   const switched = $derived.by(() => {
     const current = rule;
     return current.kind === "switch" ? entries.find((e) => e.name === current.name) : undefined;
   });
   const resultCanSwitch = $derived(result === "text" || result === "number" || result === "whole");
-
-  const asGroup = (c: Condition): Group =>
-    c.kind === "all" || c.kind === "any" || c.kind === "one" ? c : { kind: "all", items: [c] };
+  // Names whose value could be this one: for a date, when the report is started first.
+  const alike = $derived(entries.filter((e) => fitsShape(e.shape, result)).sort((a, b) => Number(b.name === "report.started") - Number(a.name === "report.started")));
 
   function blankCondition(): Group {
     const first = entries.find((e) => e.group === "Answers" && e.shape !== "other") ?? entries[0];
@@ -33,8 +35,10 @@
   }
 
   function setKind(kind: ValueRule["kind"]) {
-    const keep = rule.kind === "fixed" ? rule.value : rule.otherwise;
+    const blank = result === "number" || result === "whole" ? 0 : result === "bool" ? false : "";
+    const keep = rule.kind === "fixed" ? rule.value : rule.kind === "name" ? blank : rule.otherwise;
     if (kind === "fixed") rule = { kind, value: keep };
+    else if (kind === "name") rule = { kind, name: alike[0]?.name ?? "" };
     else if (kind === "if") rule = { kind, branches: [{ when: blankCondition(), value: keep }], otherwise: keep };
     else rule = { kind, name: switchable[0]?.name ?? "", cases: [{ match: "", value: keep }], otherwise: keep };
   }
@@ -43,12 +47,19 @@
 <div class="value-rule">
   <select class="input kind" aria-label="{label}: how it's worked out" value={rule.kind} onchange={(e) => setKind(e.currentTarget.value as ValueRule["kind"])}>
     <option value="fixed">Always the same</option>
+    {#if alike.length}<option value="name">{result === "date" ? "A date from elsewhere, such as when the report is started" : "The same as another value"}</option>{/if}
     <option value="if">By conditions (IF / ELSE)</option>
     {#if resultCanSwitch && switchable.length}<option value="switch">By one answer (SWITCH)</option>{/if}
   </select>
 
   {#if rule.kind === "fixed"}
     <LiteralInput bind:value={rule.value} shape={result} {choices} label={label} />
+  {:else if rule.kind === "name"}
+    {@const taken = rule.name}
+    <select class="input" aria-label="{label}: the value it takes" bind:value={rule.name}>
+      {#each alike as e (e.name)}<option value={e.name}>{entryChoice(e)}</option>{/each}
+      {#if taken && !alike.some((e) => e.name === taken)}<option value={taken}>{taken}</option>{/if}
+    </select>
   {:else if rule.kind === "if"}
     {#each rule.branches as branch, index (index)}
       <div class="branch">
@@ -58,7 +69,7 @@
             <button class="mini" type="button" aria-label="Remove {index === 0 ? 'the IF' : `ELSE IF ${index}`}" onclick={() => rule.kind === "if" && rule.branches.splice(index, 1)}><X size={14} aria-hidden="true" /></button>
           {/if}
         </div>
-        <ConditionEditor bind:condition={() => asGroup(branch.when), (v) => (branch.when = v)} {entries} label="{label}, {index === 0 ? 'if' : `else if ${index}`}" />
+        <ConditionEditor bind:condition={branch.when} {entries} label="{label}, {index === 0 ? 'if' : `else if ${index}`}" />
         <div class="then">
           <span class="keyword">then</span>
           <LiteralInput bind:value={branch.value} shape={result} {choices} label="{label}, {index === 0 ? 'if' : `else if ${index}`}: then" />
@@ -76,7 +87,7 @@
     <div class="then">
       <span class="keyword">Look at</span>
       <select class="input" aria-label="{label}: the answer it depends on" bind:value={rule.name}>
-        {#each switchable as e (e.name)}<option value={e.name}>{e.label}</option>{/each}
+        {#each switchable as e (e.name)}<option value={e.name}>{entryChoice(e)}</option>{/each}
       </select>
     </div>
     {#each rule.cases as c, index (index)}

@@ -118,6 +118,13 @@ function mapBlock(block: Block, change: (expr: string) => string): Block {
       return { ...base, signers: base.signers.map((s) => ({ ...s, label: text(s.label) })) };
     case "columns":
       return { ...base, columns: base.columns.map((column) => column.map((b) => mapBlock(b, change))) };
+    case "switch":
+      return {
+        ...base,
+        value: rule(base.value, change),
+        cases: base.cases.map((c) => ({ ...c, blocks: c.blocks.map((b) => mapBlock(b, change)) })),
+        otherwise: base.otherwise.map((b) => mapBlock(b, change)),
+      };
     default:
       return base;
   }
@@ -184,7 +191,8 @@ export interface Usage {
 
 /** Where a question is used: the blocks that print it and the expressions that read it. */
 export function usage(content: TemplateContent, question: Question): Usage {
-  const blocks = blocksOf(content.layout).filter((b) => "question" in b && b.question === question.id);
+  const blocks = blocksOf(content.layout).filter((b) => ("question" in b && b.question === question.id)
+    || (b.kind === "signatures" && b.signers.some((signer) => signer.question === question.id)));
   let expressions = 0;
   if (question.key) {
     const prefix = `answers.${question.key}`;

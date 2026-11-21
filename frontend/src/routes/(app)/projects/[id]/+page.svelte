@@ -22,7 +22,7 @@
         <FileText size={28} aria-hidden="true" />
         <p>No reports yet.</p>
         <p class="small muted">
-          Reports arrive with the template builder. They'll be written, reviewed and signed here,
+          Reports are what Skjald gets next. They'll be written, reviewed and signed here,
           encrypted with the customer's key.
         </p>
       </div>

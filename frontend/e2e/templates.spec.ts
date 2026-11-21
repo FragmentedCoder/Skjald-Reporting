@@ -89,7 +89,7 @@ test("a designer builds a template's form, with rules, and publishes it", async 
   await panel(page).getByLabel("Question", { exact: true }).fill("Attacking addresses");
   const showWhen = panel(page).getByRole("group", { name: "Show only when" });
   await showWhen.getByRole("button", { name: "Add a condition" }).click();
-  await showWhen.getByLabel("Show only when 1: what to check").selectOption({ label: "Was the attacking address found?" });
+  await showWhen.getByLabel("Show only when 1: what to check").selectOption({ label: "YN · Was the attacking address found?" });
   await expect(showWhen.getByLabel("Show only when 1: how")).toHaveValue("yes");
   await expect(showWhen.getByText("answers.attack_found", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /^Attacking addresses, Repeating group, edit/ })).toContainText("shown when a rule says so");
@@ -114,7 +114,7 @@ test("a designer builds a template's form, with rules, and publishes it", async 
   await rename(page, "severity");
   const worked = panel(page).getByRole("group", { name: "Worked out as" });
   await worked.getByLabel("Worked out as: how it's worked out").selectOption({ label: "By conditions (IF / ELSE)" });
-  await worked.getByLabel("Worked out as, if 1: what to check").selectOption({ label: "Highest CVSS score" });
+  await worked.getByLabel("Worked out as, if 1: what to check").selectOption({ label: "NU · Highest CVSS score" });
   await worked.getByLabel("Worked out as, if 1: how").selectOption({ label: "is at least" });
   await worked.getByLabel("Worked out as, if 1: value").fill("9");
   await worked.getByLabel("Worked out as, if: then").fill("Critical");
@@ -165,12 +165,30 @@ test("a designer builds a template's form, with rules, and publishes it", async 
   await page.getByRole("button", { name: "Edit" }).click();
   await expect(page.getByText("Version 1 is the one in use.")).toBeVisible();
 
-  // The templates list says what's published and what's in a draft.
+  // The templates are cards: the first page, its language and name, who made it, and
+  // a bar with the version and where it stands.
   await page.getByRole("link", { name: "Templates", exact: true }).first().click();
-  const row = page.getByRole("row", { name: new RegExp(TEMPLATE) });
-  await expect(row.getByText("Version 1")).toBeVisible();
-  await expect(row.getByText("Draft", { exact: true })).toBeVisible();
+  const card = page.getByRole("listitem").filter({ has: page.getByRole("link", { name: TEMPLATE, exact: true }) });
+  await expect(card.getByText("EN", { exact: true })).toBeVisible();
+  await expect(card.getByText(/^Version 1/)).toBeVisible();
+  await expect(card.getByText("In use, draft changes", { exact: true })).toBeVisible();
+  await expect(card).toContainText("Created");
+  await expect(card).toContainText("· Dagny Designer");
+  await expect(card.locator(".paper")).toBeVisible();
   await shot(page, "list");
+
+  // Retired, it moves to the Retired tab, out of the way; brought back, it returns.
+  await page.getByRole("button", { name: `Actions for ${TEMPLATE}` }).click();
+  await page.getByRole("menuitem", { name: "Retire" }).click();
+  await expect(card).toHaveCount(0);
+  await page.getByRole("tab", { name: /^Retired/ }).click();
+  await expect(card.getByText("Retired", { exact: true })).toBeVisible();
+  await expect(card).toContainText("Retired");
+  await page.getByRole("button", { name: `Actions for ${TEMPLATE}` }).click();
+  await page.getByRole("menuitem", { name: "Bring back" }).click();
+  await expect(card).toHaveCount(0);
+  await page.getByRole("tab", { name: /^In use/ }).click();
+  await expect(card).toBeVisible();
 
   expect(violations).toEqual([]);
   await context.close();
@@ -179,9 +197,13 @@ test("a designer builds a template's form, with rules, and publishes it", async 
 test("the library: a technician adds entries, an administrator locks one", async ({ browser }) => {
   const { context, page } = await signedIn(browser, "e2e-librarian");
   const violations = watchForCspViolations(page);
-  await menu(page, "Library").click();
-  await expect(page.getByRole("heading", { name: "Library" })).toBeVisible();
+  await menu(page, "Database").click();
+  await expect(page.getByRole("heading", { name: "Database" })).toBeVisible();
   await expect(menu(page, "Templates")).toHaveCount(0);
+  // A technician sees the names and the library, not the custom fields' definitions.
+  const tabs = page.getByRole("navigation", { name: "Database" });
+  await expect(tabs.getByRole("link")).toHaveText(["All names", "Variables", "Text snippets", "Data tables"]);
+  await tabs.getByRole("link", { name: "Variables" }).click();
 
   await page.getByRole("button", { name: "Add a variable" }).click();
   const dialog = page.getByRole("dialog");
@@ -191,7 +213,7 @@ test("the library: a technician adds entries, an administrator locks one", async
   await dialog.getByRole("button", { name: "Save" }).click();
   await expect(toastWith(page, "vars.support_phone is in the library.")).toBeVisible();
 
-  await page.getByRole("button", { name: /^Text snippets/ }).click();
+  await tabs.getByRole("link", { name: "Text snippets" }).click();
   await page.getByRole("button", { name: "Add a text snippet" }).click();
   await dialog.getByLabel("Name", { exact: true }).fill("handover");
   await dialog.getByLabel("Text", { exact: true }).fill("See {{text.other}}");
@@ -201,7 +223,7 @@ test("the library: a technician adds entries, an administrator locks one", async
   await dialog.getByRole("button", { name: "Save" }).click();
   await expect(page.getByRole("cell", { name: "Call {{vars.support_phone}} for the full password." })).toBeVisible();
 
-  await page.getByRole("button", { name: /^Data tables/ }).click();
+  await tabs.getByRole("link", { name: "Data tables" }).click();
   await page.getByRole("button", { name: "Add a data table" }).click();
   await dialog.getByLabel("Name", { exact: true }).fill("severity");
   await dialog.getByRole("button", { name: "Add a row" }).click();
@@ -210,12 +232,25 @@ test("the library: a technician adds entries, an administrator locks one", async
   await dialog.getByRole("button", { name: "Save" }).click();
   await expect(page.getByRole("cell", { name: "1 row: Key → Value" })).toBeVisible();
 
+  // All names: the library among every name a template can read, found by searching,
+  // and an expression tried on the examples, the library's tables included.
+  await tabs.getByRole("link", { name: "All names" }).click();
+  await page.getByRole("textbox", { name: "Expression" }).fill('lookup("severity", "high") + " / " + vars.support_phone');
+  await expect(page.getByRole("status")).toHaveText('"Høj / +45 70 20 30 40", which is text');
+  await page.getByLabel("Search names").fill("service desk");
+  await expect(page.getByRole("row", { name: /^vars\.support_phone .*The service desk text "\+45 70 20 30 40"$/ })).toBeVisible();
+  await page.getByLabel("Search names").fill("severity");
+  await expect(page.getByRole("row", { name: /lookup\("severity", key\)/ })).toContainText("1 row: Key → Value");
+
   // An administrator locks the variable; nobody can change it then.
   const { context: adminContext, page: admin } = await signedIn(browser, "e2e-locksmith");
-  await menu(admin, "Library").click();
+  await menu(admin, "Database").click();
+  await admin.getByRole("navigation", { name: "Database" }).getByRole("link", { name: "Variables" }).click();
   await admin.getByRole("button", { name: "Actions for vars.support_phone" }).click();
   await admin.getByRole("menuitem", { name: "Lock" }).click();
   await expect(admin.getByRole("row", { name: /vars\.support_phone/ }).getByText("Locked")).toBeVisible();
+  await tabs.getByRole("link", { name: "Variables" }).click();
+  await expect(page).toHaveURL(/\/database\/variables$/);
   await page.reload();
   await page.getByRole("button", { name: "Actions for vars.support_phone" }).click();
   await expect(page.getByRole("menuitem", { name: "History" })).toBeVisible();
@@ -249,10 +284,10 @@ test("a designer lays out the PDF and sees its pages", async ({ browser }) => {
   // Selecting the section and clicking a block adds it inside the section.
   await page.getByRole("button", { name: "Section: Summary, edit" }).click();
   await blocks.getByRole("button", { name: /^Answer/ }).click();
-  await panel(page).getByLabel("Answer to print").selectOption({ label: "Serial numbers" });
+  await panel(page).getByLabel("Answer to print").selectOption({ label: "ST · Serial numbers (serials)" });
   await expect(page.getByRole("list", { name: "Blocks in “Summary”" }).getByRole("button", { name: "Answer: Answer, edit" })).toBeVisible();
   await blocks.getByRole("button", { name: /^Table/ }).click();
-  await panel(page).getByLabel("Rows from").selectOption({ label: "Devices" });
+  await panel(page).getByLabel("Rows from").selectOption({ label: "RG · Devices (devices)" });
   await panel(page).getByLabel("Caption", { exact: true }).fill("Devices destroyed");
 
   // Rich text with a name in it.
@@ -278,7 +313,7 @@ test("a designer lays out the PDF and sees its pages", async ({ browser }) => {
   const tone = panel(page).getByRole("group", { name: "Tone set by the answers" });
   await tone.getByRole("button", { name: "Add a rule" }).click();
   await tone.getByLabel("Tone set by the answers: how it's worked out").selectOption({ label: "By conditions (IF / ELSE)" });
-  await tone.getByLabel("Tone set by the answers, if 1: what to check").selectOption({ label: "Devices" });
+  await tone.getByLabel("Tone set by the answers, if 1: what to check").selectOption({ label: "RG · Devices" });
   await tone.getByLabel("Tone set by the answers, if 1: how").selectOption({ label: "has no rows" });
   await tone.getByLabel("Tone set by the answers, if: then").selectOption({ label: "Critical" });
   await tone.getByLabel("Tone set by the answers: otherwise").selectOption({ label: "Info" });
@@ -324,8 +359,8 @@ test("a designer lays out the PDF and sees its pages", async ({ browser }) => {
   await shot(page, "try-it");
 
   // The Data tab: every name, with the sample answers; expressions tried on them.
-  await page.getByRole("link", { name: "Data" }).click();
-  await expect(page.getByRole("row", { name: /answers\.serials Serial numbers text "SN-4471"/ })).toBeVisible();
+  await page.getByRole("link", { name: "Data", exact: true }).click();
+  await expect(page.getByRole("row", { name: /answers\.serials .*Serial numbers text "SN-4471"/ })).toBeVisible();
   await page.getByRole("textbox", { name: "Expression" }).fill("answers.serials.lowerAscii()");
   await expect(page.getByRole("status")).toHaveText('"sn-4471", which is text');
   await page.getByRole("textbox", { name: "Expression" }).fill("answers.serials > 1");
@@ -363,6 +398,7 @@ async function pointIn(locator: Locator, { across = 0.5, dy = 0, fromBottom = fa
 }
 
 test("a designer drags blocks in the outline and on the pages", async ({ browser }) => {
+  test.setTimeout(90_000);
   const { context, page } = await signedIn(browser, "e2e-dragger");
   const violations = watchForCspViolations(page);
   const crashes: string[] = [];
@@ -380,6 +416,14 @@ test("a designer drags blocks in the outline and on the pages", async ({ browser
   await saved(page);
   await expect(page.getByText(/isn't valid/)).toHaveCount(0);
 
+  // A question removed comes back with Undo.
+  await steps.getByRole("button", { name: /^New short text question, Short text, edit/ }).click();
+  await page.keyboard.press("Delete");
+  await expect(steps.getByRole("button", { name: /^New short text question/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "Undo the last change" }).click();
+  await expect(steps.getByRole("button", { name: /^New short text question, Short text, edit/ })).toBeVisible();
+  await saved(page);
+
   await page.getByRole("link", { name: "Layout" }).click();
   const blocks = page.getByRole("region", { name: "Blocks" });
   const outline = page.getByRole("list", { name: "Blocks in the PDF" });
@@ -393,11 +437,25 @@ test("a designer drags blocks in the outline and on the pages", async ({ browser
   await expect(outline.locator(":scope > li").nth(1)).toContainText("Section · new page");
   await saved(page);
 
-  // A section dragged onto its own inside isn't lost into itself.
-  const inside = await pointIn(summary, { dy: 12, fromBottom: true });
+  // A section dragged onto itself isn't lost into itself: while it's dragged, its place
+  // is one line, with no list of its own to drop into.
+  const inside = await pointIn(summary, { dy: 12 });
   await dragTo(page, summary.getByRole("button", { name: "Section: Summary, edit" }), async () => inside, 800);
   await expect(outline.locator(":scope > li").filter({ has: page.getByRole("button", { name: "Section: Summary, edit" }) })).toHaveCount(1);
   await expect(outline.locator(":scope > li")).toHaveCount(2);
+
+  // A section moved can be moved again straight away (its card was left unhooked after a
+  // drop): to the end of the PDF, then back to the top. Those places say one thing only.
+  // Dropped on the other section's own card it goes before it, after it or into it, by
+  // where the pointer is once the cards have made room, which is not for a test to rely
+  // on: this one dropped it there, and failed one run in three.
+  for (let i = 0; i < 2; i++) {
+    const wasFirst = ((await outline.locator(":scope > li").first().textContent()) ?? "").includes("Summary");
+    await dragTo(page, page.getByRole("button", { name: "Section: Summary, edit" }),
+      () => pointIn(outline, wasFirst ? { dy: 10, fromBottom: true } : { dy: 4 }), 600);
+    await expect(outline.locator(":scope > li").first()).toContainText(wasFirst ? "New section" : "Summary");
+    await expect(outline.locator(":scope > li")).toHaveCount(2);
+  }
 
   // Typing {{ in a title suggests names; Enter takes one.
   await page.getByRole("button", { name: "Section: New section, edit" }).click();
@@ -409,6 +467,15 @@ test("a designer drags blocks in the outline and on the pages", async ({ browser
   await title.press("Enter");
   await expect(title).toHaveValue("Findings for {{customer.name}}");
 
+  // The Names drawer: every name to search, and a click puts one where the caret was.
+  await page.getByRole("button", { name: "Names", exact: true }).click();
+  const drawer = page.getByRole("complementary", { name: "Names" });
+  await drawer.getByLabel("Search names").fill("author company");
+  await drawer.getByRole("button", { name: /^author\.company/ }).click();
+  await expect(title).toHaveValue("Findings for {{customer.name}}{{author.company}}");
+  await drawer.getByRole("button", { name: "Close the names" }).click();
+  await title.fill("Findings for {{customer.name}}");
+
   // Clicking Section with a block inside a section selected adds one beside that section.
   await page.getByRole("button", { name: "Section: Summary, edit" }).click();
   await blocks.getByRole("button", { name: /^Signatures/ }).click();
@@ -417,16 +484,31 @@ test("a designer drags blocks in the outline and on the pages", async ({ browser
   await expect(outline.locator(":scope > li").filter({ hasText: "New section" })).toContainText("Section · new page");
   await expect(page.getByRole("list", { name: "Blocks in “Summary”" }).getByRole("button", { name: /^Section/ })).toHaveCount(0);
 
-  // A clicked cover goes first. On the pages it sits right under the style picker, and
+  // Backspace in a field edits its text; Delete with a block selected removes the block.
+  await blocks.getByRole("button", { name: /^Heading/ }).click();
+  await page.keyboard.press("End");
+  await page.keyboard.press("Backspace");
+  await expect(page.getByRole("button", { name: "Heading: New headin, edit" })).toBeVisible();
+  await page.getByRole("button", { name: "Heading: New headin, edit" }).click();
+  await page.keyboard.press("Delete");
+  await expect(page.getByRole("button", { name: /^Heading: / })).toHaveCount(0);
+  // Ctrl+Z brings the block back, the note's Redo takes it away again.
+  await expect(toastWith(page, /Removed the heading “New headin”/)).toBeVisible();
+  await page.keyboard.press("Control+z");
+  await expect(page.getByRole("button", { name: "Heading: New headin, edit" })).toBeVisible();
+  await toastWith(page, /Took back the last change/).getByRole("button", { name: "Redo" }).click();
+  await expect(page.getByRole("button", { name: /^Heading: / })).toHaveCount(0);
+
+  // A clicked cover goes first, titled with the template's own name. On the pages it sits right under the title, and
   // the signatures look as in the design.
   await blocks.getByRole("button", { name: /^Cover/ }).click();
   await expect(outline.locator(":scope > li").first()).toContainText("Cover");
   await page.getByRole("button", { name: "Pages", exact: true }).click();
   const first = page.getByRole("region", { name: /^Page 1 of / });
-  await expect(first.getByRole("heading", { name: "Security incident report" })).toBeVisible();
-  const picker = await page.getByLabel("Preview in").boundingBox();
+  await expect(first.getByRole("heading", { name: "Server room handover" })).toBeVisible();
+  const intro = await page.locator(".workspace > .intro").boundingBox();
   const sheet = await first.boundingBox();
-  expect(sheet!.y - (picker!.y + picker!.height)).toBeLessThan(40);
+  expect(sheet!.y - (intro!.y + intro!.height)).toBeLessThan(40);
   const signed = page.getByRole("region", { name: /^Page 2 of / });
   await expect(signed.getByText("Freja Holm", { exact: true })).toBeVisible();
   await expect(signed.getByText("Sample signatures. In the PDF each one is a digital signature that can be checked.")).toBeVisible();
@@ -442,6 +524,33 @@ test("a designer drags blocks in the outline and on the pages", async ({ browser
   await expect(page.getByRole("list", { name: "Blocks in “Findings for {{customer.name}}”" }).getByRole("button", { name: /^Callout/ })).toBeVisible();
   await saved(page);
   await shot(page, "dragged");
+
+  // A switch picked by the short text, with a case for one value. Blocks clicked while
+  // it's selected fill its empty case, then otherwise; the case is left out while the
+  // sample answers give nothing.
+  await blocks.getByRole("button", { name: /^Switch/ }).click();
+  await panel(page).getByLabel("Picked by").selectOption("answers.text");
+  await panel(page).getByRole("button", { name: "Add a case" }).click();
+  await panel(page).getByLabel("Case 1: when it's").fill("Rack A");
+  const rackA = page.getByRole("list", { name: "Blocks when it's “Rack A”" });
+  const otherwise = page.getByRole("list", { name: "Blocks when no case matches" });
+  await blocks.getByRole("button", { name: /^Heading/ }).click();
+  await page.getByRole("button", { name: "Switch: By answers.text, edit" }).click();
+  await blocks.getByRole("button", { name: /^Page break/ }).click();
+  await expect(rackA.getByRole("button", { name: /^Heading: New heading/ })).toBeVisible();
+  await expect(rackA).toContainText("The answers give nothing");
+  await expect(otherwise.getByRole("button", { name: /^Page break/ })).toBeVisible();
+  await saved(page);
+
+  // The Strings tab: the form's text beside the PDF's, each in its order.
+  await page.getByRole("link", { name: "Strings" }).click();
+  const side = (name: RegExp) => page.locator(".side").filter({ has: page.getByRole("heading", { name }) });
+  await expect(side(/^The technician's form/).getByRole("region", { name: "Step “Details”" })).toBeVisible();
+  await expect(side(/^The PDF/).getByRole("region", { name: "Section block “Summary”" })).toBeVisible();
+  await shot(page, "strings");
+
+  // Which Skjald this is, just above who's signed in.
+  await expect(page.getByRole("complementary", { name: "Side menu" }).getByText(/^Skjald \S+$/)).toBeVisible();
 
   expect(crashes).toEqual([]);
   expect(violations).toEqual([]);

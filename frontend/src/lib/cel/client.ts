@@ -6,6 +6,10 @@
 import type { Job, Request, Response, Result, Setup } from "./jobs";
 
 export const TIME_LIMIT_MS = 1000;
+// The limit is on the worker's time, but the timer runs in the page: when the page
+// itself was busy (drawing a long outline, say), an answer that came in time waits
+// behind the timer. So an overdue batch gets this moment more for its answer to be read.
+const GRACE_MS = 50;
 export const TOO_LONG = "Working this out took too long, so Skjald stopped it.";
 
 /** The part of a Worker the client uses, so tests can stand in for one. */
@@ -22,6 +26,7 @@ interface Pending {
   setup: Setup;
   values: Record<string, unknown>;
   jobs: Job[];
+  limitMs: number;
   done: (results: Result[]) => void;
 }
 
@@ -37,9 +42,10 @@ export class CelClient {
     private readonly timeLimitMs = TIME_LIMIT_MS,
   ) {}
 
-  run(setup: Setup, values: Record<string, unknown>, jobs: Job[]): Promise<Result[]> {
+  /** limitMs is this batch's own time limit: a whole preview gets longer than one expression. */
+  run(setup: Setup, values: Record<string, unknown>, jobs: Job[], limitMs = this.timeLimitMs): Promise<Result[]> {
     return new Promise((done) => {
-      this.#queue.push({ setup, values, jobs, done });
+      this.#queue.push({ setup, values, jobs, limitMs, done });
       this.#next();
     });
   }
@@ -59,18 +65,22 @@ export class CelClient {
     const worker = (this.#worker ??= this.makeWorker());
     const id = this.#nextId++;
     let settled = false;
+    let grace: ReturnType<typeof setTimeout> | undefined;
     const finish = (results: Result[]) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      clearTimeout(grace);
       this.#busy = false;
       pending.done(results);
       this.#next();
     };
     const timer = setTimeout(() => {
-      this.close();
-      finish(pending.jobs.map(() => ({ ok: false, kind: "runtime", message: TOO_LONG })));
-    }, this.timeLimitMs);
+      grace = setTimeout(() => {
+        this.close();
+        finish(pending.jobs.map(() => ({ ok: false, kind: "runtime", message: TOO_LONG })));
+      }, GRACE_MS);
+    }, pending.limitMs);
     worker.onmessage = (event) => {
       if (event.data.id === id) finish(event.data.results);
     };

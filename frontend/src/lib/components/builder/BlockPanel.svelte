@@ -8,9 +8,10 @@
   import { inkFor } from "#lib/components/preview/PdfPages.svelte";
   import type { Asset } from "#lib/templates/api.js";
   import { BLOCK_TYPES, changeSigner, emptyDoc, nextSigner } from "#lib/templates/blocks.js";
-  import type { NameEntry } from "#lib/templates/catalogue.js";
-  import { settingsOf } from "#lib/templates/fields.js";
+  import { entryChoice, type NameEntry } from "#lib/templates/catalogue.js";
+  import { questionChoice, settingsOf } from "#lib/templates/fields.js";
   import { questionsOf, type Block, type Problem, type Signer, type TemplateContent } from "#lib/templates/types.js";
+  import LiteralInput from "./LiteralInput.svelte";
   import NameInput from "./NameInput.svelte";
   import RichTextEditor from "./RichTextEditor.svelte";
   import RuleField from "./RuleField.svelte";
@@ -36,6 +37,7 @@
   const questions = $derived(questionsOf(content));
   const lists = $derived(questions.filter((q) => q.type === "repeating" || q.type === "table"));
   const photos = $derived(questions.filter((q) => q.type === "photo"));
+  const pads = $derived(questions.filter((q) => q.type === "signature"));
   const problem = (field: string) => problems.find((p) => p.field === field)?.message ?? null;
   const fieldProblems = (prefix: string) => problems.filter((p) => p.field.startsWith(prefix)).map((p) => p.message);
   const columnsOf = (questionId: string | null) => {
@@ -47,20 +49,55 @@
     { value: "critical", label: "Critical" }, { value: "success", label: "Success" },
   ];
 
+  // A switch picks its case by text or a whole number: an answer, or another name.
+  const switchable = $derived(entries.filter((e) => e.shape === "text" || e.shape === "whole"));
+  const switched = $derived(block.kind === "switch" ? switchable.find((e) => e.name === block.value) : undefined);
+  const caseShape = $derived(switched?.shape === "whole" ? "whole" : "text");
+  const missingChoices = $derived(block.kind === "switch" ? (switched?.choices ?? []).filter((choice) => !block.cases.some((c) => c.match === choice.value)) : []);
+
+  function pickSwitch(name: string) {
+    if (block.kind !== "switch") return;
+    block.value = name || null;
+    const entry = switchable.find((e) => e.name === name);
+    const whole = entry?.shape === "whole";
+    for (const c of block.cases) c.match = whole ? Math.trunc(Number(c.match)) || 0 : String(c.match);
+    // A dropdown's choices become the cases, when there are none yet.
+    if (!block.cases.length) block.cases = (entry?.choices ?? []).map((choice) => ({ match: choice.value, blocks: [] }));
+  }
+
+  function addCases(values: (string | number)[]) {
+    if (block.kind === "switch") block.cases.push(...values.map((match) => ({ match, blocks: [] })));
+  }
+
+  function moveCase(from: number, by: number) {
+    if (block.kind !== "switch") return;
+    const [moved] = block.cases.splice(from, 1);
+    block.cases.splice(from + by, 0, moved);
+  }
+
   let uploading = $state(false);
   let uploadError = $state<string | null>(null);
 
   async function upload(event: Event) {
     const input = event.currentTarget as HTMLInputElement;
     const file = input.files?.[0];
-    if (!file || block.kind !== "image") return;
+    // The block it's for: another may be selected by the time the upload is done.
+    const target = block;
+    if (!file || target.kind !== "image") return;
     uploading = true;
     uploadError = null;
     const asset = await onupload(file);
     uploading = false;
     input.value = "";
-    if (asset) block.asset = asset.sha256;
+    if (asset) target.asset = asset.sha256;
     else uploadError = "The image couldn't be added.";
+  }
+
+  // Which of a list's columns a table prints, and in what order: nothing kept when
+  // it's all of them in the list's own order, so a column added later is printed too.
+  function setColumns(all: string[], next: string[]) {
+    if (block.kind !== "table") return;
+    block.columns = next.length === all.length && next.every((key, i) => key === all[i]) ? null : next;
   }
 
   const contrastNote = $derived.by(() => {
@@ -70,10 +107,10 @@
   });
 </script>
 
-{#snippet text(field: string, label: string, value: string, set: (v: string) => void, hint = "")}
+{#snippet text(field: string, label: string, value: string, set: (v: string) => void, hint = "", maxlength = 500)}
   <div class="field">
     <label for="{id}-{field}">{label}</label>
-    <NameInput id="{id}-{field}" bind:value={() => value, set} {entries} invalid={Boolean(problem(field))} />
+    <NameInput id="{id}-{field}" bind:value={() => value, set} {entries} {maxlength} invalid={Boolean(problem(field))} />
     <span class="hint" class:error={problem(field)}>{problem(field) ?? hint}</span>
   </div>
 {/snippet}
@@ -83,7 +120,7 @@
   <span class="head-actions">
     <button class="mini" type="button" aria-label="Move up" title="Move up" disabled={first} onclick={() => onmove(-1)}><ArrowUp size={16} aria-hidden="true" /></button>
     <button class="mini" type="button" aria-label="Move down" title="Move down" disabled={last} onclick={() => onmove(1)}><ArrowDown size={16} aria-hidden="true" /></button>
-    <button class="mini" type="button" aria-label="Remove the block" title="Remove" onclick={onremove}><X size={16} aria-hidden="true" /></button>
+    <button class="mini" type="button" aria-label="Remove the block" title="Remove (Delete)" aria-keyshortcuts="Delete" onclick={onremove}><X size={16} aria-hidden="true" /></button>
   </span>
 </div>
 
@@ -91,7 +128,7 @@
   <div class="group-head"><h3 id="{id}-pdf">In the PDF</h3><Where pdf /></div>
 
   {#if block.kind === "section"}
-    {@render text("title", "Title", block.title, (v) => block.kind === "section" && (block.title = v), "Type {{ to insert a name, such as the report's number.")}
+    {@render text("title", "Title", block.title, (v) => block.kind === "section" && (block.title = v), "Type {{ to insert a name, such as the report's number.", 300)}
     {#if block.intro}
       <RichTextEditor bind:value={block.intro} {entries} label="Introduction, under the heading" id="{id}-intro" />
       <button class="link-button small start" type="button" onclick={() => block.kind === "section" && (block.intro = null)}>Remove the introduction</button>
@@ -136,7 +173,7 @@
       </select>
     </div>
   {:else if block.kind === "heading"}
-    {@render text("text", "Heading", block.text, (v) => block.kind === "heading" && (block.text = v))}
+    {@render text("text", "Heading", block.text, (v) => block.kind === "heading" && (block.text = v), "", 300)}
   {:else if block.kind === "text"}
     <RichTextEditor bind:value={() => block.kind === "text" ? block.content : null, (v) => block.kind === "text" && v && (block.content = v)} {entries} label="Text" id="{id}-content" />
     {#if problem("content")}<p class="small error">{problem("content")}</p>{/if}
@@ -145,7 +182,7 @@
       <label for="{id}-question">Answer to print</label>
       <select id="{id}-question" class="input" value={block.question ?? ""} onchange={(e) => block.kind === "answer" && (block.question = e.currentTarget.value || null)}>
         <option value="" disabled>Choose a question…</option>
-        {#each questions.filter((q) => q.type !== "heading") as q (q.id)}<option value={q.id}>{q.label}</option>{/each}
+        {#each questions.filter((q) => q.type !== "heading") as q (q.id)}<option value={q.id}>{questionChoice(q)}</option>{/each}
       </select>
       {#if problem("question")}<span class="hint error">{problem("question")}</span>{/if}
     </div>
@@ -155,26 +192,37 @@
       <label for="{id}-question">Rows from</label>
       <select id="{id}-question" class="input" value={block.question ?? ""} onchange={(e) => { if (block.kind === "table") { block.question = e.currentTarget.value || null; block.columns = null; } }}>
         <option value="" disabled>Choose a repeating group or table…</option>
-        {#each lists as q (q.id)}<option value={q.id}>{q.label}</option>{/each}
+        {#each lists as q (q.id)}<option value={q.id}>{questionChoice(q)}</option>{/each}
       </select>
       {#if problem("question")}<span class="hint error">{problem("question")}</span>{/if}
     </div>
     {#if block.question}
       {@const all = columnsOf(block.question)}
+      {@const keys = all.map((c) => c.key)}
+      {@const shown = (block.columns ?? keys).filter((k) => keys.includes(k))}
+      <!-- The columns as they print, left to right, then the ones left out. -->
+      {@const listed = [...shown.flatMap((k) => all.filter((c) => c.key === k)), ...all.filter((c) => !shown.includes(c.key))]}
       <fieldset class="plain">
-        <legend>Columns printed</legend>
-        {#each all as column (column.key)}
-          <label class="check"><input type="checkbox" checked={!block.columns || block.columns.includes(column.key)}
-            onchange={(e) => {
-              if (block.kind !== "table") return;
-              const shown = block.columns ?? all.map((c) => c.key);
-              const next = e.currentTarget.checked ? all.map((c) => c.key).filter((k) => shown.includes(k) || k === column.key) : shown.filter((k) => k !== column.key);
-              block.columns = next.length === all.length ? null : next;
-            }} /> {column.label}</label>
+        <legend>Columns printed, in this order</legend>
+        {#each listed as column, i (column.key)}
+          <div class="column-line">
+            <label class="check"><input type="checkbox" checked={shown.includes(column.key)}
+              onchange={(e) => setColumns(keys, e.currentTarget.checked ? [...shown, column.key] : shown.filter((k) => k !== column.key))} /> {column.label}</label>
+            {#if shown.includes(column.key) && shown.length > 1}
+              <span class="order">
+                <button class="mini" type="button" aria-label="Move {column.label} earlier" title="Earlier" disabled={i === 0}
+                  onclick={() => setColumns(keys, shown.map((k, n) => (n === i - 1 ? shown[i] : n === i ? shown[i - 1] : k)))}><ArrowUp size={14} aria-hidden="true" /></button>
+                <button class="mini" type="button" aria-label="Move {column.label} later" title="Later" disabled={i === shown.length - 1}
+                  onclick={() => setColumns(keys, shown.map((k, n) => (n === i + 1 ? shown[i] : n === i ? shown[i + 1] : k)))}><ArrowDown size={14} aria-hidden="true" /></button>
+              </span>
+            {/if}
+          </div>
         {/each}
         {#if problem("columns")}<p class="small error">{problem("columns")}</p>{/if}
       </fieldset>
     {/if}
+    <label class="check"><input type="checkbox" checked={block.row_numbers ?? false} onchange={(e) => block.kind === "table" && (block.row_numbers = e.currentTarget.checked)} /> Number the rows</label>
+    <span class="hint">A “No.” column first: 1, 2, 3. Two tables of the same rows then share the numbers, so a row is found again by its number.</span>
     {@render text("caption", "Caption", block.caption, (v) => block.kind === "table" && (block.caption = v), "Printed as “Table 1. …”, numbered for you.")}
     {@render text("empty_text", "When there are no rows", block.empty_text, (v) => block.kind === "table" && (block.empty_text = v))}
   {:else if block.kind === "image"}
@@ -203,7 +251,7 @@
         <label for="{id}-photo">Photo question</label>
         <select id="{id}-photo" class="input" value={block.question ?? ""} onchange={(e) => block.kind === "image" && (block.question = e.currentTarget.value || null)}>
           <option value="" disabled>Choose a photo question…</option>
-          {#each photos as q (q.id)}<option value={q.id}>{q.label}</option>{/each}
+          {#each photos as q (q.id)}<option value={q.id}>{questionChoice(q)}</option>{/each}
         </select>
         {#if problem("question")}<span class="hint error">{problem("question")}</span>{/if}
       </div>
@@ -221,7 +269,7 @@
       <label for="{id}-photo">Photos from</label>
       <select id="{id}-photo" class="input" value={block.question ?? ""} onchange={(e) => block.kind === "gallery" && (block.question = e.currentTarget.value || null)}>
         <option value="" disabled>Choose a photo question…</option>
-        {#each photos as q (q.id)}<option value={q.id}>{q.label}</option>{/each}
+        {#each photos as q (q.id)}<option value={q.id}>{questionChoice(q)}</option>{/each}
       </select>
       {#if problem("question")}<span class="hint error">{problem("question")}</span>{/if}
     </div>
@@ -235,7 +283,13 @@
   {:else if block.kind === "callout"}
     <div class="field">
       <label for="{id}-tone">Tone</label>
-      <select id="{id}-tone" class="input" bind:value={block.tone}>
+      <select id="{id}-tone" class="input" value={block.tone}
+        onchange={(e) => {
+          if (block.kind !== "callout") return;
+          block.tone = e.currentTarget.value as typeof block.tone;
+          // The swatch shows a colour straight away: the block holds that one.
+          if (block.tone === "custom") block.colour ??= "#DCE6EE";
+        }}>
         {#each TONES as tone (tone.value)}<option value={tone.value}>{tone.label}</option>{/each}
         <option value="custom">A colour of my own</option>
       </select>
@@ -261,7 +315,7 @@
       <label for="{id}-question">Count the rows of</label>
       <select id="{id}-question" class="input" value={block.question ?? ""} onchange={(e) => { if (block.kind === "severity_summary") { block.question = e.currentTarget.value || null; block.column = null; } }}>
         <option value="" disabled>Choose a repeating group…</option>
-        {#each lists as q (q.id)}<option value={q.id}>{q.label}</option>{/each}
+        {#each lists as q (q.id)}<option value={q.id}>{questionChoice(q)}</option>{/each}
       </select>
       {#if problem("question")}<span class="hint error">{problem("question")}</span>{/if}
     </div>
@@ -278,7 +332,7 @@
     <div class="field">
       <label for="{id}-levels">Levels, in order</label>
       <input id="{id}-levels" class="input" value={block.levels.join(", ")}
-        oninput={(e) => { if (block.kind === "severity_summary") { const levels = e.currentTarget.value.split(",").map((v) => v.trim()).filter(Boolean); if (levels.length) block.levels = levels.slice(0, 8); } }} />
+        oninput={(e) => { if (block.kind === "severity_summary") { const levels = e.currentTarget.value.split(",").map((v) => v.trim().slice(0, 50)).filter(Boolean); if (levels.length) block.levels = levels.slice(0, 8); } }} />
       <span class="hint">Separated by commas. Rows count where the column says one of them.</span>
     </div>
     {@render text("caption", "Caption", block.caption, (v) => block.kind === "severity_summary" && (block.caption = v))}
@@ -299,7 +353,7 @@
       <label for="{id}-own">The technician's own, from</label>
       <select id="{id}-own" class="input" value={block.question ?? ""} onchange={(e) => block.kind === "sources" && (block.question = e.currentTarget.value || null)}>
         <option value="">None</option>
-        {#each lists as q (q.id)}<option value={q.id}>{q.label}</option>{/each}
+        {#each lists as q (q.id)}<option value={q.id}>{questionChoice(q)}</option>{/each}
       </select>
       <span class="hint" class:error={problem("question")}>{problem("question") ?? "A repeating group with title and link columns."}</span>
     </div>
@@ -310,14 +364,23 @@
         <div class="signer">
           <select class="input" aria-label="Signature {i + 1}: who" value={signer.role} onchange={(e) => changeSigner(signer, e.currentTarget.value as Signer["role"])}>
             <option value="technician">The technician</option><option value="reviewer">The reviewer</option><option value="company">The company seal</option>
+            <option value="pad">A signature pad in the form</option>
           </select>
-          <select class="input" aria-label="Signature {i + 1}: how it looks" bind:value={signer.style}>
-            <option value="handwritten">Handwritten</option><option value="stamp">A stamp</option>
-          </select>
+          {#if signer.role === "pad"}
+            <select class="input" aria-label="Signature {i + 1}: which signature pad" value={signer.question ?? ""} onchange={(e) => (signer.question = e.currentTarget.value || null)}>
+              <option value="" disabled>{pads.length ? "Choose a signature pad…" : "Add a signature pad question first"}</option>
+              {#each pads as q (q.id)}<option value={q.id}>{questionChoice(q)}</option>{/each}
+            </select>
+          {:else}
+            <select class="input" aria-label="Signature {i + 1}: how it looks" bind:value={signer.style}>
+              <option value="handwritten">Handwritten</option><option value="stamp">A stamp</option>
+            </select>
+          {/if}
           <NameInput label="Signature {i + 1}: label" bind:value={signer.label} {entries} />
           <button class="mini" type="button" aria-label="Remove signature {i + 1}" disabled={block.signers.length === 1} onclick={() => block.kind === "signatures" && block.signers.splice(i, 1)}><X size={14} aria-hidden="true" /></button>
         </div>
       {/each}
+      {#each fieldProblems("signers") as message, i (i)}<p class="small error">{message}</p>{/each}
       {#if block.signers.length < 4}
         <button class="link-button small start" type="button" onclick={() => block.kind === "signatures" && block.signers.push(nextSigner(block.signers))}><Plus size={14} aria-hidden="true" /> Add a signature</button>
       {/if}
@@ -327,7 +390,9 @@
       <select id="{id}-layout" class="input" bind:value={block.layout}><option value="row">Side by side</option><option value="stack">Stacked</option></select>
     </div>
     <label class="check"><input type="checkbox" bind:checked={block.show_date} /> Print the date of signing</label>
-    <p class="small muted">Who signs, and in what order, is the template's signing setting.</p>
+    <p class="small muted">The technician, the reviewer and the company seal sign the finished report digitally: who does, and in what order, is
+      “Who signs” on the Settings tab, and each signs as themselves. A signature pad is drawn in the form, by someone who isn't a user of Skjald,
+      such as the customer's witness; until it's drawn its place says “Not signed”. Make the question required to hold the report back until then.</p>
   {:else if block.kind === "columns"}
     <div class="field">
       <label for="{id}-count">Columns</label>
@@ -337,6 +402,42 @@
       </select>
       <span class="hint">Drag blocks into each column in the outline.</span>
     </div>
+  {:else if block.kind === "switch"}
+    <div class="field">
+      <label for="{id}-value">Picked by</label>
+      <select id="{id}-value" class="input" value={block.value ?? ""} onchange={(e) => pickSwitch(e.currentTarget.value)}>
+        <option value="" disabled>Choose an answer…</option>
+        {#each switchable as e (e.name)}<option value={e.name}>{entryChoice(e)} ({e.name})</option>{/each}
+        {#if block.value && !switched}<option value={block.value}>{block.value}</option>{/if}
+      </select>
+      <span class="hint" class:error={problem("value")}>{problem("value") ?? "Text or a whole number, usually a dropdown's answer. Choosing a dropdown makes a case for each of its choices."}</span>
+    </div>
+    <fieldset class="plain">
+      <legend>Cases, checked in order</legend>
+      {#each block.cases as c, i (i)}
+        <div class="case">
+          <LiteralInput bind:value={() => c.match, (v) => (c.match = caseShape === "whole" ? Math.trunc(Number(v ?? 0)) || 0 : String(v ?? ""))}
+            shape={caseShape} choices={switched?.choices} label="Case {i + 1}: when it's" />
+          <button class="mini" type="button" aria-label="Move case {i + 1} up" disabled={i === 0} onclick={() => moveCase(i, -1)}><ArrowUp size={14} aria-hidden="true" /></button>
+          <button class="mini" type="button" aria-label="Move case {i + 1} down" disabled={i === block.cases.length - 1} onclick={() => moveCase(i, 1)}><ArrowDown size={14} aria-hidden="true" /></button>
+          <button class="mini" type="button" aria-label="Remove case {i + 1}" title={c.blocks.length ? "Remove the case and its blocks" : "Remove the case"}
+            onclick={() => block.kind === "switch" && block.cases.splice(i, 1)}><X size={14} aria-hidden="true" /></button>
+        </div>
+        {#if problem(`cases.${i}.match`)}<p class="small error">{problem(`cases.${i}.match`)}</p>{/if}
+      {/each}
+      {#if problem("cases")}<p class="small error">{problem("cases")}</p>{/if}
+      <span class="actions-line">
+        <button class="link-button small start" type="button" onclick={() => addCases([caseShape === "whole" ? 0 : ""])}><Plus size={14} aria-hidden="true" /> Add a case</button>
+        {#if missingChoices.length && block.cases.length}
+          <button class="link-button small start" type="button" onclick={() => addCases(missingChoices.map((choice) => choice.value))}>
+            <Plus size={14} aria-hidden="true" /> Add the {missingChoices.length} choice{missingChoices.length === 1 ? "" : "s"} without a case
+          </button>
+        {/if}
+      </span>
+    </fieldset>
+    <p class="small muted">Drag blocks into each case in the outline, or click blocks in the palette with the switch selected: each goes into the
+      first empty case, then Otherwise. Only the first case with the answer's value is printed; when none has it, or nothing is answered,
+      the blocks under Otherwise are. Removing a case removes its blocks.</p>
   {:else if block.kind === "page_break"}
     <p class="small muted">What follows starts on a new page. A page break never leaves an empty page.</p>
   {/if}
@@ -363,6 +464,15 @@
     font-weight: 600;
   }
   .head-actions {
+    display: flex;
+  }
+  .column-line {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+  .order {
     display: flex;
   }
   .mini {
@@ -414,6 +524,17 @@
     margin-bottom: var(--space-1);
     font-size: 14px;
     font-weight: 600;
+  }
+  .case {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
+    align-items: center;
+    gap: var(--space-1);
+  }
+  .actions-line {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-3);
   }
   .pair,
   .signer {

@@ -17,7 +17,9 @@ describe("page rules", () => {
   it.each(cases.cases as Case[])("$name", (c) => {
     const { pages, contents } = paginate(c.blocks as Shown[]);
     expect(pages.map((p) => ({ orientation: p.orientation, cover: p.cover, ids: p.items.map((i) => i.block.id) }))).toEqual(c.pages);
-    const placed: Placed[] = pages.flatMap((p) => p.items);
+    // Everything placed, the blocks inside columns included.
+    const within = (item: Placed): Placed[] => [item, ...Object.values(item.inside ?? {}).flatMap(within)];
+    const placed: Placed[] = pages.flatMap((p) => p.items).flatMap(within);
     expect(Object.fromEntries(placed.filter((i) => i.number).map((i) => [i.block.id, i.number]))).toEqual(c.numbers ?? {});
     expect(Object.fromEntries(placed.filter((i) => i.caption).map((i) => [i.block.id, i.caption]))).toEqual(c.captions ?? {});
     if (c.contents) expect(contents).toEqual(c.contents);

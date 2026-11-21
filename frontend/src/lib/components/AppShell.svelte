@@ -4,14 +4,13 @@
   import { page } from "$app/state";
   import Archive from "@lucide/svelte/icons/archive";
   import Contact from "@lucide/svelte/icons/contact";
+  import Database from "@lucide/svelte/icons/database";
   import FileText from "@lucide/svelte/icons/file-text";
   import FolderKanban from "@lucide/svelte/icons/folder-kanban";
   import HeartPulse from "@lucide/svelte/icons/heart-pulse";
   import House from "@lucide/svelte/icons/house";
   import LayoutDashboard from "@lucide/svelte/icons/layout-dashboard";
   import LayoutTemplate from "@lucide/svelte/icons/layout-template";
-  import LibraryBig from "@lucide/svelte/icons/library-big";
-  import ListPlus from "@lucide/svelte/icons/list-plus";
   import ListChecks from "@lucide/svelte/icons/list-checks";
   import LockKeyhole from "@lucide/svelte/icons/lock-keyhole";
   import LogOut from "@lucide/svelte/icons/log-out";
@@ -92,6 +91,8 @@
   const full = $derived(customer?.visibility === "full");
   const showAdmin = $derived(can(current, "administer") || can(current, "read_audit_log"));
   const builds = $derived(can(current, "build_templates"));
+  // Managers see the templates too, to delete retired ones.
+  const templates = $derived(builds || can(current, "delete_templates"));
   const shares = $derived(can(current, "edit_library"));
   const styles = $derived(can(current, "edit_styles"));
   const sees = $derived(current.user.roles.length > 0);
@@ -307,7 +308,7 @@
   <div class="side-column">
     <aside class="side" id="side-menu" aria-label="Side menu">
       <div class="side-head">
-        <a class="home" href={resolve("/(app)")}><Brand size={30} tagline version={current.version} /></a>
+        <a class="home" href={resolve("/(app)")}><Brand size={30} tagline /></a>
         <button class="icon-button close" type="button" aria-label="Close the menu"
           onclick={() => (menuOpen = false)}>
           <X size={20} aria-hidden="true" />
@@ -361,23 +362,19 @@
           </div>
         {/if}
 
-        {#if builds || shares || styles}
+        {#if templates || shares || styles}
           <ul class="items divided">
-            {#if builds}
+            {#if templates}
               <li>{@render link({ href: resolve("/(app)/templates"), label: "Templates", icon: LayoutTemplate,
                 current: path.startsWith("/templates") })}</li>
             {/if}
-            {#if shares}
-              <li>{@render link({ href: resolve("/(app)/library"), label: "Library", icon: LibraryBig,
-                current: path.startsWith("/library") })}</li>
+            {#if builds || shares}
+              <li>{@render link({ href: resolve("/(app)/database"), label: "Database", icon: Database,
+                current: path.startsWith("/database") })}</li>
             {/if}
             {#if styles}
               <li>{@render link({ href: resolve("/(app)/styles"), label: "Styles", icon: Palette,
                 current: path.startsWith("/styles") })}</li>
-            {/if}
-            {#if builds}
-              <li>{@render link({ href: resolve("/(app)/custom-fields"), label: "Custom fields", icon: ListPlus,
-                current: path.startsWith("/custom-fields") })}</li>
             {/if}
           </ul>
         {/if}
@@ -400,6 +397,8 @@
         {/if}
       </nav>
 
+      <!-- Which Skjald this is, just above who's signed in. -->
+      {#if current.version}<p class="version small muted" title="Skjald {current.version}">Skjald {current.version}</p>{/if}
       <div class="you">
         <a class="account" href={resolve("/(app)/account")} title="Your account: {user.display_name}"
           aria-current={path === "/account" ? "page" : undefined}>
@@ -571,6 +570,13 @@
   }
   .hint {
     padding: 0 var(--space-2);
+  }
+  .version {
+    margin: 0 0 var(--space-1);
+    padding: 0 var(--space-2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .you {
     display: flex;

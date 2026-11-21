@@ -22,7 +22,6 @@
   }
 
   const inner = (item: Condition): Condition => (item.kind === "not" ? item.item : item);
-  const asGroup = (item: Condition): Group => (item.kind === "compare" || item.kind === "not" ? { kind: "all", items: [item] } : item);
 
   function turn(index: number) {
     const item = condition.items[index];
@@ -56,7 +55,7 @@
             <CompareRow bind:compare={() => item as Compare, (v) => (condition.items[index] = v)} {entries} label="{label} {index + 1}" />
           {/if}
         {:else}
-          <ConditionEditor bind:condition={() => asGroup(shown), (v) => (item.kind === "not" ? (item.item = v) : (condition.items[index] = v))}
+          <ConditionEditor bind:condition={() => shown as Group, (v) => (item.kind === "not" ? (item.item = v) : (condition.items[index] = v))}
             {entries} depth={depth + 1} label="{label} {index + 1}" onremove={() => condition.items.splice(index, 1)} />
         {/if}
       </div>

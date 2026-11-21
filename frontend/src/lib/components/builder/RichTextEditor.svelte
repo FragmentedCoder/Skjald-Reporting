@@ -8,8 +8,9 @@
   import ListOrdered from "@lucide/svelte/icons/list-ordered";
   import Underline from "@lucide/svelte/icons/underline";
   import { onMount } from "svelte";
-  import type { NameEntry } from "#lib/templates/catalogue.js";
+  import { entryChoice, type NameEntry } from "#lib/templates/catalogue.js";
   import { makeEditor } from "#lib/templates/editor.js";
+  import { claimNames } from "#lib/templates/nameTarget.svelte.js";
   import { matching, printable as printing, typedName } from "#lib/templates/suggest.js";
   import type { RichText } from "#lib/templates/types.js";
   import NameSuggestions from "./NameSuggestions.svelte";
@@ -26,6 +27,7 @@
   } = $props();
 
   let element = $state<HTMLDivElement>();
+  let surface = $state<HTMLDivElement>();
   let editor = $state<Editor | null>(null);
   // Bumped on every change, so the buttons show what's on where the cursor is.
   let changes = $state(0);
@@ -38,6 +40,7 @@
 
   // A name typed after "{{": where the "{{" starts in the document, and what follows it.
   let typed = $state<{ from: number; query: string } | null>(null);
+  let letGo = () => {};
   let active = $state(0);
   const suggestions = $derived(typed && names ? matching(printing(entries), typed.query) : []);
 
@@ -82,8 +85,17 @@
       look();
     });
     editor.on("blur", () => (typed = null));
+    // A name picked in the Names drawer goes where the caret was, as a name chip.
+    // (Not in a technician's own answer, which holds no names.)
+    editor.on("focus", () => {
+      letGo();
+      if (names && element) letGo = claimNames({ element, label, insert: (name) => void editor?.chain().focus().insertContent({ type: "variable", attrs: { expr: name } }).run() });
+    });
     written = JSON.stringify(editor.getJSON());
-    return () => editor?.destroy();
+    return () => {
+      letGo();
+      editor?.destroy();
+    };
   });
 
   // Changes from elsewhere (a rename, a reload) reach the editor.
@@ -107,10 +119,21 @@
     expression = "";
   }
 
+  let linkProblem = $state<string | null>(null);
+
+  // A web address or an email address, as people write them: "skjald.example/guide" and
+  // "sofie@skjald.example" get the https:// or mailto: a link needs. Anything else that
+  // isn't one of those kinds of link is said so, not dropped.
   function setLink() {
-    const href = address.trim();
+    let href = address.trim();
+    if (href && !/^[a-z][a-z0-9+.-]*:/i.test(href)) href = /^[^\s/@]+@[^\s/@]+\.[^\s/@]+$/.test(href) ? `mailto:${href}` : `https://${href}`;
     if (!href) editor?.chain().focus().unsetLink().run();
-    else if (/^(https?:\/\/|mailto:)/.test(href)) editor?.chain().focus().extendMarkRange("link").setLink({ href }).run();
+    else if (/^(https?:\/\/|mailto:)\S+$/i.test(href)) editor?.chain().focus().extendMarkRange("link").setLink({ href }).run();
+    else {
+      linkProblem = "A link is a web address (https://…) or an email address.";
+      return;
+    }
+    linkProblem = null;
     linking = false;
   }
 
@@ -138,16 +161,18 @@
   </div>
   {#if linking}
     <form class="popover" onsubmit={(e) => { e.preventDefault(); setLink(); }}>
-      <input class="input" aria-label="Link address" placeholder="https://" bind:value={address} />
+      <input class="input" aria-label="Link address" placeholder="https://" bind:value={address} aria-invalid={linkProblem ? "true" : undefined}
+        oninput={() => (linkProblem = null)} />
       <button class="button button-secondary" type="submit">{address.trim() ? "Set link" : "Remove link"}</button>
     </form>
+    {#if linkProblem}<p class="small error" role="status">{linkProblem}</p>{/if}
   {/if}
   {#if naming}
     <div class="popover">
       <select class="input" aria-label="Name to insert" onchange={(e) => insertName(e.currentTarget.value)}>
         <option value="">Choose a name…</option>
         {#each groups as group (group)}
-          <optgroup label={group}>{#each printable.filter((e) => e.group === group) as e (e.name)}<option value={e.name}>{e.label}</option>{/each}</optgroup>
+          <optgroup label={group}>{#each printable.filter((e) => e.group === group) as e (e.name)}<option value={e.name}>{entryChoice(e)}</option>{/each}</optgroup>
         {/each}
       </select>
       <form class="expression" onsubmit={(e) => { e.preventDefault(); insertName(expression); }}>
@@ -156,9 +181,9 @@
       </form>
     </div>
   {/if}
-  <div class="surface">
+  <div class="surface" bind:this={surface}>
     <div bind:this={element}></div>
-    {#if suggestions.length}<NameSuggestions id="{id}-names" options={suggestions} {active} onpick={pickName} />{/if}
+    {#if suggestions.length}<NameSuggestions id="{id}-names" options={suggestions} {active} anchor={surface} onpick={pickName} />{/if}
   </div>
 </div>
 

@@ -38,13 +38,18 @@ export interface CustomerSummary {
   archived_projects: number | null;
   people: number | null;
   logo_url: string | null;
+  address: string | null;
+  language: "da" | "en" | null;
+  created_at: string | null;
+  /** People assigned as technicians and as reviewers (someone may be both). */
+  technicians: number | null;
+  reviewers: number | null;
+  sites_count: number | null;
+  contacts_count: number | null;
 }
 
 export interface CustomerDetail extends CustomerSummary {
-  address: string | null;
-  language: "da" | "en" | null;
   retention_months: number | null;
-  created_at: string | null;
   /** Custom fields' values by key, with full sight. */
   custom: Record<string, unknown> | null;
   sites: Site[] | null;

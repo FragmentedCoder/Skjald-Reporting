@@ -6,10 +6,11 @@
   import StylePicker from "#lib/components/preview/StylePicker.svelte";
   import { branding } from "#lib/branding.svelte.js";
   import { PreviewStyle } from "#lib/reportStyles/preview.svelte.js";
-  import { checkAnswer } from "#lib/templates/answers.js";
   import { useDraft } from "#lib/templates/draft.svelte.js";
-  import { fieldType, settingsOf } from "#lib/templates/fields.js";
+  import { fieldType } from "#lib/templates/fields.js";
+  import { answerProblem } from "#lib/templates/formChecks.js";
   import { LivePreview } from "#lib/templates/live.svelte.js";
+  import { samplePeople } from "#lib/templates/preview.js";
   import type { Question, TemplateContent } from "#lib/templates/types.js";
 
   // "Try it": the technician's screen for the draft, one step at a time, with the PDF
@@ -33,6 +34,8 @@
   });
 
   const model = $derived(live.model);
+  // Whom person questions offer here: the sample report's author and reviewer.
+  const people = $derived(samplePeople(draft.sampleContext));
   const hidden = $derived(new Set(model?.formHidden ?? []));
   const required = $derived(new Set(model?.formRequired ?? []));
   const invalid = $derived(new Map((model?.invalid ?? []).map((i) => [i.id, i.message])));
@@ -40,8 +43,11 @@
   let current = $state(0);
   const step = $derived(steps[Math.min(current, steps.length - 1)]);
 
+  // A question not answered yet shows what it starts as ("Starts as").
   function answer(q: Question): unknown {
-    return LOCAL.has(q.type) ? local[q.id] : content.sample.answers[q.id];
+    if (LOCAL.has(q.type)) return local[q.id];
+    const kept = content.sample.answers[q.id];
+    return kept === undefined ? model?.defaults[q.id] : kept;
   }
 
   function set(q: Question, value: unknown) {
@@ -50,7 +56,9 @@
       if (blank) delete local[q.id];
       else local[q.id] = value;
     } else if (blank) {
-      delete content.sample.answers[q.id];
+      // Cleared on purpose: one that starts as something stays empty, kept as null.
+      if (q.default?.trim()) content.sample.answers[q.id] = null;
+      else delete content.sample.answers[q.id];
     } else {
       content.sample.answers[q.id] = value;
     }
@@ -64,10 +72,10 @@
       for (const q of s.questions) {
         if (hidden.has(q.id) || !fieldType(q.type).asks || q.type === "calculated") continue;
         const value = answer(q);
-        const empty = value === undefined || value === null || value === "" || (Array.isArray(value) && !value.length);
-        const vector = q.type === "cvss" ? (value as { vector?: string } | undefined)?.vector : value;
-        const typed = empty ? null : checkAnswer(q.type, settingsOf(q.type, q.settings), vector);
-        const message = typed ?? invalid.get(q.id) ?? (required.has(q.id) && empty ? "is required." : null);
+        const empty = value === undefined || value === null || value === "" || (Array.isArray(value) && !value.length)
+          || (q.type === "cvss" && !(value as { vector?: string } | null)?.vector);
+        // What the field itself says: its own check, how many are chosen, the rows and their cells.
+        const message = answerProblem(q, value) ?? invalid.get(q.id) ?? (required.has(q.id) && empty ? "is required." : null);
         if (message) found.push({ step: i, question: q, message });
       }
     });
@@ -109,7 +117,7 @@
         {#each step.questions as q (q.id)}
           {#if !(q.type === "calculated" && !q.settings.show_in_form)}
             <AnswerField question={q} bind:value={() => answer(q), (v) => set(q, v)} required={required.has(q.id)}
-              hidden={hidden.has(q.id)} invalid={invalid.get(q.id) ?? null} computed={q.key ? model?.values[q.key] : undefined} />
+              hidden={hidden.has(q.id)} invalid={invalid.get(q.id) ?? null} computed={q.key ? model?.values[q.key] : undefined} {checked} {people} zone={branding.current.time_zone} />
           {/if}
         {:else}
           <p class="small muted">This step has no questions yet.</p>
@@ -134,7 +142,7 @@
         {#if missing.length}
           <ul>
             {#each missing as m (m.question.id)}
-              <li><button class="link-button" type="button" onclick={() => (current = m.step)}>{m.question.label}</button> {m.message}</li>
+              <li><button class="link-button" type="button" onclick={() => (current = m.step)}>{m.question.label}</button>{m.message === "is required." ? " " : ": "}{m.message}</li>
             {/each}
           </ul>
         {:else}
@@ -145,13 +153,16 @@
   </section>
 
   <section class="pdf" aria-labelledby="pdf-heading">
-    <h2 id="pdf-heading" class="section-title">The PDF <Where pdf /></h2>
+    <div class="title-line">
+      <h2 id="pdf-heading" class="section-title">The PDF <Where pdf /></h2>
+      {#if live.paged}<StylePicker {looks} />{/if}
+    </div>
+    {#if looks.problem}<p class="alert alert-warning small">{looks.problem}</p>{/if}
     {#if live.problem}<p class="alert alert-warning small">{live.problem}</p>{/if}
     {#if live.paged}
-      <StylePicker {looks} />
-      <PdfPages paged={live.paged} look={looks.look(live.model?.pageTexts)} language={content.settings.language}
+      <PdfPages paged={live.paged} look={looks.look(live.model?.pageTexts, content.settings.made_with_skjald ?? true)} language={content.settings.language} reportNumber={String(draft.sampleContext.report.number)}
         classification={String(draft.sampleContext.project.classification)} />
-    {:else}
+    {:else if !live.problem}
       <p class="muted">Working out the pages…</p>
     {/if}
   </section>
@@ -169,6 +180,15 @@
     display: flex;
     align-items: center;
     gap: var(--space-2);
+  }
+  /* The PDF's title, and at its right end which style the preview is drawn in. */
+  .title-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    margin-bottom: var(--space-3);
   }
   .intro p {
     margin: var(--space-1) 0 var(--space-3);

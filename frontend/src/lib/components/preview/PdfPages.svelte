@@ -17,11 +17,16 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
   import { dndzone, type DndEvent } from "svelte-dnd-action";
+  import { DRAG_OPTIONS, dragLook, Hooks, whileDragging } from "#lib/components/builder/drag.svelte.js";
   import type { Dragged } from "#lib/components/builder/Palette.svelte";
+  import { BLOCK_TYPES } from "#lib/templates/blocks.js";
+  import type { BlockKind } from "#lib/templates/types.js";
   import { FONT_STACKS, plainLook, pointsToCqi, textKey, type PageLook } from "#lib/reportStyles/look.js";
   import { colourOf, TONE_NAMES, type Element, type PageName } from "#lib/reportStyles/resolve.js";
+  import { drawPhoto, isLocalPhoto } from "#lib/templates/localPhotos.js";
   import type { Paged, Placed } from "#lib/templates/pages.js";
-  import type { Grid, Shown } from "#lib/templates/preview.js";
+  import { sampleContext, type Grid, type Shown } from "#lib/templates/preview.js";
+  import { strokeBox, strokePath } from "#lib/templates/signature.js";
   import RichView from "./RichView.svelte";
 
   // The PDF's pages, as A4 sheets that scale with the space they have. The page rules
@@ -80,7 +85,9 @@
   });
 
   // Who signs in the sample, and when: in the PDF, the signers' own signatures.
-  const SAMPLE_SIGNERS = { technician: "Freja Holm", reviewer: "Ivar Lund" } as const;
+  // The sample report's author and reviewer, as its text names them.
+  const SAMPLE = sampleContext();
+  const SAMPLE_SIGNERS = { technician: String(SAMPLE.author.display_name), reviewer: String(SAMPLE.reviewer.display_name) };
   const signedOn = $derived(
     new Intl.DateTimeFormat(language === "da" ? "da-DK" : "en-GB", { day: "numeric", month: "short", year: "numeric" }).format(new Date("2026-10-24T09:30:00Z")),
   );
@@ -96,12 +103,29 @@
   const entriesOf = (p: number): Entry[] => dragging[p] ?? paged.pages[p].items.map((placed) => ({ id: placed.block.id, placed }));
 
   function consider(p: number, event: CustomEvent<DndEvent<Entry>>) {
-    dragging = { ...dragging, [p]: event.detail.items };
+    const { [p]: _was, ...others } = dragging;
+    const shown = whileDragging(event.detail.items, paged.pages[p].items.map((placed) => placed.block));
+    dragging = shown ? { ...others, [p]: shown } : others;
+  }
+
+  const hooks = new Hooks();
+  const carried = dragLook<Entry>((e) => {
+    if ("palette" in e) return e.label;
+    const b = e.placed.block as { kind: string; title?: string };
+    return `${BLOCK_TYPES[b.kind as BlockKind]?.label ?? "Block"}${b.title ? `: ${b.title}` : ""}`;
+  });
+  // Each page's list: what the drag library is given.
+  function zoneOf(p: number) {
+    hooks.watch();
+    // Pages only to look at are no stop for the keyboard.
+    return { items: entriesOf(p), type: onplace ? "blocks" : "pages", dragDisabled: !onplace, dropFromOthersDisabled: !onplace, zoneTabIndex: onplace ? 0 : -1,
+      flipDurationMs: 150, dropTargetClasses: ["dropping"], dropTargetStyle: {}, transformDraggedElement: carried, ...DRAG_OPTIONS };
   }
 
   function finalize(p: number, event: CustomEvent<DndEvent<Entry>>) {
     const { [p]: _done, ...rest } = dragging;
     dragging = rest;
+    hooks.again();
     const items = event.detail.items;
     const k = items.findIndex((e) => e.id === event.detail.info.id);
     // The page it left, or dropped back where it was: nothing to do here.
@@ -205,7 +229,10 @@
   function choose(node: HTMLElement) {
     const click = (event: MouseEvent) => {
       const block = (event.target as HTMLElement).closest<HTMLElement>("[data-block]");
-      if (block?.dataset.block && onselect) onselect(block.dataset.block);
+      if (!block?.dataset.block || !onselect) return;
+      // Out of any field typed in before: keys such as Delete are for the block now.
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+      onselect(block.dataset.block);
     };
     node.addEventListener("click", click);
     return { destroy: () => node.removeEventListener("click", click) };
@@ -238,6 +265,13 @@
   }
 </script>
 
+{#snippet drawing(strokes: number[][])}
+  <svg class="drawing" viewBox={strokeBox(strokes)} preserveAspectRatio="xMinYMid meet" role="img" aria-label={language === "da" ? "Underskrift" : "Signature"}>
+    <!-- The line keeps its width however much the drawing is enlarged. -->
+    <path d={strokePath(strokes)} fill="none" stroke="currentColor" stroke-width="1.4" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" />
+  </svg>
+{/snippet}
+
 {#snippet grid(g: Grid, empty = "")}
   {#if g.rows.length}
     <table>
@@ -256,7 +290,7 @@
       <h1>{b.title}</h1>
       {#if b.subtitle}<p class="subtitle">{b.subtitle}</p>{/if}
       {#if b.facts.length}
-        <dl class="facts">{#each b.facts as fact, i (i)}<dt>{fact.label}</dt><dd>{fact.value}</dd>{/each}</dl>
+        <dl class="cover-facts">{#each b.facts as fact, i (i)}<dt>{fact.label}</dt><dd>{fact.value}</dd>{/each}</dl>
       {/if}
     </div>
   {:else if b.kind === "toc"}
@@ -278,7 +312,7 @@
   {:else if b.kind === "answer"}
     <div class="answer">
       {#if b.label}<p class="question">{b.label}</p>{/if}
-      {#if b.rich}<RichView nodes={b.rich.content} />{:else if b.rows}{@render grid(b.rows)}{:else}<p>{b.text || "—"}</p>{/if}
+      {#if b.rich}<RichView nodes={b.rich.content} />{:else if b.rows}{@render grid(b.rows)}{:else if b.strokes}<div class="hand drawn">{@render drawing(b.strokes)}</div>{:else}<p>{b.text || "—"}</p>{/if}
     </div>
   {:else if b.kind === "table"}
     <figure class="grid-figure">
@@ -287,14 +321,16 @@
     </figure>
   {:else if b.kind === "image"}
     <figure class="image" use:widthOf={{ width: b.width, ratio: b.ratio }}>
-      {#if b.url}<img src={b.url} alt={b.caption} />{:else}<div class="placeholder">The technician's photo goes here</div>{/if}
+      {#if isLocalPhoto(b.url)}<canvas use:drawPhoto={b.url}>{b.caption || "The photo chosen"}</canvas>
+      {:else if b.url}<img src={b.url} alt={b.caption} />{:else}<div class="placeholder">The technician's photo goes here</div>{/if}
       {#if placed?.caption}<figcaption>{placed.caption}{b.caption ? `. ${b.caption}` : ""}</figcaption>{/if}
     </figure>
   {:else if b.kind === "gallery"}
     <figure class="gallery per-{b.perRow}">
       <div class="photos">
         {#each b.urls.length ? b.urls : [null, null] as url, i (i)}
-          {#if url}<img src={url} alt="Photo {i + 1}" />{:else}<div class="placeholder">Photo {i + 1}</div>{/if}
+          {#if isLocalPhoto(url)}<canvas use:drawPhoto={url}>Photo {i + 1}</canvas>
+          {:else if url}<img src={url} alt="Photo {i + 1}" />{:else}<div class="placeholder">Photo {i + 1}</div>{/if}
         {/each}
       </div>
       {#if placed?.caption}<figcaption>{placed.caption}{b.caption ? `. ${b.caption}` : ""}</figcaption>{/if}
@@ -306,7 +342,7 @@
     </aside>
   {:else if b.kind === "severity_summary"}
     <figure class="severity">
-      <div class="counts">{#each b.counts as c (c.level)}<div class="count"><span class="n">{c.count}</span><span>{c.level}</span></div>{/each}</div>
+      <div class="counts">{#each b.counts as c, i (i)}<div class="count"><span class="n">{c.count}</span><span>{c.level}</span></div>{/each}</div>
       {#if b.caption}<figcaption>{b.caption}</figcaption>{/if}
     </figure>
   {:else if b.kind === "sources"}
@@ -317,9 +353,14 @@
   {:else if b.kind === "signatures"}
     <div class="signatures {b.layout}">
       {#each b.signers as signer, i (i)}
-        {@const name = signer.role === "company" ? company : SAMPLE_SIGNERS[signer.role]}
+        {@const name = signer.role === "pad" ? "" : signer.role === "company" ? company : SAMPLE_SIGNERS[signer.role]}
         <figure class="signature">
-          {#if signer.style === "stamp"}
+          {#if signer.role === "pad"}
+            <!-- Drawn in the form: the drawing, or an empty line saying it isn't signed. -->
+            <div class="hand drawn">
+              {#if signer.strokes}{@render drawing(signer.strokes)}{:else}<span class="unsigned">{language === "da" ? "Ikke underskrevet" : "Not signed"}</span>{/if}
+            </div>
+          {:else if signer.style === "stamp"}
             <div class="stamp">
               {#if look.logos.company}<img src={look.logos.company} alt="" />{/if}
               <span><strong>{name}</strong>{language === "da" ? "Digitalt underskrevet" : "Digitally signed"}</span>
@@ -327,14 +368,20 @@
           {:else}
             <div class="hand"><span>{name}</span></div>
           {/if}
-          <figcaption><strong>{signer.label}</strong>{name}{b.showDate ? ` · ${language === "da" ? "underskrevet" : "signed"} ${signedOn}` : ""}</figcaption>
+          {#if signer.role === "pad"}
+            <figcaption><strong>{signer.label}</strong>{signer.strokes && b.showDate ? `${language === "da" ? "Underskrevet" : "Signed"} ${signedOn}` : ""}</figcaption>
+          {:else}
+            <figcaption><strong>{signer.label}</strong>{name}{b.showDate ? ` · ${language === "da" ? "underskrevet" : "signed"} ${signedOn}` : ""}</figcaption>
+          {/if}
         </figure>
       {/each}
     </div>
-    <p class="sample-note">Sample signatures. In the PDF each one is a digital signature that can be checked.</p>
+    {#if b.signers.some((signer) => signer.role !== "pad")}
+      <p class="sample-note">Sample signatures. In the PDF each one is a digital signature that can be checked.</p>
+    {/if}
   {:else if b.kind === "columns"}
     <div class="columns">
-      {#each b.columns as column, i (i)}<div class="column">{#each column as inner (inner.id)}{@render item(inner, null)}{/each}</div>{/each}
+      {#each b.columns as column, i (i)}<div class="column">{#each column as inner (inner.id)}{@render item(inner, placed?.inside?.[inner.id] ?? null)}{/each}</div>{/each}
     </div>
   {/if}
 {/snippet}
@@ -375,9 +422,7 @@
           <img class="art" src={p === 0 ? look.art.first : look.art.other} alt="" />
         {/if}
         {@render design(designOf(p), p, !page.items.some((placed) => placed.block.kind === "cover" && !placed.block.showLogo))}
-        <div class="body" use:dndzone={{ items: entriesOf(p), type: onplace ? "blocks" : "pages", dragDisabled: !onplace, dropFromOthersDisabled: !onplace,
-                                          flipDurationMs: 150, centreDraggedOnCursor: true, dropTargetClasses: ["dropping"], dropTargetStyle: {} }}
-          onconsider={(e) => consider(p, e)} onfinalize={(e) => finalize(p, e)}>
+        <div class="body" use:dndzone={zoneOf(p)} onconsider={(e) => consider(p, e)} onfinalize={(e) => finalize(p, e)}>
           {#each entriesOf(p) as entry (entry.id)}
             {#if "palette" in entry}
               <div class="item drop-here">{entry.label}</div>
@@ -600,16 +645,17 @@
     color: var(--text-soft);
     font-size: 1.33em;
   }
-  .facts {
+  /* Not "facts": the app has a style of its own by that name. */
+  .cover-facts {
     display: grid;
     grid-template-columns: max-content 1fr;
     gap: 0.3em 1.2em;
     margin: 2em 0 0;
   }
-  .facts dt {
+  .cover-facts dt {
     color: var(--text-soft);
   }
-  .facts dd {
+  .cover-facts dd {
     margin: 0;
   }
   .toc ol {
@@ -667,7 +713,9 @@
     width: var(--share, 100%);
   }
   .image img,
-  .gallery img {
+  .image canvas,
+  .gallery img,
+  .gallery canvas {
     display: block;
     width: 100%;
     height: auto;
@@ -773,6 +821,25 @@
   .hand span {
     font-size: 2.2em;
   }
+  /* A signature drawn on a signature pad, or where one will be. */
+  .hand.drawn {
+    padding-left: 0;
+    font-family: inherit;
+  }
+  .drawing {
+    width: 100%;
+    height: 100%;
+  }
+  .hand .unsigned {
+    align-self: end;
+    padding: 0 0 0.3em 0.4em;
+    color: var(--text-soft);
+    font-size: 0.85em;
+  }
+  .answer .hand.drawn {
+    width: 12em;
+    border-bottom: 0;
+  }
   /* The company seal: a double frame in the style's link colour, with the logo. */
   .stamp {
     gap: 0.7em;
@@ -806,8 +873,11 @@
     color: var(--text-soft);
     font-size: 0.85em;
   }
+  /* A label is printed whole, on as many lines as it takes. */
   .signature figcaption strong {
+    overflow: visible;
     color: var(--text-ink);
+    white-space: normal;
   }
   .sample-note {
     margin-top: 0.8em;

@@ -2,16 +2,22 @@
   import { beforeNavigate } from "$app/navigation";
   import { resolve } from "$app/paths";
   import { page } from "$app/state";
+  import Braces from "@lucide/svelte/icons/braces";
   import ChevronLeft from "@lucide/svelte/icons/chevron-left";
   import Pencil from "@lucide/svelte/icons/pencil";
+  import Redo2 from "@lucide/svelte/icons/redo-2";
+  import Undo2 from "@lucide/svelte/icons/undo-2";
   import { untrack, type Snippet } from "svelte";
   import { ApiError, sessionGone } from "#lib/api.js";
   import { pageTitle } from "#lib/branding.svelte.js";
+  import { undoes } from "#lib/components/builder/keys.js";
+  import NamesDrawer from "#lib/components/builder/NamesDrawer.svelte";
   import Dialog from "#lib/components/Dialog.svelte";
   import Pill from "#lib/components/Pill.svelte";
   import { dateTime, time } from "#lib/format.js";
   import { templatesApi, type Changes } from "#lib/templates/api.js";
   import { Draft, shareDraft } from "#lib/templates/draft.svelte.js";
+  import { movedOn } from "#lib/templates/nameTarget.svelte.js";
   import { toast } from "#lib/toast.svelte.js";
 
   // A template's builder: its header (name, whether the draft is saved, its
@@ -23,6 +29,8 @@
 
   const id = $derived(Number(page.params.id));
   const base = $derived(resolve("/(app)/templates/[id]", { id: String(id) }));
+  // Whether this tab shows the list of problems, for the header's link to it.
+  const listed = $derived(page.url.pathname === base || page.url.pathname === resolve("/(app)/templates/[id]/layout", { id: String(id) }));
   const tabs = $derived([
     { href: base, label: "Questions" },
     { href: resolve("/(app)/templates/[id]/layout", { id: String(id) }), label: "Layout" },
@@ -54,6 +62,25 @@
     }
     if (!to?.url.pathname.startsWith(base)) void draft.save();
   });
+
+  // Ctrl+Z takes back the last change to the template, on any tab; with Shift (or
+  // Ctrl+Y) it's put back. A field being typed in undoes its own typing.
+  function keydown(event: KeyboardEvent) {
+    const wanted = undoes(event);
+    if (!wanted || draft.readonly || !draft.content) return;
+    event.preventDefault();
+    step(wanted === "redo");
+  }
+
+  function step(again: boolean) {
+    if (again ? !draft.canRedo : !draft.canUndo) return;
+    draft.undo(again);
+    toast(again ? "Put the change back." : "Took back the last change.", "info",
+      { key: "template-removed", lifetime: 6000, action: { label: again ? "Undo" : "Redo", run: () => step(!again) } });
+  }
+
+  // The Names drawer, open beside any tab.
+  let namesOpen = $state(false);
 
   let renaming = $state(false);
   let newName = $state("");
@@ -110,18 +137,21 @@
   const count = $derived(draft.problems.length);
   const totalChanges = $derived(
     changes
-      ? changes.questions_added.length + changes.questions_removed.length + changes.questions_changed.length
-        + changes.blocks_added.length + changes.blocks_removed.length + changes.blocks_changed.length
-        + changes.settings_changed.length
+      ? changes.steps_added.length + changes.steps_removed.length + changes.steps_changed.length + changes.steps_moved.length
+        + changes.questions_added.length + changes.questions_removed.length + changes.questions_changed.length + changes.questions_moved.length
+        + changes.blocks_added.length + changes.blocks_removed.length + changes.blocks_changed.length + changes.blocks_moved.length
+        + changes.settings_changed.length + (changes.sample_changed ? 1 : 0)
       : 0,
   );
 </script>
 
 <svelte:head><title>{pageTitle(draft.template?.name ?? "Template")}</title></svelte:head>
 
-<svelte:window onbeforeunload={(event) => { if (draft.unsaved) event.preventDefault(); }} />
+<svelte:window onbeforeunload={(event) => { if (draft.unsaved) event.preventDefault(); }} onkeydown={keydown} />
+<!-- A name picked in the Names drawer goes into the field last written in: not once the designer writes elsewhere. -->
+<svelte:document onfocusin={(event) => movedOn(event.target)} />
 
-<main class="page-content builder">
+<main class="page-content builder" class:names-open={namesOpen}>
   <a class="back small" href={resolve("/(app)/templates")}><ChevronLeft size={16} aria-hidden="true" /> Templates</a>
 
   {#if draft.loadError}
@@ -152,15 +182,27 @@
             {#if draft.template.latest_version !== null}
               <span class="muted">· Version {draft.template.latest_version} is the one in use.</span>
             {/if}
+            <span class="steps">
+              <button class="icon-button" type="button" aria-label="Undo the last change" title="Undo (Ctrl+Z)" aria-keyshortcuts="Control+Z"
+                disabled={!draft.canUndo} onclick={() => step(false)}><Undo2 size={16} aria-hidden="true" /></button>
+              <button class="icon-button" type="button" aria-label="Redo the change" title="Redo (Ctrl+Shift+Z)" aria-keyshortcuts="Control+Shift+Z"
+                disabled={!draft.canRedo} onclick={() => step(true)}><Redo2 size={16} aria-hidden="true" /></button>
+            </span>
           {/if}
         </p>
       </div>
       <div class="actions">
         {#if !draft.readonly}
-          <a class="problems" href="#problems" class:none={count === 0}>
+          <!-- The list of problems is on the Questions and Layout tabs: from the others the link goes to Questions. -->
+          <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- base comes from resolve(); the rest is the list's place on the page -->
+          <a class="problems" href={listed ? "#problems" : `${base}#problems`} class:none={count === 0}>
             <Pill tone={count ? "warning" : "ok"} text={count ? `${count} problem${count === 1 ? "" : "s"}` : "No problems"} />
           </a>
         {/if}
+        <button class="button button-secondary" type="button" aria-expanded={namesOpen} aria-controls="names-drawer"
+          title="Every name this template can read, to look up and insert" onclick={() => (namesOpen = !namesOpen)}>
+          <Braces size={16} aria-hidden="true" /> Names
+        </button>
         {#if draft.readonly}
           <button class="button button-primary" type="button" onclick={edit}>Edit</button>
         {:else}
@@ -196,6 +238,7 @@
   {:else}
     <p class="muted">Loading…</p>
   {/if}
+  {#if namesOpen}<NamesDrawer onclose={() => (namesOpen = false)} />{/if}
 </main>
 
 <Dialog bind:open={renaming} title="Rename template">
@@ -223,13 +266,20 @@
         <div class="changes small">
           <p class="overline">Changes since version {draft.template?.latest_version}</p>
           <ul>
+            {#each changes.steps_added as step (step.id)}<li>Step added: {step.label}</li>{/each}
+            {#each changes.steps_removed as step (step.id)}<li>Step removed: {step.label}</li>{/each}
+            {#each changes.steps_changed as step (step.id)}<li>Step changed: {step.label}</li>{/each}
+            {#each changes.steps_moved as step (step.id)}<li>Step moved: {step.label}</li>{/each}
             {#each changes.questions_added as q (q.id)}<li>Question added: {q.label}</li>{/each}
             {#each changes.questions_removed as q (q.id)}<li>Question removed: {q.label}</li>{/each}
             {#each changes.questions_changed as q (q.id)}<li>Question changed: {q.label}</li>{/each}
+            {#each changes.questions_moved as q (q.id)}<li>Question moved: {q.label}</li>{/each}
             {#each changes.blocks_added as b (b.id)}<li>Block added: {b.label}</li>{/each}
             {#each changes.blocks_removed as b (b.id)}<li>Block removed: {b.label}</li>{/each}
             {#each changes.blocks_changed as b (b.id)}<li>Block changed: {b.label}</li>{/each}
+            {#each changes.blocks_moved as b (b.id)}<li>Block moved: {b.label}</li>{/each}
             {#if changes.settings_changed.length}<li>Settings changed: {changes.settings_changed.join(", ")}</li>{/if}
+            {#if changes.sample_changed}<li>Sample answers changed</li>{/if}
           </ul>
         </div>
       {:else}
@@ -251,6 +301,12 @@
 <style>
   .builder {
     max-width: none;
+  }
+  /* With the Names drawer open, the builder makes room for it where there's room. */
+  @media (min-width: 1300px) {
+    .builder.names-open {
+      padding-right: calc(400px + var(--space-6));
+    }
   }
   .back {
     display: inline-flex;
@@ -288,6 +344,13 @@
     align-items: center;
     gap: var(--space-2);
     margin: 0;
+  }
+  .steps {
+    display: inline-flex;
+  }
+  .steps .icon-button:disabled {
+    opacity: 0.35;
+    cursor: default;
   }
   .actions {
     display: flex;

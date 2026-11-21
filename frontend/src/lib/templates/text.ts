@@ -3,6 +3,19 @@
 
 import type { RichNode, RichText } from "./types";
 
+// What isn't seen at either end of a text: spaces of every kind, line breaks, the old
+// separator controls, and marks with no width (a byte order mark, a zero-width space).
+// JavaScript's trim() and Python's strip() don't take the same ones, so both sides use
+// this list (backend/app/templates/text.py).
+const UNSEEN = "\\t\\n\\v\\f\\r \\x1c-\\x1f\\x85\\xa0\\u1680\\u2000-\\u200d\\u2028\\u2029\\u202f\\u205f\\u2060\\u3000\\ufeff";
+const ENDS = new RegExp(`^[${UNSEEN}]+|[${UNSEEN}]+$`, "g");
+
+/** The text without what isn't seen at either end. */
+export const trimmed = (text: string) => text.replace(ENDS, "");
+
+/** Whether there's nothing to see in the text. */
+export const blank = (text: string) => !trimmed(text);
+
 export interface Interpolation {
   start: number;
   end: number;
@@ -56,13 +69,26 @@ export function interpolations(text: string): Interpolation[] {
       j += 1;
     }
     if (end < 0) {
-      found.push({ start, end: text.length, expr: text.slice(start + 2).trim(), closed: false });
+      found.push({ start, end: text.length, expr: trimmed(text.slice(start + 2)), closed: false });
       break;
     }
-    found.push({ start, end: end + 2, expr: text.slice(start + 2, end).trim(), closed: true });
+    found.push({ start, end: end + 2, expr: trimmed(text.slice(start + 2, end)), closed: true });
     i = end + 2;
   }
   return found;
+}
+
+/**
+ * What's typed in a box to try expressions: an expression as rules have it, the same
+ * in {{ }} as the name lists show it, or text with names in {{ }} as a text block has.
+ */
+export function readTyped(typed: string): { expr: string } | { text: string; parts: Interpolation[] } | { unclosed: true } {
+  const parts = interpolations(typed);
+  if (!parts.length) return { expr: typed.trim() };
+  if (parts.some((p) => !p.closed)) return { unclosed: true };
+  const [first] = parts;
+  const alone = parts.length === 1 && !typed.slice(0, first.start).trim() && !typed.slice(first.end).trim();
+  return alone ? { expr: first.expr } : { text: typed, parts };
 }
 
 function* nodes(node: RichNode | RichText): Generator<RichNode | RichText> {
