@@ -8,11 +8,13 @@ are plain; the values go into the customer's or project's sealed details, under
 "custom", so they're sealed with the customer's key like the rest. Templates read
 them as customer.custom.<key> and project.custom.<key>. A field's key and type never
 change once made, since templates read them; a field no longer wanted is archived,
-which keeps the values already filled in.
+which keeps the values already filled in. A change says which state of the field it
+was made from, and is refused if someone has changed the field since (409).
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import re
@@ -191,6 +193,9 @@ class FieldUpdate(BaseModel):
     options: list[Label] = Field(default_factory=list, max_length=100)
     position: int = Field(default=0, ge=0, le=10_000)
     archived: bool = False
+    # The field as the change was made from (FieldOut.version): a change over a newer
+    # one is refused.
+    version: str = Field(max_length=64)
 
 
 class FieldOut(BaseModel):
@@ -203,13 +208,22 @@ class FieldOut(BaseModel):
     options: list[str]
     position: int
     archived: bool
+    version: str
+
+
+def _version(field: CustomField) -> str:
+    """What stands for the field as it is now, for a change to say what it was made
+    from: a digest of everything about it that can change."""
+    held = json.dumps([field.label, field.help, json.loads(field.options), field.position,
+                       field.archived])
+    return hashlib.sha256(held.encode()).hexdigest()[:16]
 
 
 def _out(field: CustomField) -> FieldOut:
     return FieldOut(id=field.id, applies_to=field.applies_to,  # type: ignore[arg-type]
                     key=field.key, label=field.label, type=field.type,  # type: ignore[arg-type]
                     help=field.help, options=json.loads(field.options), position=field.position,
-                    archived=field.archived)
+                    archived=field.archived, version=_version(field))
 
 
 def _log(db: Session, request: Request, record: UserSession, action: str, field: CustomField,
@@ -256,6 +270,10 @@ def update_field(field_id: int, body: FieldUpdate, request: Request, record: Def
     field = db.get(CustomField, field_id)
     if field is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, NOT_FOUND)
+    if body.version != _version(field):
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            "Someone changed this field since you opened it. Look at their "
+                            "changes before making yours.")
     options = body.options if field.type == "dropdown" else []
     if field.type == "dropdown" and not options:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "A dropdown needs at least one option.")

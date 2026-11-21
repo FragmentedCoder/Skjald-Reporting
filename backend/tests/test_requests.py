@@ -47,7 +47,8 @@ def test_an_id_too_large_for_the_database_is_refused(client, admin, customer, se
         client.get(f"{CUSTOMERS}/-{HUGE}", headers=headers),
         client.get(f"{STYLES}/{HUGE}", headers=headers),
         client.delete(f"{STYLES}/{HUGE}", headers=headers),
-        client.put(f"/api/custom-fields/{HUGE}", headers=headers, json={"label": "Tier"}),
+        client.put(f"/api/custom-fields/{HUGE}", headers=headers,
+                   json={"label": "Tier", "version": "any"}),
         client.post(STYLES, headers=headers, json={"name": "Theirs", "customer_id": HUGE}),
         client.post(STYLES, headers=headers, json={
             "name": "Theirs", "customer_id": customer["id"], "based_on": HUGE}),

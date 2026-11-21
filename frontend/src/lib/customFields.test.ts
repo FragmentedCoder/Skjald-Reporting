@@ -5,7 +5,7 @@ import { sampleContext } from "./templates/preview";
 import type { TemplateContent } from "./templates/types";
 
 function field(applies_to: CustomField["applies_to"], key: string, type: CustomField["type"], more: Partial<CustomField> = {}): CustomField {
-  return { id: key.length, applies_to, key, label: key, type, help: "", options: [], position: 0, archived: false, ...more };
+  return { id: key.length, applies_to, key, label: key, type, help: "", options: [], position: 0, archived: false, version: "v1", ...more };
 }
 
 const FIELDS = [
