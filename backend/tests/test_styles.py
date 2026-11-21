@@ -214,6 +214,9 @@ def test_images_and_artwork(client, designer, session, monkeypatch) -> None:
     assert "immutable" in shown.headers["cache-control"]
     assert "private" not in shown.headers["cache-control"]
     assert post_file(client, headers, style["id"], b"GIF89a", use="image").status_code == 400
+    huge = io.BytesIO()
+    Image.new("1", (6400, 6300)).save(huge, format="PNG")  # 40.3 million pixels in 5 KB
+    assert post_file(client, headers, style["id"], huge.getvalue()).status_code == 400
 
     page = post_file(client, headers, style["id"], picture(420, 594), use="artwork")
     assert (page.json()["status"], len(page.json()["pages"])) == ("ready", 1)

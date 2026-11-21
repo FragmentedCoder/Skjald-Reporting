@@ -8,6 +8,7 @@ down. SVG isn't accepted: it can carry scripts, and needs a sanitizer first.
 from __future__ import annotations
 
 import io
+import warnings
 from datetime import datetime
 
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -21,8 +22,14 @@ MAX_UPLOAD_BYTES = 2 * 1024 * 1024
 ALLOWED_FORMATS = frozenset({"PNG", "JPEG", "WEBP", "GIF"})
 AVATAR_SIZE = (256, 256)
 LOGO_SIZE = (512, 512)
-# Refuse decompression bombs: a small file that unpacks into a huge picture.
-Image.MAX_IMAGE_PIXELS = 40_000_000
+# The most pixels a picture may have. A small file can unpack into a huge picture (a
+# decompression bomb) at about four bytes of memory a pixel, so a larger one is refused
+# from the size in its header, before any of it is decoded. Pillow makes that check
+# whenever it opens a file, but only warns above its limit and refuses at twice it:
+# its limit is half of Skjald's, so that every Image.open refuses above MAX_PIXELS.
+MAX_PIXELS = 40_000_000
+Image.MAX_IMAGE_PIXELS = MAX_PIXELS // 2
+warnings.filterwarnings("ignore", category=Image.DecompressionBombWarning)
 
 
 class ImageRejected(ValueError):
@@ -49,7 +56,10 @@ def clean_image(raw: bytes, *, max_size: tuple[int, int]) -> bytes:
             opened.load()
             # Turn it the way the camera meant before the EXIF data is dropped.
             image = ImageOps.exif_transpose(opened).convert("RGBA")
-    except (UnidentifiedImageError, Image.DecompressionBombError, OSError) as exc:
+    except Image.DecompressionBombError as exc:
+        raise ImageRejected(
+            "The image has more than 40 million pixels. Use a smaller one.") from exc
+    except (UnidentifiedImageError, OSError) as exc:
         raise ImageRejected("That file isn't an image Skjald can use.") from exc
     image.thumbnail(max_size)
     out = io.BytesIO()

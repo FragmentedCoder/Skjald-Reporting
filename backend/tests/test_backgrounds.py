@@ -92,6 +92,16 @@ def test_a_picture_of_a_page_is_ready_at_once(client, admin, customer) -> None:
     assert "A4" in wrong.json()["detail"]
 
 
+def test_a_picture_of_too_many_pixels_is_refused(client, admin, customer) -> None:
+    _, headers = admin
+    out = io.BytesIO()
+    Image.new("1", (5700, 8060)).save(out, format="PNG")  # 46 million pixels in 6 KB
+    refused = upload(client, headers, customer["id"], out.getvalue())
+    assert refused.status_code == 400
+    assert refused.json()["detail"] == (
+        "The picture has more than 40 million pixels. Use a smaller one.")
+
+
 def test_an_svg_page_is_cleaned(client, admin, customer) -> None:
     _, headers = admin
     svg = (b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 210 297"><script>x()</script>'
