@@ -142,7 +142,8 @@ function calculationOrder(questions: Question[], engine: Engine): Question[] {
 
 // Printing
 
-function printValue(value: unknown, language: string, zone: string): string {
+/** A value as text in {{ }} prints it, in the report's language. */
+export function printValue(value: unknown, language: string, zone: string): string {
   const locale = LOCALES[language] ?? LOCALES.en;
   if (value === null || value === undefined) return "";
   if (typeof value === "boolean") return language === "da" ? (value ? "Ja" : "Nej") : value ? "Yes" : "No";

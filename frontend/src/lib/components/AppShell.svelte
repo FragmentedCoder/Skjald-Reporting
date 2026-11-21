@@ -4,14 +4,13 @@
   import { page } from "$app/state";
   import Archive from "@lucide/svelte/icons/archive";
   import Contact from "@lucide/svelte/icons/contact";
+  import Database from "@lucide/svelte/icons/database";
   import FileText from "@lucide/svelte/icons/file-text";
   import FolderKanban from "@lucide/svelte/icons/folder-kanban";
   import HeartPulse from "@lucide/svelte/icons/heart-pulse";
   import House from "@lucide/svelte/icons/house";
   import LayoutDashboard from "@lucide/svelte/icons/layout-dashboard";
   import LayoutTemplate from "@lucide/svelte/icons/layout-template";
-  import LibraryBig from "@lucide/svelte/icons/library-big";
-  import ListPlus from "@lucide/svelte/icons/list-plus";
   import ListChecks from "@lucide/svelte/icons/list-checks";
   import LockKeyhole from "@lucide/svelte/icons/lock-keyhole";
   import LogOut from "@lucide/svelte/icons/log-out";
@@ -367,17 +366,13 @@
               <li>{@render link({ href: resolve("/(app)/templates"), label: "Templates", icon: LayoutTemplate,
                 current: path.startsWith("/templates") })}</li>
             {/if}
-            {#if shares}
-              <li>{@render link({ href: resolve("/(app)/library"), label: "Library", icon: LibraryBig,
-                current: path.startsWith("/library") })}</li>
+            {#if builds || shares}
+              <li>{@render link({ href: resolve("/(app)/database"), label: "Database", icon: Database,
+                current: path.startsWith("/database") })}</li>
             {/if}
             {#if styles}
               <li>{@render link({ href: resolve("/(app)/styles"), label: "Styles", icon: Palette,
                 current: path.startsWith("/styles") })}</li>
-            {/if}
-            {#if builds}
-              <li>{@render link({ href: resolve("/(app)/custom-fields"), label: "Custom fields", icon: ListPlus,
-                current: path.startsWith("/custom-fields") })}</li>
             {/if}
           </ul>
         {/if}

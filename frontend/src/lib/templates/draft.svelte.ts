@@ -7,7 +7,7 @@
 import { getContext, setContext } from "svelte";
 import { ApiError } from "#lib/api.js";
 import { customFieldsApi, customLabels, customNames, sampleCustom, type CustomField } from "#lib/customFields.js";
-import { libraryApi, libraryNames, libraryValues, type LibraryEntry } from "#lib/library.js";
+import { libraryApi, libraryLabels, libraryNames, libraryValues, type LibraryEntry } from "#lib/library.js";
 import { templatesApi, type TemplateDetail } from "./api";
 import { check } from "./checks";
 import { sampleContext } from "./preview";
@@ -67,10 +67,7 @@ export class Draft {
 
   /** What each library name is, for the rule editors. */
   get libraryLabels(): Record<string, string> {
-    return {
-      ...Object.fromEntries(this.library.map((e) => [e.kind === "variable" ? `vars.${e.key}` : `text.${e.key}`, e.description || e.key])),
-      ...customLabels(this.customFields),
-    };
+    return { ...libraryLabels(this.library), ...customLabels(this.customFields) };
   }
 
   /** The sample context, custom fields' examples included. */

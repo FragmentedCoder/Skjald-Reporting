@@ -2,11 +2,13 @@
   import { beforeNavigate } from "$app/navigation";
   import { resolve } from "$app/paths";
   import { page } from "$app/state";
+  import Braces from "@lucide/svelte/icons/braces";
   import ChevronLeft from "@lucide/svelte/icons/chevron-left";
   import Pencil from "@lucide/svelte/icons/pencil";
   import { untrack, type Snippet } from "svelte";
   import { ApiError, sessionGone } from "#lib/api.js";
   import { pageTitle } from "#lib/branding.svelte.js";
+  import NamesDrawer from "#lib/components/builder/NamesDrawer.svelte";
   import Dialog from "#lib/components/Dialog.svelte";
   import Pill from "#lib/components/Pill.svelte";
   import { dateTime, time } from "#lib/format.js";
@@ -54,6 +56,9 @@
     }
     if (!to?.url.pathname.startsWith(base)) void draft.save();
   });
+
+  // The Names drawer, open beside any tab.
+  let namesOpen = $state(false);
 
   let renaming = $state(false);
   let newName = $state("");
@@ -121,7 +126,7 @@
 
 <svelte:window onbeforeunload={(event) => { if (draft.unsaved) event.preventDefault(); }} />
 
-<main class="page-content builder">
+<main class="page-content builder" class:names-open={namesOpen}>
   <a class="back small" href={resolve("/(app)/templates")}><ChevronLeft size={16} aria-hidden="true" /> Templates</a>
 
   {#if draft.loadError}
@@ -156,6 +161,10 @@
         </p>
       </div>
       <div class="actions">
+        <button class="button button-secondary" type="button" aria-expanded={namesOpen} aria-controls="names-drawer"
+          title="Every name this template can read, to look up and insert" onclick={() => (namesOpen = !namesOpen)}>
+          <Braces size={16} aria-hidden="true" /> Names
+        </button>
         {#if !draft.readonly}
           <a class="problems" href="#problems" class:none={count === 0}>
             <Pill tone={count ? "warning" : "ok"} text={count ? `${count} problem${count === 1 ? "" : "s"}` : "No problems"} />
@@ -196,6 +205,7 @@
   {:else}
     <p class="muted">Loading…</p>
   {/if}
+  {#if namesOpen}<NamesDrawer onclose={() => (namesOpen = false)} />{/if}
 </main>
 
 <Dialog bind:open={renaming} title="Rename template">
@@ -251,6 +261,12 @@
 <style>
   .builder {
     max-width: none;
+  }
+  /* With the Names drawer open, the builder makes room for it where there's room. */
+  @media (min-width: 1300px) {
+    .builder.names-open {
+      padding-right: calc(400px + var(--space-6));
+    }
   }
   .back {
     display: inline-flex;

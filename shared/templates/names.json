@@ -74,6 +74,7 @@
         {"name": "author.last_name", "type": "string", "description": "Last name.", "example": "Holm"},
         {"name": "author.job_title", "type": "string", "description": "Job title.", "example": "Security consultant"},
         {"name": "author.department", "type": "string", "description": "Department.", "example": "Incident response"},
+        {"name": "author.company", "type": "string", "description": "Their company: the one in their profile (for a consultant or subcontractor), else the company's own name, as company.name.", "example": "Nordlys IT ApS"},
         {"name": "author.email", "type": "string", "description": "Work email.", "example": "freja.holm@nordlys.example"},
         {"name": "author.phone", "type": "string", "description": "Work phone.", "example": "+45 70 20 30 41"}
       ]
@@ -89,6 +90,7 @@
         {"name": "reviewer.last_name", "type": "string", "description": "Last name.", "example": "Berg"},
         {"name": "reviewer.job_title", "type": "string", "description": "Job title.", "example": "Senior consultant"},
         {"name": "reviewer.department", "type": "string", "description": "Department.", "example": "Incident response"},
+        {"name": "reviewer.company", "type": "string", "description": "Their company: the one in their profile (for a consultant or subcontractor), else the company's own name, as company.name.", "example": "Fjeldsted Sikkerhed ApS"},
         {"name": "reviewer.email", "type": "string", "description": "Work email.", "example": "anders.berg@nordlys.example"},
         {"name": "reviewer.phone", "type": "string", "description": "Work phone.", "example": "+45 70 20 30 42"}
       ]

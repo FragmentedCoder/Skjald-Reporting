@@ -56,10 +56,11 @@ function columnType(column: RawColumn): string {
   return "string";
 }
 
-export function catalogue(content: TemplateContent, library: Record<string, string> = {}, labels: Record<string, string> = {}): NameEntry[] {
+/** Every name, labelled and grouped: a template's answers first (none without a template). */
+export function catalogue(content: TemplateContent | null, library: Record<string, string> = {}, labels: Record<string, string> = {}): NameEntry[] {
   const entries: NameEntry[] = [];
   const seen = new Set<string>();
-  for (const q of questionsOf(content)) {
+  for (const q of content ? questionsOf(content) : []) {
     const settings = settingsOf(q.type, q.settings);
     for (const [name, type] of Object.entries(questionNames(q))) {
       if (seen.has(name)) continue;
