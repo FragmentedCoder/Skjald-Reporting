@@ -218,6 +218,8 @@ export function callProblem(call: Call, tokens: Token[], shape: Shape): string |
   return `${name}() takes ${takes} inside its brackets, not ${call.args.length || "none"}.`;
 }
 
+const KEY_KINDS: Record<string, string> = { text: "text", number: "a whole number", bool: "yes or no" };
+
 /** A map key that's written out (text, a whole number, true or false), as its value. */
 function keyOf(tokens: Token[], start: number, end: number): string | null {
   const negative = end - start === 2 && tokens[start].kind === "punct" && tokens[start].text === "-";
@@ -277,14 +279,24 @@ export function inspect(expr: string, declared: ReadonlySet<string>): { tokens: 
     if (problem !== null) throw new ExpressionError("compile", problem);
   }
   for (const keys of shape.maps) {
+    // Keys written out are looked at now: one that's there twice makes the map fail on
+    // the server and count once in the browser, and one of another kind than the rest
+    // can never be found by what the others are found by.
     const seen = new Set<string>();
+    let first: string | null = null;
     for (const [start, end] of keys) {
       const key = keyOf(tokens, start, end);
-      if (key !== null && seen.has(key)) {
+      if (key === null) continue;
+      const kind = key.split(":")[0];
+      first ??= kind;
+      if (kind !== first) {
+        throw new ExpressionError("compile", `A map's keys must all be the same kind, and this one has ${KEY_KINDS[first]} and ${KEY_KINDS[kind]}.`);
+      }
+      if (seen.has(key)) {
         const written = expr.slice(tokens[start].start, tokens[end - 1].end);
         throw new ExpressionError("compile", `A map has the key ${written} twice: each key can be there once.`);
       }
-      if (key !== null) seen.add(key);
+      seen.add(key);
     }
   }
   return { tokens, shape };

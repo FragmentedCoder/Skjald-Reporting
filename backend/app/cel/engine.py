@@ -235,6 +235,9 @@ def call_problem(call: Call, tokens: list[Token], shape: Shape) -> str | None:
     return f"{name}() takes {takes} inside its brackets, not {given}."
 
 
+_KEY_KINDS = {"text": "text", "number": "a whole number", "bool": "yes or no"}
+
+
 def _key(tokens: list[Token], start: int, end: int) -> tuple[str, object] | None:
     """A map key that's written out (text, a whole number, true or false), as its value."""
     negative = end - start == 2 and tokens[start].kind == "punct" and tokens[start].text == "-"
@@ -291,15 +294,24 @@ def inspect(expr: str, declared: Collection[str]) -> tuple[list[Token], Shape]:
         if problem is not None:
             raise ExpressionError("compile", problem)
     for keys in shape.maps:
-        seen: set[tuple[str, object]] = set()
+        # Keys written out are looked at now: one that's there twice makes the map
+        # fail on the server and count once in the browser, and one of another kind
+        # than the rest can never be found by what the others are found by.
+        seen: dict[tuple[str, object], None] = {}
         for start, end in keys:
             key = _key(tokens, start, end)
-            if key is not None and key in seen:
+            if key is None:
+                continue
+            first = next(iter(seen), key)
+            if key[0] != first[0]:
+                raise ExpressionError(
+                    "compile", "A map's keys must all be the same kind, and this one has "
+                               f"{_KEY_KINDS[first[0]]} and {_KEY_KINDS[key[0]]}.")
+            if key in seen:
                 written = expr[tokens[start].start:tokens[end - 1].end]
                 raise ExpressionError(
                     "compile", f"A map has the key {written} twice: each key can be there once.")
-            if key is not None:
-                seen.add(key)
+            seen[key] = None
     return tokens, shape
 
 
