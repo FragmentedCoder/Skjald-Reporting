@@ -43,6 +43,7 @@ from app.templates.content import (
     starter_content,
 )
 from app.templates.models import Template, TemplateAsset, TemplateVersion
+from app.templates.text import trimmed
 from app.users import User
 
 router = APIRouter(prefix="/templates")
@@ -58,18 +59,31 @@ def _stripped(value: str | None) -> str | None:
     return None if value is None else value.strip()
 
 
+def _named(value: str | None) -> str | None:
+    """A name without what isn't seen at either end; one with nothing to see is no name
+    (spaces alone passed the length check, and were kept as an empty name)."""
+    if value is None:
+        return None
+    name = trimmed(value)
+    if not name:
+        raise ValueError("Give the template a name.")
+    return name
+
+
 class TemplateIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: str = Field(default="", max_length=1000)
 
-    _strip = field_validator("name", "description")(_stripped)
+    _name = field_validator("name")(_named)
+    _strip = field_validator("description")(_stripped)
 
 
 class TemplateUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = Field(default=None, max_length=1000)
 
-    _strip = field_validator("name", "description")(_stripped)
+    _name = field_validator("name")(_named)
+    _strip = field_validator("description")(_stripped)
 
 
 class DraftSummary(BaseModel):
@@ -154,7 +168,7 @@ class CopyIn(BaseModel):
     # For a translation: the copy's report language.
     language: Literal["da", "en"] | None = None
 
-    _strip = field_validator("name")(_stripped)
+    _name = field_validator("name")(_named)
 
 
 # Helpers
@@ -199,8 +213,17 @@ def parse_content(raw: dict[str, Any]) -> TemplateContent:
         # Nested far past the limit: said the same way, before anything is stored
         # that couldn't be read again.
         raise _too_deep() from None
-    # The stored document has the defaults written out, so it's the one measured.
-    if len(canonical(content).encode()) > MAX_CONTENT_BYTES:
+    # The stored document has the defaults written out, so it's the one measured. Half
+    # of a character pair (a lone surrogate, in a sample answer, say) can't be written
+    # out at all: refused here, not a failure when the draft is stored.
+    try:
+        stored = canonical(content).encode()
+    except UnicodeEncodeError:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "The template holds half of a character, such as half an emoji, in one of its "
+            "texts or sample answers: take it out and type it again.") from None
+    if len(stored) > MAX_CONTENT_BYTES:
         raise too_large
     return content
 

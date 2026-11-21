@@ -83,6 +83,37 @@ def test_a_new_template_has_a_starter_draft(client, designer, template, session)
     assert created.target_id == str(template["id"])
 
 
+def test_a_template_needs_a_name_with_something_to_see(client, designer, template) -> None:
+    """Spaces alone passed the length check and were kept as an empty name."""
+    _, headers = designer
+    for name in ("   ", "\t\n", "\u200b \ufeff"):
+        assert client.post(TEMPLATES, headers=headers,
+                           json={"name": name, "description": ""}).status_code == 422, name
+        assert client.patch(f"{TEMPLATES}/{template['id']}", headers=headers,
+                            json={"name": name}).status_code == 422, name
+        assert client.post(f"{TEMPLATES}/{template['id']}/copy", headers=headers,
+                           json={"name": name}).status_code == 422, name
+    renamed = client.patch(f"{TEMPLATES}/{template['id']}", headers=headers,
+                           json={"name": "  Incident report  "})
+    assert renamed.status_code == 200
+    assert renamed.json()["name"] == "Incident report"
+
+
+def test_half_a_character_in_a_sample_answer_is_refused_not_a_crash(client, designer,
+                                                                   template) -> None:
+    """A lone surrogate (half an emoji) can't be written out to be stored: it was an
+    HTTP 500 when the draft was saved."""
+    _, headers = designer
+    content = json.loads(json.dumps(INCIDENT))
+    content["sample"]["answers"]["q_summary"] = "Half an emoji: \ud83d"
+    # As a browser sends it: the half written as an escape, which JSON allows.
+    body = json.dumps({"content": content, "revision": 1}).encode()
+    refused = client.put(f"{TEMPLATES}/{template['id']}/draft", content=body,
+                         headers={**headers, "Content-Type": "application/json"})
+    assert refused.status_code == 422
+    assert "half of a character" in refused.json()["detail"]
+
+
 def test_saving_a_draft_reports_its_problems_and_counts_revisions(client, designer, template,
                                                                   frozen_clock) -> None:
     _, headers = designer
