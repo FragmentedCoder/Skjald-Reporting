@@ -117,7 +117,7 @@
         {#each step.questions as q (q.id)}
           {#if !(q.type === "calculated" && !q.settings.show_in_form)}
             <AnswerField question={q} bind:value={() => answer(q), (v) => set(q, v)} required={required.has(q.id)}
-              hidden={hidden.has(q.id)} invalid={invalid.get(q.id) ?? null} computed={q.key ? model?.values[q.key] : undefined} {checked} {people} />
+              hidden={hidden.has(q.id)} invalid={invalid.get(q.id) ?? null} computed={q.key ? model?.values[q.key] : undefined} {checked} {people} zone={branding.current.time_zone} />
           {/if}
         {:else}
           <p class="small muted">This step has no questions yet.</p>

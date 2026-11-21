@@ -14,7 +14,7 @@
 
   // One question as the technician answers it, with its own check as they type. Files,
   // photos and signatures stay in the browser here: uploading them is the report's job.
-  let { question, value = $bindable(), required, hidden, invalid, computed, checked = false, people = [], zone = "Europe/Copenhagen" }: {
+  let { question, value = $bindable(), required, hidden, invalid, computed, checked = false, people = [], zone }: {
     question: Question;
     value: unknown;
     required: boolean;
@@ -27,7 +27,8 @@
     computed: unknown;
     /** The people a person question can pick. */
     people?: Person[];
-    zone?: string;
+    /** The company's time zone, which dates are typed in. */
+    zone: string;
   } = $props();
 
   const s = $derived(settingsOf(question.type, question.settings));
@@ -59,7 +60,9 @@
     if (typeof iso !== "string" || !iso) return "";
     const w = wallAt(new Date(iso).getTime(), zone);
     const pad = (n: number) => String(n).padStart(2, "0");
-    const day = `${w.year}-${pad(w.month)}-${pad(w.day)}`;
+    // Four digits for the year, as the field writes it: a year half typed (0002 on
+    // the way to 2026) then comes back as it was typed, and the typing isn't disturbed.
+    const day = `${String(w.year).padStart(4, "0")}-${pad(w.month)}-${pad(w.day)}`;
     return date ? day : `${day}T${pad(w.hour)}:${pad(w.minute)}`;
   }
   function fromInput(text: string): string | null {
