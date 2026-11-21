@@ -1,4 +1,5 @@
 import json
+import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -372,3 +373,88 @@ def test_the_app_writes_the_dns_challenge_as_it_starts(tls_dir, engine, session,
     session.commit()
     tls.main()
     assert f'key "{TSIG}"' in (tls_dir / "tls.caddy").read_text()
+
+
+# Who can read what's written: the key and the DNS credentials, the app and Caddy alone
+
+
+@pytest.fixture
+def set_umask():
+    """Set the umask for a test; it's put back afterwards."""
+    before = os.umask(0o022)
+    yield os.umask
+    os.umask(before)
+
+
+def modes(folder: Path) -> dict[str, int]:
+    """Every file in the folder (a temporary one left behind too) and its mode."""
+    return {file.name: file.stat().st_mode & 0o777 for file in folder.iterdir()}
+
+
+def test_a_secret_is_never_readable_more_widely_than_it_ends_up(tls_dir, monkeypatch,
+                                                                set_umask) -> None:
+    # No mode can be changed once a file is made and the umask takes nothing away,
+    # so each temporary file still has the mode it was made with as it's moved
+    # into place: the key's and the DNS credentials' must be private by then.
+    monkeypatch.setattr(os, "chmod", lambda *args, **kwargs: None)
+    monkeypatch.setattr(os, "fchmod", lambda *args, **kwargs: None)
+    set_umask(0)
+    made: dict[str, int] = {}
+    replace = os.replace
+
+    def replacing(tmp: Path, path: Path) -> None:
+        made[path.name] = tmp.stat().st_mode & 0o777
+        replace(tmp, path)
+
+    monkeypatch.setattr(os, "replace", replacing)
+    chain, key = make_certificate("skjald.nordlys.example.com")
+    tls.write_for_caddy(TlsSettings(mode="own"), chain, key)
+    assert made == {"key.pem": 0o600, "cert.pem": 0o644, "tls.caddy": 0o644}
+    tls.write_for_caddy(TlsSettings(mode="acme", challenge="dns"),
+                        secrets={"cloudflare_token": TOKEN})
+    assert made["tls.caddy"] == 0o600
+
+
+@pytest.mark.parametrize("umask", [0o022, 0o077, 0])
+def test_the_files_end_with_the_same_modes_under_any_umask(tls_dir, set_umask, umask) -> None:
+    set_umask(umask)
+    chain, key = make_certificate("skjald.nordlys.example.com")
+    tls.write_for_caddy(TlsSettings(mode="own"), chain, key)
+    tls.write_admin_allowlist(True, ("10.0.0.0/24",))
+    assert modes(tls_dir) == {"key.pem": 0o600, "cert.pem": 0o644, "tls.caddy": 0o644,
+                              tls.ALLOWLIST_FILE: 0o644}
+    tls.write_for_caddy(TlsSettings(mode="acme", challenge="dns"),
+                        secrets={"cloudflare_token": TOKEN})
+    assert modes(tls_dir)["tls.caddy"] == 0o600
+    tls.write_for_caddy(TlsSettings(mode="acme", acme_email="it@nordlys.example"))
+    assert modes(tls_dir)["tls.caddy"] == 0o644
+
+
+def test_a_temporary_file_left_behind_doesnt_stop_the_next_write(tls_dir) -> None:
+    # A write cut short (the container stopped, the disk full) can leave one.
+    tls_dir.mkdir()
+    left = tls_dir / ".key.pem.tmp"
+    left.write_text("half a key")
+    left.chmod(0o444)
+    chain, key = make_certificate("skjald.nordlys.example.com")
+    with left.open() as still_open:
+        tls.write_for_caddy(TlsSettings(mode="own"), chain, key)
+        # The key went into a new file, not the one left behind: whoever had that
+        # one open reads no key.
+        assert still_open.read() == "half a key"
+    assert (tls_dir / "key.pem").read_text() == key
+    assert modes(tls_dir) == {"key.pem": 0o600, "cert.pem": 0o644, "tls.caddy": 0o644}
+
+
+def test_a_write_that_fails_leaves_nothing_behind(tls_dir, monkeypatch) -> None:
+    tls.write_for_caddy(TlsSettings())
+
+    def full(tmp: Path, path: Path) -> None:
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(os, "replace", full)
+    with pytest.raises(OSError, match="No space left"):
+        tls.write_for_caddy(TlsSettings(mode="acme", challenge="dns"),
+                            secrets={"cloudflare_token": TOKEN})
+    assert modes(tls_dir) == {"tls.caddy": 0o644}
+    assert (tls_dir / "tls.caddy").read_text() == "tls internal\n"
