@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { typedColour } from "#lib/reportStyles/resolve.js";
+
   // A style's colour: set here, or left to the style below (shown as the value it gives).
   let {
     id,
@@ -17,12 +19,13 @@
   } = $props();
 
   const shown = $derived((value ?? inherited).toUpperCase());
-  const HEX = /^#[0-9A-Fa-f]{6}$/;
 
+  // What's typed is a colour or it's taken back: left in the box, it would read as the
+  // style's colour beside a swatch (and a report) that still show the old one.
   function typed(event: Event & { currentTarget: HTMLInputElement }) {
-    const text = event.currentTarget.value.trim();
-    const hex = text.startsWith("#") ? text : `#${text}`;
-    if (HEX.test(hex)) onchange(hex.toUpperCase());
+    const hex = typedColour(event.currentTarget.value);
+    if (hex) onchange(hex);
+    event.currentTarget.value = hex ?? shown;
   }
 </script>
 
