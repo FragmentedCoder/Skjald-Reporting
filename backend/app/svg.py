@@ -6,7 +6,10 @@ defusedxml (no DTDs, so no entities) and rebuilt from an allowlist: shapes, path
 text, gradients, clipping and masks, with their drawing attributes. Everything
 else is dropped, including script, style, foreignObject, animation and links. The
 only references kept are to the picture's own parts (#id) and embedded PNG or JPEG
-data. The cleaned file is what gets stored and printed.
+data, and a value may call only the functions drawing needs: url() for those parts,
+colours and transforms. A picture whose parts refer to each other so often that it
+would draw more than MAX_DRAWN elements (a few lines that unfold into a billion
+shapes), or in a loop, is refused. The cleaned file is what gets stored and printed.
 """
 
 from __future__ import annotations
@@ -24,6 +27,9 @@ XLINK = "http://www.w3.org/1999/xlink"
 MAX_BYTES = 2 * 1024 * 1024
 MAX_ELEMENTS = 20_000
 MAX_DEPTH = 50
+# The most elements drawing the picture may take, each counted every time a <use>, a
+# pattern, a mask or a clip path draws it again.
+MAX_DRAWN = 200_000
 # The longest a side may be, in the picture's own units: far beyond any real artwork
 # (an A0 sheet in thousandths of a millimetre is 1,189,000), and a number that can be kept.
 MAX_SIDE = 10_000_000
@@ -45,9 +51,15 @@ ATTRIBUTES = frozenset({
     "maskContentUnits", "patternUnits", "patternContentUnits", "patternTransform",
     "color", "href",
 })
-# The only url() a value may hold: a reference to the picture's own part.
-_URL = re.compile(r"url\(\s*([^)]*)\s*\)", re.IGNORECASE)
+# The only url() a value may hold: a whole one, naming one of the picture's own parts.
+_LOCAL_URL = re.compile(r"url\(\s*(['\"]?)#([A-Za-z_][\w.\-]*)\1\s*\)", re.IGNORECASE)
 _LOCAL = re.compile(r"^#[A-Za-z_][\w.\-]*$")
+# The other functions a value may call: colours and transforms. A bracket opened after
+# anything else is refused, url() that isn't as above included: image-set() and image()
+# load pictures from addresses written as plain text, and a url( left open still loads.
+_FUNCTIONS = frozenset({"rgb", "rgba", "hsl", "hsla", "matrix", "translate", "scale", "rotate",
+                        "skewx", "skewy"})
+_CALL = re.compile(r"([^\s(),;]*)\s*\(")
 _DATA_IMAGE = re.compile(r"^data:image/(png|jpeg);base64,[A-Za-z0-9+/=\s]+$")
 _LENGTH = re.compile(r"^\s*([0-9]*\.?[0-9]+)\s*(px)?\s*$")
 
@@ -65,11 +77,14 @@ class CleanSvg:
 
 def _value_ok(name: str, value: str) -> bool:
     lowered = value.lower()
-    if "javascript:" in lowered or "expression(" in lowered or "@import" in lowered:
+    # A backslash escapes a character in CSS, which reads u\72l( as url(: no value
+    # needs one.
+    if "\\" in value or "javascript:" in lowered or "@import" in lowered:
         return False
     if name == "href":
         return bool(_LOCAL.match(value) or _DATA_IMAGE.match(value))
-    return all(_LOCAL.match(ref.strip("'\" ")) for ref in _URL.findall(value))
+    rest = _LOCAL_URL.sub(" ", value)
+    return all(call.lower() in _FUNCTIONS for call in _CALL.findall(rest))
 
 
 def _styles(style: str) -> dict[str, str]:
@@ -121,6 +136,45 @@ def _clean(element: ET.Element, depth: int, count: list[int]) -> ET.Element | No
     return clean
 
 
+def _references(element: ET.Element) -> list[str]:
+    """The IDs of the picture's parts this element draws or draws with."""
+    found = [element.get("href", "")[1:]] if element.get("href", "").startswith("#") else []
+    for name, value in element.attrib.items():
+        if name != "href" and "(" in value:
+            found += [ref for _, ref in _LOCAL_URL.findall(value)]
+    return found
+
+
+def _check_drawn(root: ET.Element) -> None:
+    """Refuse a picture that takes more than MAX_DRAWN elements to draw once every
+    reference is followed, or whose references go round in a loop. An element costs
+    itself, what it holds and what it refers to; worked out without recursion, since a
+    chain of references can be as long as the file allows."""
+    parts: dict[str, ET.Element] = {}
+    for element in root.iter():
+        if element.get("id"):
+            parts.setdefault(element.get("id", ""), element)
+    cost: dict[ET.Element, int | None] = {}  # None: being worked out, so met again in a loop
+    needs: dict[ET.Element, list[ET.Element]] = {}
+    stack = [root]
+    while stack:
+        element = stack[-1]
+        if element not in cost:
+            cost[element] = None
+            needs[element] = [*element, *(parts[ref] for ref in _references(element)
+                                          if ref in parts)]
+            if any(cost.get(needed, 0) is None for needed in needs[element]):
+                raise SvgRejected("The SVG has a part that draws itself, so it can't be used.")
+            stack.extend(needed for needed in needs[element] if needed not in cost)
+            continue
+        stack.pop()
+        if cost[element] is None:
+            total = 1 + sum(cost[needed] or 0 for needed in needs.pop(element))
+            if total > MAX_DRAWN:
+                raise SvgRejected("The SVG is too complex to use.")
+            cost[element] = total
+
+
 def _size(root: ET.Element) -> tuple[int, int]:
     found: tuple[float, float] | None = None
     view_box = root.get("viewBox", "").replace(",", " ").split()
@@ -154,6 +208,7 @@ def clean_svg(raw: bytes, max_bytes: int = MAX_BYTES) -> CleanSvg:
         raise SvgRejected("That file isn't an SVG picture.")
     cleaned = _clean(root, 1, [0])
     assert cleaned is not None
+    _check_drawn(cleaned)
     width, height = _size(cleaned)
     cleaned.set("xmlns", SVG)
     return CleanSvg(ET.tostring(cleaned, encoding="utf-8", xml_declaration=False), width, height)
