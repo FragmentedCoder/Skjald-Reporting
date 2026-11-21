@@ -233,8 +233,10 @@ def test_a_template_has_a_largest_size_said_in_plain_words(client, designer, tem
     assert refused.status_code == 422
     assert refused.json()["detail"] == (
         "Blocks can sit inside each other up to 10 levels deep; this template goes deeper.")
-    # Far past the limit is refused the same way, not a crash.
-    for levels in (120, 400, 3000):
+    # Far past the limit is refused the same way, not a crash, whichever of the server's
+    # own guards meets it first (its count of blocks, the depth of what was sent, or a
+    # library's limit on how deep it reads).
+    for levels in (12, 50, 61, 120, 127, 128, 400, 3000):
         refused = attempt(lambda c, levels=levels: c["layout"].append(_nested(levels)))
         assert refused.status_code == 422, levels
         assert "levels deep" in refused.json()["detail"], levels

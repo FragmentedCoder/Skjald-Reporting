@@ -195,6 +195,8 @@ def parse_content(raw: dict[str, Any]) -> TemplateContent:
     too_large = HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT,
                               "The template is larger than 2 MB.")
     try:
+        if _deeper_than(raw, MAX_JSON_DEPTH):
+            raise _too_deep()
         if len(json.dumps(raw, separators=(",", ":"))) > MAX_CONTENT_BYTES:
             raise too_large
         content = TemplateContent.model_validate(raw)
@@ -203,7 +205,7 @@ def parse_content(raw: dict[str, Any]) -> TemplateContent:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from None
     except ValidationError as exc:
         first = exc.errors()[0]
-        if first["type"] == "recursion_loop":
+        if "recursion" in first["type"] or first["msg"].lower().startswith("recursion"):
             raise _too_deep() from None
         where = ".".join(str(part) for part in first["loc"])
         message = re.sub(r"^Value error, ", "", first["msg"])
@@ -226,6 +228,26 @@ def parse_content(raw: dict[str, Any]) -> TemplateContent:
     if len(stored) > MAX_CONTENT_BYTES:
         raise too_large
     return content
+
+
+# How deep the document as sent may nest, counted before anything reads it by calling
+# itself: ten levels of blocks are at most four of these each, and rich text a dozen
+# more, so nothing a template can hold comes near, and what's past it is refused the
+# same way whatever the libraries' own limits are.
+MAX_JSON_DEPTH = 120
+
+
+def _deeper_than(value: Any, limit: int) -> bool:
+    """Whether lists and objects nest deeper than the limit; walked without recursion."""
+    stack: list[tuple[Any, int]] = [(value, 1)]
+    while stack:
+        node, depth = stack.pop()
+        if isinstance(node, dict | list):
+            if depth > limit:
+                return True
+            children = node.values() if isinstance(node, dict) else node
+            stack.extend((child, depth + 1) for child in children)
+    return False
 
 
 def _too_deep() -> HTTPException:
