@@ -127,23 +127,26 @@ def effective_capabilities(
     return capabilities
 
 
-def require(capability: Capability) -> Callable[..., UserSession]:
-    """A dependency that lets through only signed-in users whose roles grant capability.
+def require(*capabilities: Capability) -> Callable[..., UserSession]:
+    """A dependency that lets through only signed-in users whose roles grant a capability
+    (any of them, given several).
 
     The admin panel (ADMINISTER) also answers only from the admin IP allowlist.
     """
 
     def check(request: Request, record: FullSession, db: DB) -> UserSession:
-        if capability in effective_capabilities(db, record, request):
+        if set(capabilities) & effective_capabilities(db, record, request):
             return record
-        outside = can(roles_of(db, record.user_id), capability)
+        roles = roles_of(db, record.user_id)
+        outside = any(can(roles, capability) for capability in capabilities)
         audit.append(
             db,
             "auth.access_denied",
             actor_id=record.user.id,
             actor_name=record.user.username,
             ip=client_ip(request),
-            details={"capability": capability.value, "path": request.url.path},
+            details={"capability": " or ".join(c.value for c in capabilities),
+                     "path": request.url.path},
         )
         db.commit()
         if outside:

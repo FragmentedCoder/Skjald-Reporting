@@ -1,16 +1,19 @@
 # rclone, for SMB shares (Debian's is too old): its tagged release, built with a
 # current Go, which its own binaries can lag behind; Go checks every module against
 # its checksum database. The image scan in CI keeps watch.
-FROM golang:1.26.10-alpine AS rclone
+FROM golang:1.27.4-alpine AS rclone
 RUN CGO_ENABLED=0 go install -trimpath \
-      -ldflags "-s -w -X github.com/rclone/rclone/fs.Version=v1.75.2" \
-      github.com/rclone/rclone@v1.75.2
+      -ldflags "-s -w -X github.com/rclone/rclone/fs.Version=v1.76.0" \
+      github.com/rclone/rclone@v1.76.0
 
 FROM python:3.13-slim AS base
 
-# Backups: restic from Debian's signed packages, and rclone from above. The renderer's
-# PDF tools (poppler), used only in its own service, which has no network.
+# Debian's fixes since the image was made (zlib1g for CVE-2026-85091 among them), as
+# the Caddy image takes Alpine's; the image scan in CI keeps watch. Then backups:
+# restic from Debian's signed packages, and rclone from above. The renderer's PDF
+# tools (poppler), used only in its own service, which has no network.
 RUN apt-get update \
+ && apt-get upgrade -y \
  && apt-get install -y --no-install-recommends restic ca-certificates poppler-utils \
  && rm -rf /var/lib/apt/lists/*
 COPY --from=rclone /go/bin/rclone /usr/local/bin/rclone
