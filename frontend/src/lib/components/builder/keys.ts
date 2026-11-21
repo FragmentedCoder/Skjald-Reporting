@@ -11,6 +11,9 @@ export function removesSelection(event: KeyboardEvent): boolean {
   return !target?.closest("input, textarea, select, [contenteditable='true'], [contenteditable=''], dialog, [role='dialog']");
 }
 
+// Kinds of <input> nobody types in: they keep no typing of their own to undo.
+const UNTYPED = new Set(["checkbox", "radio", "range", "color", "file", "button", "submit", "reset"]);
+
 /**
  * Whether a key press asks to undo (Ctrl or ⌘ with Z) or redo (with Shift too, or Ctrl
  * with Y) a change to the template. Not while typing in a field, which undoes its own
@@ -21,6 +24,9 @@ export function undoes(event: KeyboardEvent): "undo" | "redo" | null {
   const key = event.key.toLowerCase();
   if (key !== "z" && key !== "y") return null;
   const target = event.target instanceof Element ? event.target : null;
-  if (target?.closest("input, textarea, select, [contenteditable='true'], [contenteditable=''], dialog, [role='dialog']")) return null;
+  if (target?.closest("textarea, [contenteditable='true'], [contenteditable=''], dialog, [role='dialog']")) return null;
+  // A box that's typed in undoes its own typing; one that's ticked or chosen from has
+  // nothing of its own to undo, so the template's change is taken back.
+  if (target instanceof HTMLInputElement && !UNTYPED.has(target.type)) return null;
   return key === "y" || event.shiftKey ? "redo" : "undo";
 }
