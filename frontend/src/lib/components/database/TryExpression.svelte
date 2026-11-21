@@ -41,7 +41,7 @@
     const now = $state.snapshot(values) as Record<string, unknown>;
     const labels = {
       questions: new Map(($state.snapshot(questions) as Question[]).filter((q) => q.key).map((q) => [q.key as string, q])),
-      rows: (key: string) => (now.answers as Record<string, unknown> | undefined)?.[key],
+      answer: (key: string) => (now.answers as Record<string, unknown> | undefined)?.[key],
     };
     clearTimeout(timer);
     timer = setTimeout(async () => {

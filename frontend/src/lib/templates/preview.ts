@@ -314,7 +314,7 @@ class Worker {
 
   /** What labels.ts needs to print a choice as its question shows it. */
   labels(scope: Scope): LabelContext {
-    return { questions: this.byKey, item: scope.item, rows: (key) => plain((scope.values.answers as Record<string, unknown> | undefined)?.[key]) };
+    return { questions: this.byKey, item: scope.item, answer: (key) => plain((scope.values.answers as Record<string, unknown> | undefined)?.[key]) };
   }
 
   shows(scope: Scope, element: Id, rule: string | null | undefined): boolean {

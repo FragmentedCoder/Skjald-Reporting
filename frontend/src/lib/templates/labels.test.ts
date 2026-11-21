@@ -21,7 +21,7 @@ const context: LabelContext = {
     ["finds", question("repeating", { columns, min_rows: 0, max_rows: 100 })],
     ["title", question("text", {})],
   ]),
-  rows: (key) => (key === "finds" ? rows : undefined),
+  answer: (key) => (key === "finds" ? rows : key === "areas" ? ["lav", "kritisk"] : undefined),
 };
 
 describe("a name printed on its own", () => {
@@ -29,6 +29,10 @@ describe("a name printed on its own", () => {
     expect(shownAs("answers.level", "hoej", context)).toBe("Høj");
     expect(shownAs(" answers.level ", "hoej", context)).toBe("Høj");
     expect(shownAs("answers.areas", ["lav", "kritisk"], context)).toEqual(["Lav", "Kritisk"]);
+    // Several choices are printed joined, the only way text prints a list.
+    expect(shownAs('answers.areas.join(", ")', "lav, kritisk", context)).toBe("Lav, Kritisk");
+    expect(shownAs('answers.areas.join(" / ")', "lav / kritisk", context)).toBe("Lav / Kritisk");
+    expect(shownAs("answers.areas.join()", "lavkritisk", context)).toBe("LavKritisk");
     // A choice since taken off the question prints as it was kept.
     expect(shownAs("answers.level", "gone", context)).toBe("gone");
     expect(shownAs("answers.title", "hoej", context)).toBe("hoej");

@@ -2,7 +2,8 @@
 // the question shows it (its label), as an Answer block and a table print it. Rules
 // compare the value a choice keeps ("hoej"), and anything worked out from an answer
 // still prints as it's worked out; only a name standing alone in {{ }} prints the label:
-// {{answers.status}}, {{item.severity}} inside a section repeated for each row,
+// {{answers.status}}, several choices joined ({{answers.areas.join(", ")}}, the only way
+// text prints a list), {{item.severity}} inside a section repeated for each row,
 // {{answers.rows[0].severity}}, and a column of every row joined
 // ({{answers.rows.map(row, row.severity).join(", ")}}), as the builder's lists offer them.
 // Phase 3's renderer prints the same.
@@ -15,8 +16,8 @@ export type LabelColumn = { key: string; type: string; settings?: Record<string,
 export interface LabelContext {
   /** The template's questions by variable name. */
   questions: Map<string, Pick<Question, "type" | "settings">>;
-  /** A list's rows as expressions read them (plain values), for a column of every row. */
-  rows: (key: string) => unknown;
+  /** An answer as expressions read it (plain values), by variable name: a list's rows, the choices made. */
+  answer: (key: string) => unknown;
   /** Inside a section repeated for each row of a list: that list's columns. */
   item?: LabelColumn[];
 }
@@ -25,6 +26,8 @@ const NAME = "[a-z][a-z0-9_]*";
 const ANSWER = new RegExp(`^answers\\.(${NAME})$`);
 const ITEM = new RegExp(`^item\\.(${NAME})$`);
 const CELL = new RegExp(`^answers\\.(${NAME})\\[\\d+\\]\\.(${NAME})$`);
+const STRING = '"((?:[^"\\\\]|\\\\.)*)"';
+const JOINED = new RegExp(`^answers\\.(${NAME})\\.join\\(\\s*(?:${STRING})?\\s*\\)$`);
 const EVERY = new RegExp(`^answers\\.(${NAME})\\.map\\(\\s*([a-z_][a-z0-9_]*)\\s*,\\s*\\2\\.(${NAME})\\s*\\)\\.join\\(\\s*"((?:[^"\\\\]|\\\\.)*)"\\s*\\)$`);
 
 type Choice = { value: string; label: string };
@@ -60,6 +63,15 @@ export function repeatedColumns(repeatFor: string | null | undefined, questions:
   return columns.length ? columns : undefined;
 }
 
+/** The text between a CEL string's quotes as the text it stands for (its escapes are JSON's), or null. */
+function unquoted(text: string): string | null {
+  try {
+    return JSON.parse(`"${text}"`) as string;
+  } catch {
+    return null;
+  }
+}
+
 /** The value a printed expression gives, as shown: labels for a name standing on its own, else the value itself. */
 export function shownAs(expr: string, value: unknown, context: LabelContext): unknown {
   const text = expr.trim();
@@ -72,18 +84,20 @@ export function shownAs(expr: string, value: unknown, context: LabelContext): un
   if (item) return cell(context.item?.find((c) => c.key === item[1]), value);
   const one = CELL.exec(text);
   if (one) return cell(columnsOf(context.questions.get(one[1])).find((c) => c.key === one[2]), value);
+  const joined = JOINED.exec(text);
+  if (joined) {
+    const question = context.questions.get(joined[1]);
+    const chosen = context.answer(joined[1]);
+    const between = unquoted(joined[2] ?? "");
+    if (question?.type !== "multi_select" || !Array.isArray(chosen) || between === null) return value;
+    return (shown(question.type, settingsOf(question.type, question.settings), chosen) as unknown[]).join(between);
+  }
   const every = EVERY.exec(text);
   if (every) {
     const column = columnsOf(context.questions.get(every[1])).find((c) => c.key === every[3]);
-    const rows = context.rows(every[1]);
-    if (!column || column.type !== "dropdown" || !Array.isArray(rows)) return value;
-    // The separator as the expression writes it (a CEL string's escapes are JSON's).
-    let between: string;
-    try {
-      between = JSON.parse(`"${every[4]}"`) as string;
-    } catch {
-      return value;
-    }
+    const rows = context.answer(every[1]);
+    const between = unquoted(every[4]);
+    if (!column || column.type !== "dropdown" || !Array.isArray(rows) || between === null) return value;
     return rows.map((row) => String(cell(column, (row as Record<string, unknown> | null)?.[column.key]) ?? "")).join(between);
   }
   return value;
