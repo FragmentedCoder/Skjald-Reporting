@@ -8,7 +8,10 @@
   // are numbered, how they may be delivered, and which styles they may use.
   const draft = useDraft();
   const settings = $derived((draft.content as TemplateContent).settings);
-  const prefixOk = $derived(/^[A-Z]{2,6}$/.test(settings.prefix));
+  // What's typed as the prefix. Only two to six letters are kept, so the draft always
+  // holds a prefix reports can be numbered with; leaving the field shows what's kept.
+  let typedPrefix = $state<string | null>(null);
+  const prefixOk = $derived(typedPrefix === null || /^[A-Z]{2,6}$/.test(typedPrefix));
 
   // One of each must stay: the last box ticked can't be unticked, and shows so.
   function toggle<K extends "delivery" | "styles">(key: K, value: Settings[K][number], box: HTMLInputElement) {
@@ -32,12 +35,14 @@
       <label for="prefix">Report number prefix</label>
       <input id="prefix" class="input mono" value={settings.prefix} maxlength="6" aria-invalid={prefixOk ? undefined : "true"}
         oninput={(e) => {
-          // What's kept is what's shown: letters only, as capitals.
-          settings.prefix = e.currentTarget.value.toUpperCase().replace(/[^A-Z]/g, "");
-          e.currentTarget.value = settings.prefix;
-        }} />
+          // Letters only, as capitals, shown as they're kept.
+          typedPrefix = e.currentTarget.value.toUpperCase().replace(/[^A-Z]/g, "");
+          e.currentTarget.value = typedPrefix;
+          if (prefixOk) settings.prefix = typedPrefix;
+        }}
+        onblur={(e) => { typedPrefix = null; e.currentTarget.value = settings.prefix; }} />
       <span class="hint" class:error={!prefixOk}>
-        {prefixOk ? `Reports are numbered ${settings.prefix}-${year}-0001, ${settings.prefix}-${year}-0002 and so on. Templates with the same prefix share the count.` : "Two to six capital letters, such as INC."}
+        {prefixOk ? `Reports are numbered ${settings.prefix}-${year}-0001, ${settings.prefix}-${year}-0002 and so on. Templates with the same prefix share the count.` : `Two to six capital letters, such as INC. It stays ${settings.prefix} until then.`}
       </span>
     </div>
     <div class="field narrow">

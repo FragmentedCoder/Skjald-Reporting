@@ -100,10 +100,10 @@
   });
 </script>
 
-{#snippet text(field: string, label: string, value: string, set: (v: string) => void, hint = "")}
+{#snippet text(field: string, label: string, value: string, set: (v: string) => void, hint = "", maxlength = 500)}
   <div class="field">
     <label for="{id}-{field}">{label}</label>
-    <NameInput id="{id}-{field}" bind:value={() => value, set} {entries} invalid={Boolean(problem(field))} />
+    <NameInput id="{id}-{field}" bind:value={() => value, set} {entries} {maxlength} invalid={Boolean(problem(field))} />
     <span class="hint" class:error={problem(field)}>{problem(field) ?? hint}</span>
   </div>
 {/snippet}
@@ -121,7 +121,7 @@
   <div class="group-head"><h3 id="{id}-pdf">In the PDF</h3><Where pdf /></div>
 
   {#if block.kind === "section"}
-    {@render text("title", "Title", block.title, (v) => block.kind === "section" && (block.title = v), "Type {{ to insert a name, such as the report's number.")}
+    {@render text("title", "Title", block.title, (v) => block.kind === "section" && (block.title = v), "Type {{ to insert a name, such as the report's number.", 300)}
     {#if block.intro}
       <RichTextEditor bind:value={block.intro} {entries} label="Introduction, under the heading" id="{id}-intro" />
       <button class="link-button small start" type="button" onclick={() => block.kind === "section" && (block.intro = null)}>Remove the introduction</button>
@@ -166,7 +166,7 @@
       </select>
     </div>
   {:else if block.kind === "heading"}
-    {@render text("text", "Heading", block.text, (v) => block.kind === "heading" && (block.text = v))}
+    {@render text("text", "Heading", block.text, (v) => block.kind === "heading" && (block.text = v), "", 300)}
   {:else if block.kind === "text"}
     <RichTextEditor bind:value={() => block.kind === "text" ? block.content : null, (v) => block.kind === "text" && v && (block.content = v)} {entries} label="Text" id="{id}-content" />
     {#if problem("content")}<p class="small error">{problem("content")}</p>{/if}
@@ -316,7 +316,7 @@
     <div class="field">
       <label for="{id}-levels">Levels, in order</label>
       <input id="{id}-levels" class="input" value={block.levels.join(", ")}
-        oninput={(e) => { if (block.kind === "severity_summary") { const levels = e.currentTarget.value.split(",").map((v) => v.trim()).filter(Boolean); if (levels.length) block.levels = levels.slice(0, 8); } }} />
+        oninput={(e) => { if (block.kind === "severity_summary") { const levels = e.currentTarget.value.split(",").map((v) => v.trim().slice(0, 50)).filter(Boolean); if (levels.length) block.levels = levels.slice(0, 8); } }} />
       <span class="hint">Separated by commas. Rows count where the column says one of them.</span>
     </div>
     {@render text("caption", "Caption", block.caption, (v) => block.kind === "severity_summary" && (block.caption = v))}

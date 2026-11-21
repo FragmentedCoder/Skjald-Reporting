@@ -4,6 +4,7 @@
   import type { NameEntry } from "#lib/templates/catalogue.js";
   import { claimNames } from "#lib/templates/nameTarget.svelte.js";
   import { complete, matching, printable, typedName } from "#lib/templates/suggest.js";
+  import { toast } from "#lib/toast.svelte.js";
   import NameSuggestions from "./NameSuggestions.svelte";
 
   // A line of text that can hold names in {{ }}: typing "{{" suggests the names that
@@ -35,6 +36,11 @@
   }
 
   async function put(text: string, caret: number) {
+    // A name put in by a click isn't held back by the field's own limit, as typing is.
+    if (text.length > maxlength) {
+      toast(`There's no room for that here: the field takes ${maxlength} characters.`, "info", { key: "name-no-room" });
+      return;
+    }
     value = text;
     await tick();
     input?.focus();

@@ -4,6 +4,7 @@
   import Plus from "@lucide/svelte/icons/plus";
   import X from "@lucide/svelte/icons/x";
   import { freeKey, keyFrom } from "#lib/templates/edit.js";
+  import KeptInput from "./KeptInput.svelte";
 
   // The choices of a dropdown or multi-select: what the technician sees (the label)
   // and what rules compare (the value, made from the label until it's changed).
@@ -12,6 +13,15 @@
   function add() {
     const label = `Option ${options.length + 1}`;
     options.push({ label, value: freeKey(keyFrom(label), options.map((o) => o.value)) });
+  }
+
+  let problem = $state<string | null>(null);
+  function valueCheck(index: number): (text: string) => string | null {
+    return (text) => {
+      if (!text) return "A choice needs a value for rules to compare.";
+      if (options.some((o, i) => i !== index && o.value === text)) return `Another choice already has the value ${text}.`;
+      return null;
+    };
   }
 
   function move(index: number, by: number) {
@@ -26,7 +36,7 @@
     <span class="small muted">Shown as</span><span class="small muted">Value in rules</span><span></span>
     {#each options as option, index (index)}
       <input class="input" aria-label="Choice {index + 1}" bind:value={option.label} maxlength="200" />
-      <input class="input mono" aria-label="Value of choice {index + 1}" bind:value={option.value} maxlength="200" />
+      <KeptInput mono label="Value of choice {index + 1}" maxlength={200} bind:value={option.value} bind:problem check={valueCheck(index)} />
       <span class="row-actions">
         <button class="mini" type="button" aria-label="Move choice {index + 1} up" disabled={index === 0} onclick={() => move(index, -1)}><ArrowUp size={14} aria-hidden="true" /></button>
         <button class="mini" type="button" aria-label="Move choice {index + 1} down" disabled={index === options.length - 1} onclick={() => move(index, 1)}><ArrowDown size={14} aria-hidden="true" /></button>
@@ -34,7 +44,8 @@
       </span>
     {/each}
   </div>
-  <button class="button button-secondary small-button" type="button" onclick={add} id="{id}-add"><Plus size={16} aria-hidden="true" /> Add a choice</button>
+  {#if problem}<p class="small error" role="status">{problem} The value stays as it was until it's one that can be used.</p>{/if}
+  <button class="button button-secondary small-button" type="button" onclick={add} id="{id}-add" disabled={options.length >= 200}><Plus size={16} aria-hidden="true" /> Add a choice</button>
 </fieldset>
 
 <style>

@@ -1,8 +1,12 @@
 <script lang="ts">
   import { settingsOf } from "#lib/templates/fields.js";
   import type { Question } from "#lib/templates/types.js";
+  import { freeKey, KEY_PATTERN } from "#lib/templates/edit.js";
+  import { RESERVED } from "#lib/templates/checks.js";
   import ColumnsEditor from "./ColumnsEditor.svelte";
+  import KeptInput from "./KeptInput.svelte";
   import OptionsEditor from "./OptionsEditor.svelte";
+  import WholeInput from "./WholeInput.svelte";
 
   // A question's own settings, by field type (backend/app/templates/fields.py says
   // what each one takes).
@@ -24,6 +28,18 @@
   const rows = $derived((s.rows ?? []) as Row[]);
 
   const num = (value: string) => (value === "" ? null : Number(value));
+  // A setting that's a whole number, for WholeInput to read.
+  const whole = (name: string) => (s[name] as number | null) ?? null;
+
+  let rowProblem = $state<string | null>(null);
+  function rowKey(index: number): (text: string) => string | null {
+    return (text) => {
+      if (!KEY_PATTERN.test(text)) return "A row's variable name has small letters, digits and _, starting with a letter.";
+      if (RESERVED.has(text)) return `${text} is a reserved word in expressions.`;
+      if (rows.some((r, i) => i !== index && r.key === text)) return `Another row already uses ${text}.`;
+      return null;
+    };
+  }
   const toggle = (list: string[], value: string, on: boolean) => (on ? [...new Set([...list, value])] : list.filter((v) => v !== value));
 </script>
 
@@ -45,8 +61,7 @@
 {#if question.type === "text"}
   <div class="field">
     <label for="{id}-max">Longest answer, in characters</label>
-    <input id="{id}-max" class="input narrow" type="number" min="1" max="10000" value={s.max_length}
-      oninput={(e) => (question.settings.max_length = num(e.currentTarget.value) ?? 500)} />
+    <WholeInput id="{id}-max" narrow min={1} max={10000} bind:value={() => whole("max_length"), (v) => (question.settings.max_length = v ?? 500)} />
   </div>
   {@render pattern()}
   <div class="field">
@@ -56,8 +71,7 @@
 {:else if question.type === "rich_text"}
   <div class="field">
     <label for="{id}-max">Longest answer, in characters</label>
-    <input id="{id}-max" class="input narrow" type="number" min="1" max="100000" value={s.max_length}
-      oninput={(e) => (question.settings.max_length = num(e.currentTarget.value) ?? 20000)} />
+    <WholeInput id="{id}-max" narrow min={1} max={100000} bind:value={() => whole("max_length"), (v) => (question.settings.max_length = v ?? 20000)} />
   </div>
   <label class="check"><input type="checkbox" bind:checked={() => Boolean(question.settings.snippets), (v) => (question.settings.snippets = v)} /> The technician can insert text snippets from the library</label>
 {:else if question.type === "number"}
@@ -76,8 +90,7 @@
     {#if !s.whole}
       <div class="field">
         <label for="{id}-decimals">Decimals shown</label>
-        <input id="{id}-decimals" class="input" type="number" min="0" max="6" value={s.decimals}
-          oninput={(e) => (question.settings.decimals = num(e.currentTarget.value) ?? 1)} />
+        <WholeInput id="{id}-decimals" min={0} max={6} bind:value={() => whole("decimals"), (v) => (question.settings.decimals = v ?? 1)} />
       </div>
     {/if}
     <div class="field">
@@ -115,9 +128,9 @@
   {#if question.type === "multi_select"}
     <div class="row">
       <div class="field"><label for="{id}-fewest">Fewest choices</label>
-        <input id="{id}-fewest" class="input" type="number" min="0" value={s.min_selected ?? ""} oninput={(e) => (question.settings.min_selected = num(e.currentTarget.value))} /></div>
+        <WholeInput id="{id}-fewest" optional min={0} max={200} bind:value={() => whole("min_selected"), (v) => (question.settings.min_selected = v)} /></div>
       <div class="field"><label for="{id}-most">Most choices</label>
-        <input id="{id}-most" class="input" type="number" min="1" value={s.max_selected ?? ""} oninput={(e) => (question.settings.max_selected = num(e.currentTarget.value))} /></div>
+        <WholeInput id="{id}-most" optional min={1} max={200} bind:value={() => whole("max_selected"), (v) => (question.settings.max_selected = v)} /></div>
     </div>
   {/if}
 {:else if question.type === "ip"}
@@ -162,8 +175,7 @@
   {#if s.multiple}
     <div class="field">
       <label for="{id}-most">At most</label>
-      <input id="{id}-most" class="input narrow" type="number" min="1" max="50" value={s[most]}
-        oninput={(e) => (question.settings[most] = num(e.currentTarget.value) ?? 10)} />
+      <WholeInput id="{id}-most" narrow min={1} max={50} bind:value={() => whole(most), (v) => (question.settings[most] = v ?? 10)} />
     </div>
   {/if}
   {#if question.type === "photo"}<p class="small muted">Location and other data are removed from photos when they're uploaded.</p>{/if}
@@ -180,9 +192,9 @@
   <ColumnsEditor bind:columns={() => s.columns as Column[], (v) => (question.settings.columns = v)} {id} />
   <div class="row">
     <div class="field"><label for="{id}-fewest-rows">Fewest rows</label>
-      <input id="{id}-fewest-rows" class="input" type="number" min="0" max="500" value={s.min_rows} oninput={(e) => (question.settings.min_rows = num(e.currentTarget.value) ?? 0)} /></div>
+      <WholeInput id="{id}-fewest-rows" min={0} max={500} bind:value={() => whole("min_rows"), (v) => (question.settings.min_rows = v ?? 0)} /></div>
     <div class="field"><label for="{id}-most-rows">Most rows</label>
-      <input id="{id}-most-rows" class="input" type="number" min="1" max="500" value={s.max_rows} oninput={(e) => (question.settings.max_rows = num(e.currentTarget.value) ?? 100)} /></div>
+      <WholeInput id="{id}-most-rows" min={1} max={500} bind:value={() => whole("max_rows"), (v) => (question.settings.max_rows = v ?? 100)} /></div>
   </div>
 {:else if question.type === "table"}
   <fieldset class="plain rows">
@@ -190,13 +202,14 @@
     {#each rows as row, index (index)}
       <div class="row-line">
         <input class="input" aria-label="Row {index + 1}" bind:value={row.label} maxlength="200" />
-        <input class="input mono" aria-label="Row {index + 1} variable name" bind:value={row.key} maxlength="50" />
+        <KeptInput mono label="Row {index + 1} variable name" maxlength={50} bind:value={row.key} bind:problem={rowProblem} check={rowKey(index)} />
         <button class="button button-secondary" type="button" disabled={(s.rows as Row[]).length === 1}
           onclick={() => (question.settings.rows = (s.rows as Row[]).filter((_, i) => i !== index))}>Remove</button>
       </div>
     {/each}
+    {#if rowProblem}<p class="small error" role="status">{rowProblem} The name stays as it was until it's one that can be used.</p>{/if}
     <button class="button button-secondary" type="button"
-      onclick={() => (question.settings.rows = [...(s.rows as Row[]), { key: `row_${(s.rows as Row[]).length + 1}`, label: `Row ${(s.rows as Row[]).length + 1}` }])}>Add a row</button>
+      onclick={() => (question.settings.rows = [...(s.rows as Row[]), { key: freeKey(`row_${(s.rows as Row[]).length + 1}`, (s.rows as Row[]).map((r) => r.key)), label: `Row ${(s.rows as Row[]).length + 1}` }])}>Add a row</button>
   </fieldset>
   <ColumnsEditor bind:columns={() => s.columns as Column[], (v) => (question.settings.columns = v)} {id} />
 {:else if question.type === "calculated"}
@@ -217,9 +230,6 @@
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
     gap: var(--space-2);
-  }
-  .narrow {
-    max-width: 140px;
   }
   .plain {
     display: grid;

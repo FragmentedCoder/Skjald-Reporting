@@ -151,7 +151,7 @@
       <button class="button button-secondary small-button" type="button" onclick={() => (adding = true)}>Add a rule</button>
     {/if}
   {:else}
-    <textarea id="{id}-text" class="input mono" rows="3" spellcheck="false" autocomplete="off" aria-labelledby="{id}-label"
+    <textarea id="{id}-text" class="input mono" rows="3" maxlength="10000" spellcheck="false" autocomplete="off" aria-labelledby="{id}-label"
       aria-invalid={shown ? "true" : undefined}
       value={value ?? ""} oninput={(e) => { value = e.currentTarget.value === "" ? null : e.currentTarget.value; written = value; }}></textarea>
     {#if !readable}
