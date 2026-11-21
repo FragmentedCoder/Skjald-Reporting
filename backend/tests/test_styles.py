@@ -164,6 +164,9 @@ def test_designers_make_and_change_company_styles(client, designer, session) -> 
     assert (style["version"], style["customer_id"], style["below"]) == (1, None, [])
     assert client.post(STYLES, headers=headers,
                        json={"name": "nordlys BRAND"}).status_code == 409
+    # A name of spaces alone is no name, for a new style or a saved one.
+    assert client.post(STYLES, headers=headers, json={"name": "   "}).status_code == 422
+    assert save(client, headers, style, name="  ").status_code == 422
     changed = dict(style["content"], colours={**style["content"]["colours"], "heading": "#1d3a5f"})
     saved = save(client, headers, style, content=changed)
     assert saved.status_code == 200, saved.text

@@ -17,7 +17,7 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Response, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -60,8 +60,12 @@ def reader(request: Request, record: FullSession, db: DB) -> UserSession:
 Reader = Annotated[UserSession, Depends(reader)]
 
 
+# Trimmed before it's measured: a name of spaces alone is no name.
+Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
+
+
 class StyleIn(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
+    name: Name
     # None: a company style.
     customer_id: int | None = None
     # A customer style's company style; None: the Skjald default.
@@ -69,7 +73,7 @@ class StyleIn(BaseModel):
 
 
 class StyleUpdate(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
+    name: Name
     based_on: int | None = None
     content: StyleContent
     # The version the change was made from: a change over a newer one is refused.

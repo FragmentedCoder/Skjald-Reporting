@@ -95,6 +95,25 @@ def test_a_field_keeps_its_key_and_type(client, designer, fields) -> None:
     assert client.put(f"{FIELDS}/9999", headers=designer, json={"label": "x"}).status_code == 404
 
 
+def test_a_label_or_an_option_of_spaces_alone_is_refused(client, designer, fields) -> None:
+    """Each was kept as "": a field without a label, and an option the forms read as
+    clearing the value."""
+    assert define(client, designer, "customer", "tier", "text", label="   ").status_code == 422
+    assert define(client, designer, "customer", "tier", "dropdown",
+                  options=["Gold", "  "]).status_code == 422
+    agreement = fields["agreement"]
+    url = f"{FIELDS}/{agreement['id']}"
+    assert client.put(url, headers=designer, json={
+        "label": "  ", "options": agreement["options"]}).status_code == 422
+    assert client.put(url, headers=designer, json={
+        "label": agreement["label"], "options": ["Gold", " "]}).status_code == 422
+    tidied = client.put(url, headers=designer, json={
+        "label": "  Agreement ", "options": [" Gold ", "Silver"]}).json()
+    assert (tidied["label"], tidied["options"]) == ("Agreement", ["Gold", "Silver"])
+    assert client.put(url, headers=designer, json={
+        "label": "Agreement", "options": ["Gold", " Gold "]}).status_code == 400
+
+
 def test_values_are_checked_and_sealed_with_the_customer(client, admin, manager, fields,
                                                          session) -> None:
     made = client.post(CUSTOMERS, headers=manager, json={
@@ -113,7 +132,8 @@ def test_values_are_checked_and_sealed_with_the_customer(client, admin, manager,
     url = f"{CUSTOMERS}/{customer['id']}"
     for wrong, message in (({"agreement": "Platinum"}, "options"), ({"hours": "many"}, "number"),
                            ({"hours": True}, "number"), ({"hours": 10 ** 400}, "number"),
-                           ({"renewal": "soon"}, "date"),
+                           ({"renewal": "soon"}, "date"), ({"renewal": "2027-W09-1"}, "date"),
+                           ({"renewal": "20270301"}, "a date, such as 2027-03-01"),
                            ({"onsite": "yes"}, "yes or no"), ({"desk": "nobody"}, "email"),
                            ({"hotline": "call me"}, "phone"), ({"ticket": "X-1"}, "no custom")):
         refused = client.patch(url, headers=manager, json={"custom": wrong})
