@@ -42,7 +42,7 @@ from app.templates.content import (
 from app.templates.content import Heading as HeadingBlock
 from app.templates.fields import FIELD_TYPES
 from app.templates.names import ITEM, declarations, question_names, questions
-from app.templates.text import doc_expressions, interpolations
+from app.templates.text import blank, doc_expressions, interpolations, trimmed
 
 # Words CEL keeps for itself: answers.<key> can't be read with one of them as key.
 RESERVED = frozenset({
@@ -97,7 +97,7 @@ class _Checker:
         """An expression that, when set, must work and give the expected type."""
         if expr is None:
             return
-        if not expr.strip():
+        if blank(expr):
             self.add(element, field_, "Write the expression, or remove the rule.")
             return
         engine = self.item_engine if item else self.engine
@@ -137,14 +137,14 @@ class _Checker:
         if doc is None:
             return
         for expr in doc_expressions(doc):
-            self.printed(element, field_, expr.strip(), item=item)
+            self.printed(element, field_, trimmed(expr), item=item)
 
     # The form
 
     def question(self, q: Question, seen_keys: set[str]) -> None:
         self.id(q.id)
         field_type = FIELD_TYPES[q.type]
-        if not q.label.strip():
+        if blank(q.label):
             self.add(q.id, "label",
                      "Write the question." if field_type.asks else "Write the heading.")
         if field_type.asks:
@@ -168,7 +168,7 @@ class _Checker:
             else:
                 self.expr(q.id, "default", q.default, own)
         if q.type == "calculated":
-            if not (q.value or "").strip():
+            if blank(q.value or ""):
                 self.add(q.id, "value", "Write the expression that works out this value.")
             else:
                 self.expr(q.id, "value", q.value, own)
@@ -179,19 +179,19 @@ class _Checker:
         s = q.settings
         if q.type in ("dropdown", "multi_select"):
             for i, option in enumerate(s["options"]):
-                if not option["label"].strip():
+                if blank(option["label"]):
                     self.add(q.id, "settings.options", f"Write what choice {i + 1} is shown as.")
         if q.type == "yes_no":
             for name, word in (("yes_label", "Yes"), ("no_label", "No")):
-                if not s[name].strip():
+                if blank(s[name]):
                     self.add(q.id, f"settings.{name}", f"Write what {word} is shown as.")
         if q.type in LISTS:
             for i, column in enumerate(s["columns"]):
-                if not column["label"].strip():
+                if blank(column["label"]):
                     self.add(q.id, "settings.columns", f"Give column {i + 1} a heading.")
         if q.type == "table":
             for i, row in enumerate(s["rows"]):
-                if not row["label"].strip():
+                if blank(row["label"]):
                     self.add(q.id, "settings.rows", f"Give row {i + 1} a heading.")
         if q.type in ("text", "serial") and s.get("pattern"):
             try:
@@ -220,7 +220,7 @@ class _Checker:
     def loops(self) -> None:
         """Calculated values that depend on themselves, through others or directly."""
         calculated = {q.key: q for q in questions(self.content)
-                      if q.type == "calculated" and q.key and (q.value or "").strip()}
+                      if q.type == "calculated" and q.key and not blank(q.value or "")}
         depends: dict[str, list[str]] = {}
         for key, q in calculated.items():
             try:
@@ -287,7 +287,7 @@ class _Checker:
         """What picks a switch's case gives text or a whole number, and each case's
         value is one of those, picked by no other case."""
         got: str | None = None
-        if b.value is None or not b.value.strip():
+        if b.value is None or blank(b.value):
             self.add(b.id, "value", "Choose what picks the case.")
         else:
             engine = self.item_engine if item else self.engine
@@ -331,7 +331,7 @@ class _Checker:
         elif isinstance(b, Contents):
             self.text(b.id, "title", b.title, item=item)
         elif isinstance(b, Section):
-            if not b.title.strip():
+            if blank(b.title):
                 self.add(b.id, "title", "Give the section a title.")
             self.text(b.id, "title", b.title, item=item)
             self.rich(b.id, "intro", b.intro, item=item)
@@ -339,7 +339,7 @@ class _Checker:
             for child in b.blocks:
                 self.block(child, item=item)
         elif isinstance(b, HeadingBlock):
-            if not b.text.strip():
+            if blank(b.text):
                 self.add(b.id, "text", "Write the heading.")
             self.text(b.id, "text", b.text, item=item)
         elif isinstance(b, TextBlock):
@@ -392,7 +392,7 @@ class _Checker:
         elif isinstance(b, Sources):
             self.text(b.id, "intro", b.intro, item=item)
             for i, source in enumerate(b.items):
-                if not source.title.strip():
+                if blank(source.title):
                     self.add(b.id, f"items.{i}.title", f"Give source {i + 1} a title.")
             if b.question is not None:
                 q = self.chosen(b.id, b.question, "")
@@ -441,7 +441,7 @@ def check(
     seen_keys: set[str] = set()
     for step in content.form:
         checker.id(step.id)
-        if not step.title.strip():
+        if blank(step.title):
             checker.add(step.id, "title", "Give the step a title.")
         checker.expr(step.id, "visible_when", step.visible_when, "bool")
         for q in step.questions:

@@ -2844,6 +2844,246 @@
           "message": "Nothing can be picked out of text: only a list, a row or a map has parts."
         }
       ]
+    },
+    {
+      "name": "Text that only looks filled in: spaces and marks that can't be seen",
+      "content": {
+        "schema": 1,
+        "settings": {
+          "prefix": "REP",
+          "language": "en",
+          "signing": "technician",
+          "review": "optional",
+          "delivery": [
+            "download"
+          ],
+          "styles": [
+            "company",
+            "customer"
+          ],
+          "customer_background": true,
+          "made_with_skjald": true
+        },
+        "form": [
+          {
+            "id": "s_main1",
+            "title": "﻿",
+            "help": "",
+            "visible_when": "﻿",
+            "questions": [
+              {
+                "id": "q_ctrl1",
+                "key": "ctrl",
+                "type": "text",
+                "label": "\u001f",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "max_length": 500,
+                  "pattern": null,
+                  "pattern_message": "",
+                  "placeholder": ""
+                }
+              },
+              {
+                "id": "q_next1",
+                "key": "next",
+                "type": "text",
+                "label": " ",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "max_length": 500,
+                  "pattern": null,
+                  "pattern_message": "",
+                  "placeholder": ""
+                }
+              },
+              {
+                "id": "q_zero1",
+                "key": "zero",
+                "type": "yes_no",
+                "label": "​",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "yes_label": "⁠",
+                  "no_label": "No"
+                }
+              },
+              {
+                "id": "q_calc1",
+                "key": "calc",
+                "type": "calculated",
+                "label": "Calc",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": "​﻿",
+                "settings": {
+                  "result": "text",
+                  "show_in_form": true
+                }
+              },
+              {
+                "id": "q_fine1",
+                "key": "fine",
+                "type": "text",
+                "label": "​Seen​",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": "﻿ answers.zero",
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "max_length": 500,
+                  "pattern": null,
+                  "pattern_message": "",
+                  "placeholder": ""
+                }
+              }
+            ]
+          }
+        ],
+        "layout": [
+          {
+            "id": "b_sect1",
+            "visible_when": null,
+            "kind": "section",
+            "title": "‍",
+            "intro": null,
+            "new_page": true,
+            "numbered": true,
+            "landscape": false,
+            "repeat_for": null,
+            "blocks": [
+              {
+                "id": "b_head1",
+                "visible_when": null,
+                "kind": "heading",
+                "text": "\u001c\u001d\u001e"
+              },
+              {
+                "id": "b_text1",
+                "visible_when": null,
+                "kind": "text",
+                "content": {
+                  "type": "doc",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "variable",
+                          "attrs": {
+                            "expr": "﻿answers.fine"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "text": "{{\u001fanswers.ctrl​}} {{﻿}}"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ],
+        "sample": {
+          "answers": {}
+        }
+      },
+      "answers": {
+        "answers.calc": "string",
+        "answers.ctrl": "string",
+        "answers.fine": "string",
+        "answers.next": "string",
+        "answers.zero": "bool"
+      },
+      "problems": [
+        {
+          "element": "s_main1",
+          "field": "title",
+          "message": "Give the step a title."
+        },
+        {
+          "element": "s_main1",
+          "field": "visible_when",
+          "message": "Write the expression, or remove the rule."
+        },
+        {
+          "element": "q_ctrl1",
+          "field": "label",
+          "message": "Write the question."
+        },
+        {
+          "element": "q_next1",
+          "field": "label",
+          "message": "Write the question."
+        },
+        {
+          "element": "q_zero1",
+          "field": "label",
+          "message": "Write the question."
+        },
+        {
+          "element": "q_zero1",
+          "field": "settings.yes_label",
+          "message": "Write what Yes is shown as."
+        },
+        {
+          "element": "q_calc1",
+          "field": "value",
+          "message": "Write the expression that works out this value."
+        },
+        {
+          "element": "q_fine1",
+          "field": "visible_when",
+          "message": "Unexpected character U+FEFF at position 1."
+        },
+        {
+          "element": "b_sect1",
+          "field": "title",
+          "message": "Give the section a title."
+        },
+        {
+          "element": "b_head1",
+          "field": "text",
+          "message": "Write the heading."
+        },
+        {
+          "element": "b_text1",
+          "field": "content",
+          "message": "Write an expression between {{ and }}."
+        }
+      ]
     }
   ]
 }

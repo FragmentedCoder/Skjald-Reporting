@@ -13,6 +13,7 @@ text through variable nodes. The browser finds them the same way
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any
@@ -22,6 +23,25 @@ MAX_DEPTH = 12
 MAX_TEXT = 100_000
 LINK_SCHEMES = ("https://", "http://", "mailto:")
 MARKS = frozenset({"bold", "italic", "underline", "strike", "code", "link"})
+
+
+# What isn't seen at either end of a text: spaces of every kind, line breaks, the old
+# separator controls, and marks with no width (a byte order mark, a zero-width space).
+# Python's strip() and JavaScript's trim() don't take the same ones, so both sides
+# use this list (frontend/src/lib/templates/text.ts).
+UNSEEN = ("\t\n\v\f\r \x1c-\x1f\x85\xa0\u1680\u2000-\u200d\u2028\u2029\u202f\u205f\u2060"
+          "\u3000\ufeff")
+_ENDS = re.compile(f"^[{UNSEEN}]+|[{UNSEEN}]+$")
+
+
+def trimmed(text: str) -> str:
+    """The text without what isn't seen at either end."""
+    return _ENDS.sub("", text)
+
+
+def blank(text: str) -> bool:
+    """Whether there's nothing to see in the text."""
+    return not trimmed(text)
 
 
 class RichTextError(ValueError):
@@ -232,8 +252,8 @@ def interpolations(text: str) -> list[Interpolation]:
                 depth = max(depth - 1, 0)
             j += 1
         if end < 0:
-            found.append(Interpolation(start, len(text), text[start + 2:].strip(), closed=False))
+            found.append(Interpolation(start, len(text), trimmed(text[start + 2:]), closed=False))
             break
-        found.append(Interpolation(start, end + 2, text[start + 2:end].strip()))
+        found.append(Interpolation(start, end + 2, trimmed(text[start + 2:end])))
         i = end + 2
     return found

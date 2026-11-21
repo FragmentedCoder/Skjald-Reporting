@@ -8,7 +8,7 @@ import { RE2JS } from "re2js";
 import { Engine, ExpressionError, human, unknownName } from "#lib/cel/engine.js";
 import { fieldType, settingsOf } from "./fields";
 import { declarations, ITEM, questionNames } from "./names";
-import { docExpressions, interpolations } from "./text";
+import { blank, docExpressions, interpolations, trimmed } from "./text";
 import { questionsOf, SIGNS, type Block, type Problem, type Question, type RichText, type Switch, type TemplateContent } from "./types";
 
 // Words CEL keeps for itself: answers.<key> can't be read with one of them as key.
@@ -63,7 +63,7 @@ class Checker {
   /** An expression that, when set, must work and give the expected type. */
   expr(element: string, field: string, expr: string | null | undefined, expected: string | null, item = false) {
     if (expr === null || expr === undefined) return;
-    if (!expr.trim()) {
+    if (blank(expr)) {
       this.add(element, field, "Write the expression, or remove the rule.");
       return;
     }
@@ -108,7 +108,7 @@ class Checker {
 
   rich(element: string, field: string, doc: RichText | null, item: boolean) {
     if (doc === null) return;
-    for (const expr of docExpressions(doc)) this.printed(element, field, expr.trim(), item);
+    for (const expr of docExpressions(doc)) this.printed(element, field, trimmed(expr), item);
   }
 
   // The form
@@ -116,7 +116,7 @@ class Checker {
   question(q: Question, seenKeys: Set<string>) {
     this.id(q.id);
     const type = fieldType(q.type);
-    if (!q.label.trim()) this.add(q.id, "label", type.asks ? "Write the question." : "Write the heading.");
+    if (blank(q.label)) this.add(q.id, "label", type.asks ? "Write the question." : "Write the heading.");
     if (type.asks) {
       if (q.key === null) this.add(q.id, "key", "Give the question a variable name.");
       else if (RESERVED.has(q.key)) this.add(q.id, "key", `${q.key} is a reserved word in expressions: choose another variable name.`);
@@ -133,7 +133,7 @@ class Checker {
       else this.expr(q.id, "default", q.default, own);
     }
     if (q.type === "calculated") {
-      if (!(q.value ?? "").trim()) this.add(q.id, "value", "Write the expression that works out this value.");
+      if (blank(q.value ?? "")) this.add(q.id, "value", "Write the expression that works out this value.");
       else this.expr(q.id, "value", q.value, own ?? null);
     } else if (q.value !== null && q.value !== undefined) {
       this.add(q.id, "value", "Only calculated values have an expression.");
@@ -142,13 +142,13 @@ class Checker {
 
   settings(q: Question) {
     const s = settingsOf(q.type, q.settings);
-    const labels = (list: unknown) => ((list ?? []) as { label: string }[]).map((entry) => entry.label.trim());
+    const labels = (list: unknown) => ((list ?? []) as { label: string }[]).map((entry) => trimmed(entry.label));
     if (q.type === "dropdown" || q.type === "multi_select") {
       labels(s.options).forEach((label, i) => !label && this.add(q.id, "settings.options", `Write what choice ${i + 1} is shown as.`));
     }
     if (q.type === "yes_no") {
       for (const [name, word] of [["yes_label", "Yes"], ["no_label", "No"]]) {
-        if (!String(s[name] ?? "").trim()) this.add(q.id, `settings.${name}`, `Write what ${word} is shown as.`);
+        if (blank(String(s[name] ?? ""))) this.add(q.id, `settings.${name}`, `Write what ${word} is shown as.`);
       }
     }
     if (LISTS.has(q.type)) labels(s.columns).forEach((label, i) => !label && this.add(q.id, "settings.columns", `Give column ${i + 1} a heading.`));
@@ -186,7 +186,7 @@ class Checker {
   loops() {
     const calculated = new Map(
       questionsOf(this.content)
-        .filter((q) => q.type === "calculated" && q.key && (q.value ?? "").trim())
+        .filter((q) => q.type === "calculated" && q.key && !blank(q.value ?? ""))
         .map((q) => [q.key as string, q]),
     );
     const depends = new Map<string, string[]>();
@@ -248,7 +248,7 @@ class Checker {
    */
   switched(b: Switch, item: boolean) {
     let got: string | null = null;
-    if (b.value === null || !b.value.trim()) {
+    if (b.value === null || blank(b.value)) {
       this.add(b.id, "value", "Choose what picks the case.");
     } else {
       try {
@@ -290,14 +290,14 @@ class Checker {
         this.text(b.id, "title", b.title, item);
         break;
       case "section":
-        if (!b.title.trim()) this.add(b.id, "title", "Give the section a title.");
+        if (blank(b.title)) this.add(b.id, "title", "Give the section a title.");
         this.text(b.id, "title", b.title, item);
         this.rich(b.id, "intro", b.intro ?? null, item);
         this.expr(b.id, "repeat_for", b.repeat_for, "list", outer);
         for (const child of b.blocks) this.block(child, item);
         break;
       case "heading":
-        if (!b.text.trim()) this.add(b.id, "text", "Write the heading.");
+        if (blank(b.text)) this.add(b.id, "text", "Write the heading.");
         this.text(b.id, "text", b.text, item);
         break;
       case "text":
@@ -353,7 +353,7 @@ class Checker {
       }
       case "sources":
         this.text(b.id, "intro", b.intro, item);
-        b.items.forEach((source, i) => !source.title.trim() && this.add(b.id, `items.${i}.title`, `Give source ${i + 1} a title.`));
+        b.items.forEach((source, i) => blank(source.title) && this.add(b.id, `items.${i}.title`, `Give source ${i + 1} a title.`));
         if (b.question !== null) {
           const q = this.chosen(b.id, b.question, "");
           if (q !== null) this.isList(b.id, q);
@@ -410,7 +410,7 @@ export function check(content: TemplateContent, options: CheckOptions = {}): Pro
   const seenKeys = new Set<string>();
   for (const step of content.form) {
     checker.id(step.id);
-    if (!step.title.trim()) checker.add(step.id, "title", "Give the step a title.");
+    if (blank(step.title)) checker.add(step.id, "title", "Give the step a title.");
     checker.expr(step.id, "visible_when", step.visible_when, "bool");
     for (const q of step.questions) checker.question(q, seenKeys);
   }
