@@ -121,7 +121,8 @@ export function cvssVersion(vector: string): "3.1" | "4.0" | null {
       if (version === "4.0" && name === "U") {
         if (!CVSS40_URGENCY.includes(value)) return null;
       } else {
-        const allowed = base[name] ?? more[name];
+        // Own names only: "constructor" and the like are on every object.
+        const allowed = Object.hasOwn(base, name) ? base[name] : Object.hasOwn(more, name) ? more[name] : undefined;
         if (allowed === undefined || value.length !== 1 || !allowed.includes(value)) return null;
       }
       seen.set(name, value);

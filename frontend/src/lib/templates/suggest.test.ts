@@ -53,6 +53,10 @@ describe("complete", () => {
   it("keeps the text after the caret, and braces already there", () => {
     expect(complete("{{cu}} and more", 4, "customer.name")).toEqual({ text: "{{customer.name}} and more", caret: 17 });
     expect(complete("A {{ and B", 4, "report.title")).toEqual({ text: "A {{report.title}} and B", caret: 18 });
+    // Inside a reference that's already there, the name replaces all of it.
+    expect(complete("Host {{answers.ip}} seen", 7, "answers.host")).toEqual({ text: "Host {{answers.host}} seen", caret: 21 });
+    expect(complete("Host {{answers.ip}} seen", 12, "answers.host")).toEqual({ text: "Host {{answers.host}} seen", caret: 21 });
+    expect(complete("{{ and later {{report.title}}", 2, "answers.host")).toEqual({ text: "{{answers.host}} and later {{report.title}}", caret: 16 });
   });
 
   it("inserts a whole name where nothing is typed", () => {
