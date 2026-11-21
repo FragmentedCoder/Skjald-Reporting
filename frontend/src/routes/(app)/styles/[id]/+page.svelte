@@ -15,7 +15,7 @@
   import type { CustomerDetail } from "#lib/customers.js";
   import { dateTime } from "#lib/format.js";
   import { libraryApi, type LibraryEntry } from "#lib/library.js";
-  import { backgroundApi, stylesApi, whenConverted, type Style, type StyleSummary } from "#lib/reportStyles/api.js";
+  import { backgroundApi, isArtwork, stylesApi, whenConverted, type Style, type StyleSummary } from "#lib/reportStyles/api.js";
   import { lookOf, type CustomerArt } from "#lib/reportStyles/look.js";
   import { imageOf } from "#lib/reportStyles/preview.svelte.js";
   import {
@@ -68,6 +68,8 @@
   const resolved = $derived(resolve([...below, content]));
   const weak = $derived(contrastProblems(resolved));
   const image = $derived(imageOf(style));
+  // The style's images to place on a page: its artwork for whole pages isn't among them.
+  const pictures = $derived((style?.assets ?? []).filter((a) => !isArtwork(a)));
   const logos = $derived({ company: branding.current.logo_url, customer: customerLogo });
 
   function use(found: Style) {
@@ -190,7 +192,7 @@
     if (!design) return;
     const extra = ADDABLE.find((a) => a.kind === kind)?.make() ?? {};
     if (kind === "image") {
-      const first = style?.assets.find((a) => a.content_type !== "image/svg+xml" || a.width < 600);
+      const first = pictures[0];
       if (!first) {
         toast("Upload a picture first: choose Image again once it's there.", "warning");
         tab = "pages";
@@ -400,7 +402,7 @@
                 {#key chosen.id}
                   <ElementPanel
                     bind:element={() => chosen as Element, (v) => Object.assign(chosen as Element, v)}
-                    images={(style?.assets ?? []).filter((a) => !(a.content_type === "image/svg+xml" && a.width >= 500 && a.height / a.width > 1.3)).map((a) => ({ sha256: a.sha256, url: image(a.sha256) }))}
+                    images={pictures.map((a) => ({ sha256: a.sha256, url: image(a.sha256) }))}
                     onupload={uploadImage}
                     onremove={removeChosen} />
                 {/key}
