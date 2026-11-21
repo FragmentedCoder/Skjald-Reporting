@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { untrack } from "svelte";
+  import { onDestroy, tick, untrack } from "svelte";
   import { Engine, ExpressionError, human } from "#lib/cel/engine.js";
   import { shapes as shapesOf, type Choice, type NameEntry } from "#lib/templates/catalogue.js";
   import {
     conditionFromCel,
     conditionToCel,
+    grouped,
     OPS,
     shapeOf,
     valueFromCel,
@@ -12,6 +13,7 @@
     type Group,
     type ValueRule,
   } from "#lib/templates/rules.js";
+  import { claimNames } from "#lib/templates/nameTarget.svelte.js";
   import ConditionEditor from "./ConditionEditor.svelte";
   import ValueEditor from "./ValueEditor.svelte";
 
@@ -57,41 +59,49 @@
   let rule = $state<ValueRule>({ kind: "fixed", value: "" });
   let written: string | null = null;
 
-  // The stored text, read into the visual form when it changes from elsewhere (a
-  // rename, a reload) or when the field opens.
+  // Reads a rule's text into the visual form, which shows if it's one it could have written.
+  function read(text: string | null) {
+    written = text;
+    if (text === null || !text.trim()) {
+      adding = false;
+      condition = { kind: "all", items: [] };
+      rule = { kind: "fixed", value: result === "number" || result === "whole" ? 0 : result === "bool" ? false : "" };
+      mode = "visual";
+      return;
+    }
+    if (kind === "condition") {
+      const found = conditionFromCel(text, shapes);
+      if (found) condition = grouped(found);
+      mode = found ? "visual" : "text";
+    } else {
+      const found = valueFromCel(text, result, shapes);
+      if (found) rule = found;
+      mode = found ? "visual" : "text";
+    }
+  }
+
+  // The stored text is read when the field opens and when it changes from elsewhere (a
+  // rename, a reload, another block selected), not when this field wrote it itself.
   $effect.pre(() => {
     const text = value;
     untrack(() => {
-      if (text === written) return;
-      written = text;
-      if (text === null || !text.trim()) {
-        adding = false;
-        condition = { kind: "all", items: [] };
-        rule = { kind: "fixed", value: result === "number" || result === "whole" ? 0 : result === "bool" ? false : "" };
-        mode = "visual";
-        return;
-      }
-      if (kind === "condition") {
-        const read = conditionFromCel(text, shapes);
-        if (read) condition = read.kind === "compare" || read.kind === "not" ? { kind: "all", items: [read] } : read;
-        mode = read ? "visual" : "text";
-      } else {
-        const read = valueFromCel(text, result, shapes);
-        if (read) rule = read;
-        mode = read ? "visual" : "text";
-      }
+      if (text !== written) read(text);
     });
   });
 
   const open = $derived(kind === "condition" || !optional || value !== null || adding);
 
-  // What the visual form says, written back as text.
+  // What the visual form says, written back as text. "Always the same" date with no
+  // date picked yet is no rule yet, not date("").
   $effect(() => {
     if (mode !== "visual" || !open) return;
+    const unpicked = kind === "value" && rule.kind === "fixed" && result === "date" && !rule.value;
     const text = kind === "condition"
       ? (condition.items.length ? conditionToCel($state.snapshot(condition) as Group, shapes) : null)
-      : valueToCel($state.snapshot(rule) as ValueRule, result, shapes);
+      : unpicked ? null : valueToCel($state.snapshot(rule) as ValueRule, result, shapes);
     untrack(() => {
+      // An optional rule with nothing in it yet keeps its editor open.
+      if (unpicked) adding = true;
       if (text === value) return;
       written = text;
       value = text;
@@ -100,6 +110,8 @@
 
   const live = $derived.by((): string | null => {
     if (!value?.trim()) return null;
+    // A date field of the rule left empty: it passes the type check and fails when run.
+    if (/\bdate\(""\)/.test(value)) return "Pick the date: one is still empty.";
     try {
       const type = engine.check(value);
       if (expects && type !== "dyn" && type !== expects) return `This should give ${human(expects)}, but gives ${human(type)}.`;
@@ -120,6 +132,27 @@
     written = null;
     value = null;
   }
+
+  // A name picked in the Names drawer goes into the rule being written as text, bare
+  // (answers.cvss), where the caret was.
+  let letGo = () => {};
+  onDestroy(() => letGo());
+  function claim(field: HTMLTextAreaElement) {
+    letGo();
+    letGo = claimNames({
+      element: field,
+      label: label.toLowerCase(),
+      insert: (name) => {
+        const [from, to] = [field.selectionStart, field.selectionEnd];
+        value = `${field.value.slice(0, from)}${name}${field.value.slice(to)}`;
+        written = value;
+        void tick().then(() => {
+          field.focus();
+          field.setSelectionRange(from + name.length, from + name.length);
+        });
+      },
+    });
+  }
 </script>
 
 <div class="rule" role="group" aria-labelledby="{id}-label">
@@ -128,7 +161,7 @@
     {#if mode === "visual"}
       <button class="link-button small" type="button" onclick={() => (mode = "text")}>Edit as text</button>
     {:else if readable}
-      <button class="link-button small" type="button" onclick={() => { written = null; mode = "visual"; value = value; }}>Edit visually</button>
+      <button class="link-button small" type="button" onclick={() => read(value)}>Edit visually</button>
     {/if}
   </div>
   {#if mode === "visual"}
@@ -146,9 +179,10 @@
       <button class="button button-secondary small-button" type="button" onclick={() => (adding = true)}>Add a rule</button>
     {/if}
   {:else}
-    <textarea id="{id}-text" class="input mono" rows="3" spellcheck="false" autocomplete="off" aria-labelledby="{id}-label"
+    <textarea id="{id}-text" class="input mono" rows="3" maxlength="10000" spellcheck="false" autocomplete="off" aria-labelledby="{id}-label"
       aria-invalid={shown ? "true" : undefined}
-      value={value ?? ""} oninput={(e) => { value = e.currentTarget.value === "" ? null : e.currentTarget.value; written = value; }}></textarea>
+      value={value ?? ""} oninput={(e) => { value = e.currentTarget.value === "" ? null : e.currentTarget.value; written = value; }}
+      onfocus={(e) => claim(e.currentTarget)}></textarea>
     {#if !readable}
       <p class="small muted">Written by hand, so it's edited as text. <button class="link-button" type="button" onclick={startVisual}>Start again visually</button></p>
     {/if}

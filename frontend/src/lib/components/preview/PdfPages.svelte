@@ -23,8 +23,9 @@
   import type { BlockKind } from "#lib/templates/types.js";
   import { FONT_STACKS, plainLook, pointsToCqi, textKey, type PageLook } from "#lib/reportStyles/look.js";
   import { colourOf, TONE_NAMES, type Element, type PageName } from "#lib/reportStyles/resolve.js";
+  import { drawPhoto, isLocalPhoto } from "#lib/templates/localPhotos.js";
   import type { Paged, Placed } from "#lib/templates/pages.js";
-  import type { Grid, Shown } from "#lib/templates/preview.js";
+  import { sampleContext, type Grid, type Shown } from "#lib/templates/preview.js";
   import { strokeBox, strokePath } from "#lib/templates/signature.js";
   import RichView from "./RichView.svelte";
 
@@ -84,7 +85,9 @@
   });
 
   // Who signs in the sample, and when: in the PDF, the signers' own signatures.
-  const SAMPLE_SIGNERS = { technician: "Freja Holm", reviewer: "Ivar Lund" } as const;
+  // The sample report's author and reviewer, as its text names them.
+  const SAMPLE = sampleContext();
+  const SAMPLE_SIGNERS = { technician: String(SAMPLE.author.display_name), reviewer: String(SAMPLE.reviewer.display_name) };
   const signedOn = $derived(
     new Intl.DateTimeFormat(language === "da" ? "da-DK" : "en-GB", { day: "numeric", month: "short", year: "numeric" }).format(new Date("2026-10-24T09:30:00Z")),
   );
@@ -318,14 +321,16 @@
     </figure>
   {:else if b.kind === "image"}
     <figure class="image" use:widthOf={{ width: b.width, ratio: b.ratio }}>
-      {#if b.url}<img src={b.url} alt={b.caption} />{:else}<div class="placeholder">The technician's photo goes here</div>{/if}
+      {#if isLocalPhoto(b.url)}<canvas use:drawPhoto={b.url}>{b.caption || "The photo chosen"}</canvas>
+      {:else if b.url}<img src={b.url} alt={b.caption} />{:else}<div class="placeholder">The technician's photo goes here</div>{/if}
       {#if placed?.caption}<figcaption>{placed.caption}{b.caption ? `. ${b.caption}` : ""}</figcaption>{/if}
     </figure>
   {:else if b.kind === "gallery"}
     <figure class="gallery per-{b.perRow}">
       <div class="photos">
         {#each b.urls.length ? b.urls : [null, null] as url, i (i)}
-          {#if url}<img src={url} alt="Photo {i + 1}" />{:else}<div class="placeholder">Photo {i + 1}</div>{/if}
+          {#if isLocalPhoto(url)}<canvas use:drawPhoto={url}>Photo {i + 1}</canvas>
+          {:else if url}<img src={url} alt="Photo {i + 1}" />{:else}<div class="placeholder">Photo {i + 1}</div>{/if}
         {/each}
       </div>
       {#if placed?.caption}<figcaption>{placed.caption}{b.caption ? `. ${b.caption}` : ""}</figcaption>{/if}
@@ -337,7 +342,7 @@
     </aside>
   {:else if b.kind === "severity_summary"}
     <figure class="severity">
-      <div class="counts">{#each b.counts as c (c.level)}<div class="count"><span class="n">{c.count}</span><span>{c.level}</span></div>{/each}</div>
+      <div class="counts">{#each b.counts as c, i (i)}<div class="count"><span class="n">{c.count}</span><span>{c.level}</span></div>{/each}</div>
       {#if b.caption}<figcaption>{b.caption}</figcaption>{/if}
     </figure>
   {:else if b.kind === "sources"}
@@ -376,7 +381,7 @@
     {/if}
   {:else if b.kind === "columns"}
     <div class="columns">
-      {#each b.columns as column, i (i)}<div class="column">{#each column as inner (inner.id)}{@render item(inner, null)}{/each}</div>{/each}
+      {#each b.columns as column, i (i)}<div class="column">{#each column as inner (inner.id)}{@render item(inner, placed?.inside?.[inner.id] ?? null)}{/each}</div>{/each}
     </div>
   {/if}
 {/snippet}
@@ -708,7 +713,9 @@
     width: var(--share, 100%);
   }
   .image img,
-  .gallery img {
+  .image canvas,
+  .gallery img,
+  .gallery canvas {
     display: block;
     width: 100%;
     height: auto;

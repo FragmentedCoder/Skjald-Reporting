@@ -14,7 +14,8 @@ from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 _DATE = re.compile(
-    r"^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2})(?::(\d{2}))?)?(Z|[+-]\d{2}:\d{2})?$"
+    r"([0-9]{4})-([0-9]{2})-([0-9]{2})(?:T([0-9]{2}):([0-9]{2})(?::([0-9]{2}))?)?"
+    r"(Z|[+-][0-9]{2}:[0-9]{2})?"
 )
 # Runs of one letter, quoted text ('' is a quote mark) or anything else.
 _PATTERN = re.compile(r"'((?:[^']|'')*)'|([A-Za-z])\2*|[^A-Za-z']+|'")
@@ -23,19 +24,24 @@ _TOKENS = frozenset({"yyyy", "yy", "MMMM", "MMM", "MM", "M", "dd", "d", "EEEE",
 
 
 def parse_date(text: str, zone: ZoneInfo) -> datetime:
-    match = _DATE.match(text)
+    invalid = ValueError(f"'{text}' isn't a date such as 2026-10-21 or 2026-10-21T14:30.")
+    match = _DATE.fullmatch(text)
     if not match:
-        raise ValueError(f"{text!r} isn't a date such as 2026-10-21 or 2026-10-21T14:30.")
+        raise invalid
     year, month, day, hour, minute, second, offset = match.groups()
-    naive = datetime(int(year), int(month), int(day), int(hour or 0), int(minute or 0),
-                     int(second or 0))
-    if offset is None:
-        return naive.replace(tzinfo=zone).astimezone(UTC)
-    if offset == "Z":
-        return naive.replace(tzinfo=UTC)
-    sign = 1 if offset[0] == "+" else -1
-    delta = timedelta(hours=int(offset[1:3]), minutes=int(offset[4:6]))
-    return (naive - sign * delta).replace(tzinfo=UTC)
+    try:
+        naive = datetime(int(year), int(month), int(day), int(hour or 0), int(minute or 0),
+                         int(second or 0))
+        if offset is None:
+            return naive.replace(tzinfo=zone).astimezone(UTC)
+        if offset == "Z":
+            return naive.replace(tzinfo=UTC)
+        sign = 1 if offset[0] == "+" else -1
+        delta = timedelta(hours=int(offset[1:3]), minutes=int(offset[4:6]))
+        return (naive - sign * delta).replace(tzinfo=UTC)
+    except (ValueError, OverflowError):
+        # A day the month doesn't have, or a moment outside the years 1 to 9999.
+        raise invalid from None
 
 
 def add_days(moment: datetime, days: int, zone: ZoneInfo) -> datetime:

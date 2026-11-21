@@ -171,6 +171,11 @@ export class Draft {
       this.saveState = "unsaved";
       clearTimeout(this.#saveTimer);
       this.#saveTimer = setTimeout(() => void this.save(), SAVE_AFTER_MS);
+    } else if (!this.#saving) {
+      // Back to what's saved (a change the server refused, taken back): nothing to send.
+      clearTimeout(this.#saveTimer);
+      this.saveState = "saved";
+      this.saveMessage = null;
     }
   }
 
@@ -180,7 +185,13 @@ export class Draft {
    */
   removing(what: string): void {
     this.#changedAt = 0;
-    toast(`Removed ${what}.`, "info", { key: "template-removed", lifetime: 12_000, action: { label: "Undo", run: () => this.undo() } });
+    // The removal will be the step after these; the note's Undo takes back that one,
+    // and says so if other changes have come since.
+    const steps = this.#before.length + 1;
+    toast(`Removed ${what}.`, "info", { key: "template-removed", lifetime: 12_000, action: { label: "Undo", run: () => {
+      if (this.#before.length === steps) this.undo();
+      else toast("Other changes came after that: step back to it with Undo (Ctrl+Z).", "info", { key: "template-removed", lifetime: 8000 });
+    } } });
   }
 
   /** Takes back the last step of changes (a block removed, a word typed), or with `again` puts back the last one undone. */
@@ -202,12 +213,15 @@ export class Draft {
   /** Saves now if anything is unsaved; waits for a save under way. */
   async save(): Promise<void> {
     clearTimeout(this.#saveTimer);
-    if (this.#saving) await this.#saving;
+    // One save at a time: whoever waited looks again, since another waiter may have
+    // started the next one (two sends of one revision would be refused as a conflict).
+    while (this.#saving) await this.#saving;
     if (this.content === null || this.readonly || this.saveState === "conflict") return;
     const content = $state.snapshot(this.content) as TemplateContent;
     const text = JSON.stringify(content);
     if (text === this.#saved) {
-      if (this.saveState !== "failed") this.saveState = "saved";
+      this.saveState = "saved";
+      this.saveMessage = null;
       return;
     }
     this.saveState = "saving";
@@ -229,8 +243,9 @@ export class Draft {
         this.saveMessage = error instanceof ApiError ? error.message : "The draft couldn't be saved.";
       }
     })();
-    await this.#saving;
-    this.#saving = null;
+    const mine = this.#saving;
+    await mine;
+    if (this.#saving === mine) this.#saving = null;
   }
 
   /** After a conflict: their version, losing the changes here. */
@@ -272,8 +287,9 @@ export class Draft {
     return this.problems.filter((p) => p.element === element && (field === undefined || p.field === field));
   }
 
+  /** Whether leaving now would lose changes: not yet saved, or refused by the server. */
   get unsaved(): boolean {
-    return this.saveState === "unsaved" || this.saveState === "saving";
+    return this.saveState === "unsaved" || this.saveState === "saving" || this.saveState === "failed";
   }
 }
 

@@ -5,16 +5,20 @@
   import type { Job } from "#lib/cel/jobs.js";
   import type { Table } from "#lib/cel/library.js";
   import { shown } from "#lib/templates/nameGroups.js";
+  import { shownAs } from "#lib/templates/labels.js";
   import { printValue } from "#lib/templates/preview.js";
+  import type { Question } from "#lib/templates/types.js";
   import { readTyped } from "#lib/templates/text.js";
 
   // A box to try an expression, checked and worked out as rules and text in {{ }} are,
   // on the sample values given. It takes an expression as rules have it, the same in
   // {{ }} as the lists show names, or text with names in {{ }}, which it prints as a
   // text block would. It runs in the expression worker, with its time limit.
-  let { declarations, values, language = "en", tables = {}, about, id = "try-expression" }: {
+  let { declarations, values, language = "en", tables = {}, about, id = "try-expression", questions = [] }: {
     declarations: Record<string, string>;
     values: Record<string, unknown>;
+    /** The template's questions, where there's a template: a choice named on its own prints as its question shows it. */
+    questions?: Question[];
     language?: "en" | "da";
     tables?: Record<string, Table>;
     /** What it's worked out on, said under the title. */
@@ -35,6 +39,10 @@
     const shared = $state.snapshot(tables);
     const setup = { key: `${JSON.stringify(declared)}|${language}|${JSON.stringify(shared)}`, declarations: declared, options: { language, tables: shared } };
     const now = $state.snapshot(values) as Record<string, unknown>;
+    const labels = {
+      questions: new Map(($state.snapshot(questions) as Question[]).filter((q) => q.key).map((q) => [q.key as string, q])),
+      answer: (key: string) => (now.answers as Record<string, unknown> | undefined)?.[key],
+    };
     clearTimeout(timer);
     timer = setTimeout(async () => {
       const read = readTyped(typed);
@@ -66,7 +74,8 @@
           out += read.text.slice(last, part.start);
           if (part.expr) {
             const result = results[n * 2 + 1];
-            out += result.ok ? printValue(result.value, language, DEFAULT_ZONE) : "";
+            // As a text block prints it: a choice named on its own as its question shows it.
+            out += result.ok ? printValue(shownAs(part.expr, result.value, labels), language, DEFAULT_ZONE) : "";
             n += 1;
           }
           last = part.end;

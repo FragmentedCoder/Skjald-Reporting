@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import io
+import struct
+import zlib
 
 import pytest
 from PIL import Image
@@ -72,3 +74,23 @@ def test_images_are_re_encoded_without_their_metadata() -> None:
         clean_asset(gif.getvalue())
     with pytest.raises(AssetRejected):
         clean_asset(b"MZ\x90\x00 an executable")
+
+
+def test_a_picture_that_cant_be_read_or_is_too_large_is_refused_not_a_crash() -> None:
+    """A PNG whose packed text unpacks to more than Pillow allows (it raises a plain
+    ValueError for it), and one of more than 40 million pixels, known from its header
+    before any of it is decoded."""
+    page = io.BytesIO()
+    Image.new("RGB", (4, 4), "#2B5D8A").save(page, format="PNG")
+    png = page.getvalue()
+    text = b"Comment\0\0" + zlib.compress(b"a" * (2 * 1024 * 1024))
+    chunk = (struct.pack(">I", len(text)) + b"zTXt" + text
+             + struct.pack(">I", zlib.crc32(b"zTXt" + text)))
+    at = png.index(b"IDAT") - 4
+    with pytest.raises(AssetRejected, match="isn't an image Skjald can use"):
+        clean_asset(png[:at] + chunk + png[at:])
+    # The same small picture, its header saying 7,000 by 7,000 (49 million pixels).
+    header = struct.pack(">II", 7000, 7000) + png[24:29]
+    huge = png[:16] + header + struct.pack(">I", zlib.crc32(b"IHDR" + header)) + png[33:]
+    with pytest.raises(AssetRejected, match="more than 40 million pixels"):
+        clean_asset(huge)

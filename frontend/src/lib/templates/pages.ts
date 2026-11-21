@@ -2,8 +2,9 @@
 // share (docs/architecture.md). The cover gets a page of its own; a section set to
 // start on a new page begins one, a page break forces one, and a landscape section
 // gets landscape pages of its own; no rule ever leaves an empty page. Sections are
-// numbered (1, 1.1, 2) and tables and figures counted in reading order, only what's
-// printed. Long content flowing onto more pages is the renderer's job; the preview
+// numbered (1, 1.1, 2; an unnumbered section takes no number and the ones inside it
+// count on with those around it) and tables and figures counted in reading order,
+// those in columns too (column by column), only what's printed. Long content flowing onto more pages is the renderer's job; the preview
 // flags a page that runs over. shared/pages/cases.json holds the rules for both.
 
 import type { Shown } from "./preview";
@@ -15,6 +16,8 @@ export interface Placed {
   number?: string;
   /** Table 1, Figure 2. */
   caption?: string;
+  /** For a Columns block: what's placed in its columns, by ID, with their captions. */
+  inside?: Record<string, Placed>;
 }
 
 export interface Page {
@@ -80,17 +83,30 @@ export function paginate(blocks: Shown[]): Paged {
       breakNext = null;
       target.items.push({ block, depth, number });
       contents.push({ number: number ?? null, title: block.title, depth, page: pages.length });
-      const inner = { n: 0 };
+      // An unnumbered section takes no number, and the sections inside it count on
+      // with the ones around it: a fresh count there would give two sections one number.
+      const inner = number ? { n: 0 } : counter;
       for (const child of block.blocks) place(child, depth + 1, number ? `${number}.` : prefix, inner, facing);
-      if (block.landscape && orientation === "portrait") breakNext = breakNext ?? "Back to portrait";
+      // What follows a landscape section is portrait again; page() turns the page when
+      // it comes, so another landscape section straight after carries on the same page.
       return;
     }
     const target = page(orientation);
     breakNext = null;
+    target.items.push(captioned(block, depth));
+  };
+
+  // A block with its caption, and for columns the blocks in them with theirs, counted
+  // down each column in turn.
+  const captioned = (block: Shown, depth: number): Placed => {
     const placed: Placed = { block, depth };
     if (block.kind === "table") placed.caption = `Table ${++tables}`;
     if (block.kind === "image" || block.kind === "gallery") placed.caption = `Figure ${++figures}`;
-    target.items.push(placed);
+    if (block.kind === "columns") {
+      placed.inside = {};
+      for (const column of block.columns) for (const inner of column) placed.inside[inner.id] = captioned(inner, depth + 1);
+    }
+    return placed;
   };
 
   const top = { n: 0 };

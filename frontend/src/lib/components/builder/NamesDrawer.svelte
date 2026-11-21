@@ -9,7 +9,7 @@
   import { nameGroups, type NameRow } from "#lib/templates/nameGroups.js";
   import { declarations } from "#lib/templates/names.js";
   import { nameTarget } from "#lib/templates/nameTarget.svelte.js";
-  import type { TemplateContent } from "#lib/templates/types.js";
+  import { questionsOf, type TemplateContent } from "#lib/templates/types.js";
   import { toast } from "#lib/toast.svelte.js";
 
   // The Names drawer, beside whichever tab of the builder is open: every name this
@@ -33,7 +33,7 @@
     const target = nameTarget.current;
     if (target) {
       target.insert(row.name);
-      toast(`Inserted {{${row.name}}} in ${target.label}.`, "ok", { key: "names-drawer" });
+      toast(`Inserted ${row.name} in ${target.label}.`, "ok", { key: "names-drawer" });
       return;
     }
     try {
@@ -61,7 +61,7 @@
   </p>
   <details class="try">
     <summary>Try an expression</summary>
-    <TryExpression id="drawer-expression" declarations={declarations(content, draft.libraryNames)} {values} language={content.settings.language}
+    <TryExpression id="drawer-expression" declarations={declarations(content, draft.libraryNames)} {values} language={content.settings.language} questions={questionsOf(content)}
       tables={draft.libraryPreview.tables} about={"An expression, a name in {{ }}, or text with names in {{ }}, worked out on the sample answers."} />
   </details>
   <NamesBrowser {groups} compact onpick={pick} id="drawer-names" />

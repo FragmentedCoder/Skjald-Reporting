@@ -34,13 +34,14 @@ import json
 import re
 import stat
 import zipfile
+import zlib
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
 from app.cel.engine import ExpressionError, validate
 from app.templates.content import TemplateContent
-from app.templates.text import doc_expressions, interpolations
+from app.templates.text import RichTextError, check_doc, doc_expressions, interpolations
 
 FORMAT = "skjald-template"
 FORMAT_VERSION = 1
@@ -155,6 +156,8 @@ class Picture:
     sha256: str
     content_type: str
     data: bytes
+    # What the designer called it, kept in the manifest.
+    name: str = ""
 
 
 @dataclass
@@ -200,6 +203,7 @@ def write(export: Export) -> bytes:
                      "version": export.version},
         "exported_at": export.exported_at, "skjald_version": export.app_version,
         "files": {name: hashlib.sha256(body).hexdigest() for name, body in sorted(files.items())},
+        "names": {picture.sha256: picture.name for picture in export.pictures if picture.name},
     }
     out = io.BytesIO()
     with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_DEFLATED) as archive:
@@ -222,6 +226,8 @@ class Imported:
     library: list[dict[str, Any]]
     style: dict[str, Any] | None
     style_pictures: dict[str, bytes]
+    # The template's pictures' names, by the SHA-256 the file has them under.
+    picture_names: dict[str, str] = field(default_factory=dict)
 
 
 def _depth(value: Any, limit: int = MAX_DEPTH) -> None:
@@ -240,7 +246,8 @@ def _load_json(name: str, body: bytes) -> Any:
     if len(body) > MAX_JSON_BYTES:
         raise TemplateFileRejected(f"{name} is too large.")
     try:
-        value = json.loads(body.decode("utf-8"))
+        # A byte-order mark is no part of the JSON: editors on Windows add one.
+        value = json.loads(body.decode("utf-8-sig"))
     except (UnicodeDecodeError, json.JSONDecodeError, RecursionError):
         raise TemplateFileRejected(f"{name} isn't valid JSON.") from None
     _depth(value)
@@ -274,8 +281,12 @@ def _entries(raw: bytes) -> dict[str, bytes]:
                 raise TemplateFileRejected("The file is encrypted.")
             if info.compress_size and info.file_size / info.compress_size > MAX_RATIO:
                 raise TemplateFileRejected("The file expands to more than Skjald accepts.")
-            with archive.open(info) as stream:
-                body = stream.read(info.file_size + 1)
+            try:
+                with archive.open(info) as stream:
+                    body = stream.read(info.file_size + 1)
+            except (zipfile.BadZipFile, zlib.error, NotImplementedError, EOFError, RuntimeError,
+                    OSError):
+                raise TemplateFileRejected("The file is damaged.") from None
             if len(body) != info.file_size:
                 raise TemplateFileRejected("The file is damaged.")
             found[name] = body
@@ -296,7 +307,9 @@ def read(raw: bytes) -> Imported:
     if not isinstance(listed, dict) or set(listed) != set(files):
         raise TemplateFileRejected("The file's contents don't match its manifest.")
     for name, body in files.items():
-        if hashlib.sha256(body).hexdigest() != listed[name]:
+        # strings.json is for translators to change on its own; like everything in the
+        # file, what it holds is checked below, whoever wrote it.
+        if name != "strings.json" and hashlib.sha256(body).hexdigest() != listed[name]:
             raise TemplateFileRejected(f"{name} doesn't match its manifest: the file was changed "
                                        f"or damaged.")
     for name in JSON_FILES[1:]:
@@ -319,10 +332,19 @@ def read(raw: bytes) -> Imported:
     # Skjald runs at all (unreadable, too long, a function it doesn't have, matches())
     # isn't imported.
     found = list(rules(content).items())
+    # The form's own words (labels, help, placeholders) are never read as expressions;
+    # the layout's are, between {{ and }}.
+    plain = set(strings({"form": content["form"], "layout": []}))
     for address, text in strings(content).items():
-        found += [(address, expr) for expr in (
-            doc_expressions(text) if isinstance(text, dict)
-            else [part.expr for part in interpolations(text)] if isinstance(text, str) else [])]
+        if isinstance(text, dict):
+            try:
+                check_doc(text)
+            except RichTextError as exc:
+                raise TemplateFileRejected(f"The text at {address} can't be imported: "
+                                           f"{exc}") from None
+            found += [(address, expr) for expr in doc_expressions(text)]
+        elif isinstance(text, str) and address not in plain:
+            found += [(address, part.expr) for part in interpolations(text)]
     for address, expr in found:
         try:
             validate(expr, ())
@@ -340,10 +362,13 @@ def read(raw: bytes) -> Imported:
     style_pictures = {m.group(2): body for name, body in files.items()
                       if (m := _ASSET.match(name)) and m.group(1)}
     style = styles.get("company_default")
+    names = manifest.get("names")
+    picture_names = {sha: name for sha, name in (names.items() if isinstance(names, dict) else ())
+                     if isinstance(name, str) and sha in pictures}
     return Imported(
         uuid=str(template.get("uuid") or ""),
         name=str(template.get("name") or "Imported template"),
         description=str(template.get("description") or ""), content=content, pictures=pictures,
         library=library, style=style if isinstance(style, dict) else None,
-        style_pictures=style_pictures,
+        style_pictures=style_pictures, picture_names=picture_names,
     )

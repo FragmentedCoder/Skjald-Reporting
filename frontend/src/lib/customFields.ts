@@ -17,6 +17,9 @@ export interface CustomField {
   options: string[];
   position: number;
   archived: boolean;
+  /** Stands for the field as it was read: a change sends it back, and is refused (409)
+   *  if someone has changed the field since. */
+  version: string;
 }
 
 export const CUSTOM_TYPES: { type: CustomFieldType; label: string; cel: string; example: unknown }[] = [
@@ -34,7 +37,7 @@ export const customFieldsApi = {
   list: (archived = false) => api<CustomField[]>("GET", `/custom-fields${archived ? "?archived=true" : ""}`),
   create: (body: { applies_to: AppliesTo; key: string; label: string; type: CustomFieldType; help: string; options: string[] }) =>
     api<CustomField>("POST", "/custom-fields", body),
-  update: (id: number, body: { label: string; help: string; options: string[]; position: number; archived: boolean }) =>
+  update: (id: number, body: { label: string; help: string; options: string[]; position: number; archived: boolean; version: string }) =>
     api<CustomField>("PUT", `/custom-fields/${id}`, body),
 };
 
@@ -60,4 +63,13 @@ export function sampleCustom(fields: CustomField[], appliesTo: AppliesTo): Recor
     found[f.key] = f.type === "dropdown" ? (f.options[0] ?? "") : typeOf(f).example;
   }
   return found;
+}
+
+/** A dropdown's choices on a customer's or project's form: the field's options and, first,
+ *  the one the record holds if it's since been removed from them. The record keeps it until
+ *  another is chosen, so the form shows it rather than an empty box. */
+export function choicesFor(field: CustomField, held: unknown): { value: string; label: string }[] {
+  const choices = field.options.map((option) => ({ value: option, label: option }));
+  if (typeof held === "string" && held !== "" && !field.options.includes(held)) choices.unshift({ value: held, label: `${held} (no longer an option)` });
+  return choices;
 }

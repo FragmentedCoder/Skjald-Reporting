@@ -229,6 +229,29 @@ def test_a_huge_picture_is_refused(astrid) -> None:
     assert big.status_code == 400 and "2 MB" in big.json()["detail"]
 
 
+# app.images silences Pillow's warning for pictures over half the limit as it's imported;
+# pytest drops filters set while it collects, so the test sets it again.
+@pytest.mark.filterwarnings("ignore::PIL.Image.DecompressionBombWarning")
+def test_a_picture_of_too_many_pixels_is_refused(astrid) -> None:
+    """Pillow alone warns above its limit and refuses only at twice it: a 5 KB file
+    of 80 million pixels would be decoded, at about a gigabyte of memory."""
+    browser, csrf = astrid
+    headers = csrf | {"Content-Type": "application/octet-stream"}
+
+    def bitmap(width: int, height: int) -> bytes:
+        out = io.BytesIO()
+        Image.new("1", (width, height)).save(out, format="PNG")
+        return out.getvalue()
+
+    refused = browser.put("/api/account/avatar", content=bitmap(6400, 6300), headers=headers)
+    assert refused.status_code == 400
+    assert refused.json()["detail"] == (
+        "The image has more than 40 million pixels. Use a smaller one.")
+    # Under the limit it's taken, though over Pillow's own (half of Skjald's).
+    taken = browser.put("/api/account/avatar", content=bitmap(6000, 5000), headers=headers)
+    assert taken.status_code == 200
+
+
 def test_pictures_need_a_signed_in_user(astrid, new_client) -> None:
     browser, csrf = astrid
     url = browser.put("/api/account/avatar", content=picture(fmt="PNG"),

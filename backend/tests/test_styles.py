@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import io
 import json
+import struct
+import zlib
 from pathlib import Path
 from typing import Any
 
@@ -162,6 +164,9 @@ def test_designers_make_and_change_company_styles(client, designer, session) -> 
     assert (style["version"], style["customer_id"], style["below"]) == (1, None, [])
     assert client.post(STYLES, headers=headers,
                        json={"name": "nordlys BRAND"}).status_code == 409
+    # A name of spaces alone is no name, for a new style or a saved one.
+    assert client.post(STYLES, headers=headers, json={"name": "   "}).status_code == 422
+    assert save(client, headers, style, name="  ").status_code == 422
     changed = dict(style["content"], colours={**style["content"]["colours"], "heading": "#1d3a5f"})
     saved = save(client, headers, style, content=changed)
     assert saved.status_code == 200, saved.text
@@ -214,6 +219,9 @@ def test_images_and_artwork(client, designer, session, monkeypatch) -> None:
     assert "immutable" in shown.headers["cache-control"]
     assert "private" not in shown.headers["cache-control"]
     assert post_file(client, headers, style["id"], b"GIF89a", use="image").status_code == 400
+    huge = io.BytesIO()
+    Image.new("1", (6400, 6300)).save(huge, format="PNG")  # 40.3 million pixels in 5 KB
+    assert post_file(client, headers, style["id"], huge.getvalue()).status_code == 400
 
     page = post_file(client, headers, style["id"], picture(420, 594), use="artwork")
     assert (page.json()["status"], len(page.json()["pages"])) == ("ready", 1)
@@ -243,6 +251,41 @@ def test_images_and_artwork(client, designer, session, monkeypatch) -> None:
     art = {"artwork": {"first": done["pages"][0], "other": done["pages"][1]}}
     assert save(client, headers, latest, content=art).status_code == 200
     assert "style.picture_added" in actions(session, "style.")
+
+
+def test_pictures_that_cant_be_read_or_sized_are_refused(client, designer, customer) -> None:
+    """Each of these was an HTTP 500: Pillow raises a plain ValueError for a PNG whose
+    packed text unpacks to more than it allows, and an SVG's size can be any number."""
+    _, headers = designer
+    octets = {**headers, "Content-Type": "application/octet-stream"}
+    style = client.post(STYLES, headers=headers, json={"name": "Nordlys brand"}).json()
+    page = picture(210, 297)
+    text = b"Comment\0\0" + zlib.compress(b"a" * (2 * 1024 * 1024))
+    chunk = (struct.pack(">I", len(text)) + b"zTXt" + text
+             + struct.pack(">I", zlib.crc32(b"zTXt" + text)))
+    at = page.index(b"IDAT") - 4
+    packed = page[:at] + chunk + page[at:]
+    assert len(packed) < 4096
+    for answer in (
+        post_file(client, headers, style["id"], packed),
+        post_file(client, headers, style["id"], packed, use="artwork"),
+        client.put(f"/api/customers/{customer['id']}/background", content=packed,
+                   headers=octets),
+        client.put("/api/account/avatar", content=packed, headers=octets),
+    ):
+        assert answer.status_code == 400
+        assert "Skjald can use" in answer.json()["detail"]
+
+    endless = (b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1e30 1.414e30">'
+               b'<rect width="1" height="1"/></svg>')
+    for answer in (
+        post_file(client, headers, style["id"], endless),
+        post_file(client, headers, style["id"], endless, use="artwork"),
+        client.put(f"/api/customers/{customer['id']}/background", content=endless,
+                   headers=octets),
+    ):
+        assert answer.status_code == 400
+        assert "too large" in answer.json()["detail"]
 
 
 def test_customer_styles_are_sealed_and_go_with_the_customer(client, designer, customer,
@@ -325,6 +368,9 @@ def test_the_company_default_and_customers_choices(client, designer, person, cus
         "name": "Theirs", "customer_id": other["id"]}).json()
     assert client.put(url, headers=manager, json={"default_style_id": theirs["id"],
                                                   "allowed": []}).status_code == 400
+    # No style has ID 0: it's refused like any other that isn't a choice.
+    assert client.put(url, headers=manager, json={"default_style_id": 0,
+                                                  "allowed": []}).status_code == 400
     _, tech = person("tove", "technician")
     assert client.put(url, headers=tech, json={"default_style_id": None,
                                                "allowed": []}).status_code == 403
@@ -336,6 +382,38 @@ def test_the_company_default_and_customers_choices(client, designer, person, cus
     assert client.get(url, headers=manager).json()["company_default"] is None
     assert actions(session, "customer.report_style") == ["customer.report_style_changed"]
     assert session.get(CustomerStyles, customer["id"]) is not None
+
+
+def test_a_company_style_stays_while_customer_styles_stack_on_it(client, designer, customer,
+                                                                 session) -> None:
+    _, headers = designer
+    brand = client.post(STYLES, headers=headers, json={"name": "Nordlys brand"}).json()
+    look = client.post(STYLES, headers=headers, json={
+        "name": "Fjordvik look", "customer_id": customer["id"], "based_on": brand["id"]}).json()
+    refused = client.delete(f"{STYLES}/{brand['id']}", headers=headers)
+    assert refused.status_code == 409
+    assert refused.json()["detail"] == (
+        "Fjordvik look (Fjordvik Logistik A/S) stacks on this style. Choose another style for "
+        "it to stack on, then remove this one.")
+    # The customer style keeps its base's look, and can still be saved.
+    assert len(client.get(f"{STYLES}/{look['id']}", headers=headers).json()["below"]) == 1
+    look = save(client, headers, look).json()
+    assert look["based_on"] == brand["id"]
+
+    plain = client.post(STYLES, headers=headers, json={
+        "name": "Fjordvik plain", "customer_id": customer["id"], "based_on": brand["id"]}).json()
+    both = client.delete(f"{STYLES}/{brand['id']}", headers=headers)
+    assert both.status_code == 409
+    assert both.json()["detail"].startswith(
+        "2 customer styles stack on this style: Fjordvik look (Fjordvik Logistik A/S) and "
+        "Fjordvik plain (Fjordvik Logistik A/S). Choose another style for each")
+
+    # Stacked on something else, or removed themselves, they no longer hold it.
+    assert save(client, headers, look, based_on=None).status_code == 200
+    assert client.delete(f"{STYLES}/{plain['id']}", headers=headers).status_code == 204
+    assert client.delete(f"{STYLES}/{brand['id']}", headers=headers).status_code == 204
+    assert session.get(Style, brand["id"]).removed_at is not None
+    assert actions(session, "style.removed") == ["style.removed", "style.removed"]
 
 
 def test_branding_switches_off_made_with_skjald_and_sets_the_time_zone(client, admin) -> None:

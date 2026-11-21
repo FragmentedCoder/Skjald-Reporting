@@ -8,7 +8,7 @@
 
   // The layout's blocks as an outline, in the order they print: sections, columns and
   // a switch's cases hold blocks of their own, and blocks drag between them.
-  let { blocks = $bindable(), depth = 0, label, empty, selected, hidden, problems, readonly, onselect }: {
+  let { blocks = $bindable(), depth = 0, label, empty, selected, hidden, problems, readonly, onselect, room = () => true }: {
     blocks: Block[];
     depth?: number;
     label: string;
@@ -20,6 +20,8 @@
     problems: (id: string) => number;
     readonly: boolean;
     onselect: (id: string) => void;
+    /** Whether a new block fits in a list: the template and each list have a largest size. */
+    room?: (list: Block[]) => boolean;
   } = $props();
 
   type Item = Block | Dragged;
@@ -62,7 +64,9 @@
     let added: Block | null = null;
     dragging = null;
     hooks.again();
-    blocks = event.detail.items.map((item) => {
+    // A new block dropped where there's no room for it isn't added (room says why).
+    const fits = !event.detail.items.some((item) => "palette" in item) || room(blocks);
+    blocks = event.detail.items.filter((item) => fits || !("palette" in item)).map((item) => {
       if ("palette" in item) {
         added = newBlock(item.kind as BlockKind, depth > 0);
         return added;
@@ -99,14 +103,14 @@
         {#if b.kind === "section"}
           <div class="inside">
             <BlockList bind:blocks={b.blocks} depth={depth + 1} label="Blocks in “{b.title}”" empty="Drag blocks into this section."
-              {selected} {hidden} {problems} {readonly} {onselect} />
+              {selected} {hidden} {problems} {readonly} {onselect} {room} />
           </div>
         {:else if b.kind === "columns"}
           <div class="columns">
             {#each b.columns as _column, c (c)}
               <div class="column">
                 <BlockList bind:blocks={b.columns[c]} depth={depth + 1} label="Column {c + 1}" empty="Drag blocks here."
-                  {selected} {hidden} {problems} {readonly} {onselect} />
+                  {selected} {hidden} {problems} {readonly} {onselect} {room} />
               </div>
             {/each}
           </div>
@@ -117,13 +121,13 @@
               <div class="case">
                 <span class="case-head small">When it's {caseValue(c.match)}</span>
                 <BlockList bind:blocks={b.cases[i].blocks} depth={depth + 1} label="Blocks when it's {caseValue(c.match)}" empty="Drag the blocks for this case here."
-                  {selected} {hidden} {problems} {readonly} {onselect} />
+                  {selected} {hidden} {problems} {readonly} {onselect} {room} />
               </div>
             {/each}
             <div class="case">
               <span class="case-head small">Otherwise</span>
               <BlockList bind:blocks={b.otherwise} depth={depth + 1} label="Blocks when no case matches" empty="Drag blocks here for when no case matches, or leave it empty."
-                {selected} {hidden} {problems} {readonly} {onselect} />
+                {selected} {hidden} {problems} {readonly} {onselect} {room} />
             </div>
           </div>
         {/if}

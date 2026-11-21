@@ -11,11 +11,12 @@
   import ColourField from "#lib/components/styles/ColourField.svelte";
   import ElementPanel from "#lib/components/styles/ElementPanel.svelte";
   import PageDesigner from "#lib/components/styles/PageDesigner.svelte";
-  import { customFieldsApi, customNames, sampleCustom, type CustomField } from "#lib/customFields.js";
+  import { customFieldsApi, type CustomField } from "#lib/customFields.js";
   import type { CustomerDetail } from "#lib/customers.js";
   import { dateTime } from "#lib/format.js";
-  import { backgroundApi, stylesApi, whenConverted, type Style, type StyleSummary } from "#lib/reportStyles/api.js";
-  import { lookOf, pageTexts, type CustomerArt } from "#lib/reportStyles/look.js";
+  import { libraryApi, type LibraryEntry } from "#lib/library.js";
+  import { backgroundApi, isArtwork, stylesApi, whenConverted, type Style, type StyleSummary } from "#lib/reportStyles/api.js";
+  import { lookOf, type CustomerArt } from "#lib/reportStyles/look.js";
   import { imageOf } from "#lib/reportStyles/preview.svelte.js";
   import {
     COLOUR_KEYS,
@@ -36,10 +37,8 @@
     type PageName,
     type StyleContent,
   } from "#lib/reportStyles/resolve.js";
-  import { sampleTemplate } from "#lib/shared.js";
+  import { sampleReport } from "#lib/reportStyles/sample.js";
   import { LivePreview } from "#lib/templates/live.svelte.js";
-  import { sampleContext } from "#lib/templates/preview.js";
-  import type { TemplateContent } from "#lib/templates/types.js";
   import { toast } from "#lib/toast.svelte.js";
 
   // One style: its colours and type, margins, page designs and artwork, beside the sample
@@ -61,13 +60,17 @@
   let customerArt = $state<CustomerArt | null>(null);
   let showBackground = $state(true);
   let customFields = $state<CustomField[]>([]);
+  let library = $state<LibraryEntry[]>([]);
 
   const snapshotOf = () => JSON.stringify({ name, basedOn, content: $state.snapshot(content) });
   const changed = $derived(style !== null && JSON.stringify({ name, basedOn, content }) !== saved);
   const lower = $derived(resolve(below));
   const resolved = $derived(resolve([...below, content]));
   const weak = $derived(contrastProblems(resolved));
-  const image = $derived(imageOf(style));
+  // Pictures the style doesn't have itself come from the style chosen under "Stacks on".
+  const image = $derived(imageOf(style, basedOn));
+  // The style's images to place on a page: its artwork for whole pages isn't among them.
+  const pictures = $derived((style?.assets ?? []).filter((a) => !isArtwork(a)));
   const logos = $derived({ company: branding.current.logo_url, customer: customerLogo });
 
   function use(found: Style) {
@@ -84,7 +87,7 @@
       use(await stylesApi.get(id));
       error = null;
       companyStyles = (await stylesApi.list()).filter((s) => s.customer_id === null);
-      customFields = await customFieldsApi.list().catch(() => []);
+      [library, customFields] = await Promise.all([libraryApi.list().catch(() => []), customFieldsApi.list().catch(() => [])]);
       if (style?.customer_id) await loadCustomer(style.customer_id);
     } catch (e) {
       if (!sessionGone(e)) error = e instanceof ApiError ? e.message : "The style could not be loaded.";
@@ -109,10 +112,20 @@
     }
   }
 
-  // Choosing another company style to stack on shows its look at once.
-  async function stackOn(value: string) {
-    basedOn = value ? Number(value) : null;
-    below = basedOn === null ? [] : [(await stylesApi.get(basedOn)).content];
+  // Choosing another company style to stack on shows its look at once: the look and
+  // where its pictures load from change together, once the style has arrived.
+  async function stackOn(select: HTMLSelectElement) {
+    const value = select.value;
+    const chosen = value ? Number(value) : null;
+    try {
+      const under = chosen === null ? [] : [(await stylesApi.get(chosen)).content];
+      if (select.value !== value) return; // another was chosen meanwhile
+      basedOn = chosen;
+      below = under;
+    } catch (e) {
+      select.value = basedOn === null ? "" : String(basedOn);
+      if (!sessionGone(e)) toast(e instanceof ApiError ? e.message : "That style couldn't be loaded.", "critical");
+    }
   }
 
   async function save() {
@@ -190,7 +203,7 @@
     if (!design) return;
     const extra = ADDABLE.find((a) => a.kind === kind)?.make() ?? {};
     if (kind === "image") {
-      const first = style?.assets.find((a) => a.content_type !== "image/svg+xml" || a.width < 600);
+      const first = pictures[0];
       if (!first) {
         toast("Upload a picture first: choose Image again once it's there.", "warning");
         tab = "pages";
@@ -267,11 +280,7 @@
   const live = new LivePreview();
   onDestroy(() => live.close());
   $effect(() => {
-    const sample = sampleTemplate as unknown as TemplateContent;
-    const fields = $state.snapshot(customFields) as CustomField[];
-    live.update({ content: sample, answers: sample.sample.answers, assets: {}, timezone: branding.current.time_zone,
-      context: sampleContext({ customer: sampleCustom(fields, "customer"), project: sampleCustom(fields, "project") }),
-      library: { names: customNames(fields), values: {}, tables: {} }, pageTexts: pageTexts(resolved) });
+    live.update(sampleReport(resolved, $state.snapshot(library) as LibraryEntry[], $state.snapshot(customFields) as CustomField[], branding.current.time_zone));
   });
   const look = $derived(lookOf(resolved, { image, customerArt: showBackground ? customerArt : null, logos, madeWith: branding.current.made_with_skjald, texts: live.model?.pageTexts }));
   const art = $derived(pageName === "other" ? look.art.other : look.art.first);
@@ -306,7 +315,7 @@
           {#if style.customer_id}
             <div class="field">
               <label for="style-base">Stacks on</label>
-              <select id="style-base" class="input" value={basedOn === null ? "" : String(basedOn)} onchange={(e) => void stackOn(e.currentTarget.value)}>
+              <select id="style-base" class="input" value={basedOn === null ? "" : String(basedOn)} onchange={(e) => void stackOn(e.currentTarget)}>
                 <option value="">The Skjald default</option>
                 {#each companyStyles as s (s.id)}<option value={String(s.id)}>{s.name}</option>{/each}
               </select>
@@ -404,7 +413,7 @@
                 {#key chosen.id}
                   <ElementPanel
                     bind:element={() => chosen as Element, (v) => Object.assign(chosen as Element, v)}
-                    images={(style?.assets ?? []).filter((a) => !(a.content_type === "image/svg+xml" && a.width >= 500 && a.height / a.width > 1.3)).map((a) => ({ sha256: a.sha256, url: image(a.sha256) }))}
+                    images={pictures.map((a) => ({ sha256: a.sha256, url: image(a.sha256) }))}
                     onupload={uploadImage}
                     onremove={removeChosen} />
                 {/key}

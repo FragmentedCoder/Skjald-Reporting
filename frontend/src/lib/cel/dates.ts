@@ -60,7 +60,15 @@ export function wallAt(ms: number, zone: string): Wall {
   };
 }
 
-const asUtc = (w: Wall) => Date.UTC(w.year, w.month - 1, w.day, w.hour, w.minute, w.second);
+/** Date.UTC with the year as written: Date.UTC itself reads the years 0 to 99 as 1900 to 1999. */
+function utc(year: number, month: number, day: number, hour = 0, minute = 0, second = 0): number {
+  const date = new Date(0);
+  date.setUTCFullYear(year, month - 1, day);
+  date.setUTCHours(hour, minute, second, 0);
+  return date.getTime();
+}
+
+const asUtc = (w: Wall) => utc(w.year, w.month, w.day, w.hour, w.minute, w.second);
 const offsetAt = (ms: number, zone: string) => asUtc(wallAt(ms, zone)) - Math.floor(ms / 1000) * 1000;
 
 /** The instant a wall-clock time in the zone stands for. */
@@ -111,7 +119,7 @@ export function parseDate(text: string, zone: string): Date {
 
 export function addDays(moment: Date, days: number, zone: string): Date {
   const wall = wallAt(moment.getTime(), zone);
-  const moved = new Date(Date.UTC(wall.year, wall.month - 1, wall.day + days, wall.hour, wall.minute, wall.second));
+  const moved = new Date(utc(wall.year, wall.month, wall.day + days, wall.hour, wall.minute, wall.second));
   const target: Wall = {
     year: moved.getUTCFullYear(),
     month: moved.getUTCMonth() + 1,
@@ -131,7 +139,7 @@ export function hoursBetween(start: Date, end: Date): number {
 export function daysBetween(start: Date, end: Date, zone: string): number {
   const a = wallAt(start.getTime(), zone);
   const b = wallAt(end.getTime(), zone);
-  return Math.round((Date.UTC(b.year, b.month - 1, b.day) - Date.UTC(a.year, a.month - 1, a.day)) / DAY_MS);
+  return Math.round((utc(b.year, b.month, b.day) - utc(a.year, a.month, a.day)) / DAY_MS);
 }
 
 const TOKENS = new Set(["yyyy", "yy", "MMMM", "MMM", "MM", "M", "dd", "d", "EEEE", "HH", "H", "mm", "ss"]);
@@ -141,7 +149,7 @@ const pad = (n: number, width = 2) => String(n).padStart(width, "0");
 
 export function formatDate(moment: Date, pattern: string, zone: string, locale: Locale): string {
   const w = wallAt(moment.getTime(), zone);
-  const weekday = (new Date(Date.UTC(w.year, w.month - 1, w.day)).getUTCDay() + 6) % 7;
+  const weekday = (new Date(utc(w.year, w.month, w.day)).getUTCDay() + 6) % 7;
   const values: Record<string, string> = {
     yyyy: pad(w.year, 4),
     yy: pad(w.year % 100),

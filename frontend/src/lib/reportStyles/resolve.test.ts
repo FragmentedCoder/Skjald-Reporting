@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import cases from "../../../../shared/styles/cases.json";
-import { contrastProblems, emptyContent, resolve, type StyleContent } from "./resolve";
+import { contrastProblems, emptyContent, resolve, typedColour, type StyleContent } from "./resolve";
 
 function at(value: unknown, path: string): unknown {
   let found: unknown = value;
@@ -28,6 +28,12 @@ describe("styles", () => {
     once.pages.first.elements.pop();
     expect(resolve([]).colours.heading).toBe("#0F1B2D");
     expect(resolve([]).pages.first.elements).toHaveLength(4);
+  });
+
+  it("take a colour as it's typed, or not at all", () => {
+    expect(typedColour("#2b5d8a")).toBe("#2B5D8A");
+    expect(typedColour(" 2B5D8A ")).toBe("#2B5D8A");
+    for (const wrong of ["", "#2B5D8", "2B5D8AF", "#GGGGGG", "blue", "##2B5D8A", "#2B5 D8A"]) expect(typedColour(wrong), wrong).toBeNull();
   });
 
   it("read well in the Skjald default, and warn when they don't", () => {

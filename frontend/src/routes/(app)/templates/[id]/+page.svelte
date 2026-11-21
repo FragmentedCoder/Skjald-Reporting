@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { goto } from "$app/navigation";
+  import { resolve } from "$app/paths";
   import Plus from "@lucide/svelte/icons/plus";
   import { tick } from "svelte";
   import { dndzone, type DndEvent } from "svelte-dnd-action";
@@ -18,7 +20,9 @@
   import { FIELD_GROUPS, FIELD_TYPES, fieldType, typeCode } from "#lib/templates/fields.js";
   import { catalogue } from "#lib/templates/catalogue.js";
   import { declarations } from "#lib/templates/names.js";
-  import type { Problem, Question, Step, TemplateContent } from "#lib/templates/types.js";
+  import { noRoomForQuestion, noRoomForStep } from "#lib/templates/limits.js";
+  import { toast } from "#lib/toast.svelte.js";
+  import { blocksOf, type Problem, type Question, type Step, type TemplateContent } from "#lib/templates/types.js";
 
   // The Questions tab: the technician's form, step by step. Field types are dragged
   // in from the palette, or clicked to add after what's selected; questions are
@@ -60,10 +64,18 @@
     panel?.querySelector<HTMLElement>("input, textarea")?.focus();
   }
 
+  // Whether there's no room for another question in this step, saying so if there isn't.
+  function full(step: Step): boolean {
+    const why = noRoomForQuestion(content, step);
+    if (why) toast(why, "info", { key: "template-full" });
+    return why !== null;
+  }
+
   function add(kind: string) {
     if (draft.readonly) return;
-    const question = newQuestion(kind, content);
     const step = where?.step ?? content.form[content.form.length - 1];
+    if (full(step)) return;
+    const question = newQuestion(kind, content);
     const at = where?.question ? where.index + 1 : step.questions.length;
     step.questions.splice(at, 0, question);
     select("question", question.id);
@@ -71,6 +83,11 @@
   }
 
   function addStep() {
+    const why = noRoomForStep(content);
+    if (why) {
+      toast(why, "info", { key: "template-full" });
+      return;
+    }
     const step = newStep();
     content.form.push(step);
     select("step", step.id);
@@ -104,7 +121,9 @@
     const { [step.id]: _done, ...rest } = dragging;
     dragging = rest;
     hooks.again();
-    step.questions = event.detail.items.map((item) => {
+    // A new question dropped where there's no room for it isn't added.
+    const fits = !event.detail.items.some((item) => "palette" in item) || !full(step);
+    step.questions = event.detail.items.filter((item) => fits || !("palette" in item)).map((item) => {
       if ("palette" in item) {
         added = newQuestion(item.kind, content);
         return added;
@@ -195,10 +214,20 @@
     if (isStep || isQuestion) {
       select(isStep ? "step" : "question", problem.element);
       void focusPanel();
+    } else if (blocksOf(content.layout).some((b) => b.id === problem.element)) {
+      // A block's problem: the Layout tab opens with that block selected.
+      draft.selection = { kind: "block", id: problem.element };
+      void goto(resolve("/(app)/templates/[id]/layout", { id: String(draft.id) }));
     }
   }
 
-  const printedBy = (q: Question) => usage(content, q).blocks.length > 0;
+  // The questions a block prints, found in one walk of the layout for the whole list
+  // (asking for each question's usage in turn read every block and every expression
+  // once per question, which took seconds with some hundreds of questions).
+  const printed = $derived(new Set(blocksOf(content.layout).flatMap((b) => [
+    ...("question" in b && b.question ? [b.question] : []),
+    ...(b.kind === "signatures" ? b.signers.flatMap((signer) => (signer.question ? [signer.question] : [])) : []),
+  ])));
   const total = $derived(content.form.reduce((n, s) => n + s.questions.length, 0));
   const lastQuestion = (stepIndex: number, index: number) =>
     stepIndex === content.form.length - 1 && index === content.form[stepIndex].questions.length - 1;
@@ -256,7 +285,7 @@
                     </span>
                     <span class="chips">
                       {#if flagged}<span class="flag small">{flagged} problem{flagged === 1 ? "" : "s"}</span>{/if}
-                      <Where form={q.type !== "calculated" || Boolean(q.settings.show_in_form)} pdf={printedBy(q)} />
+                      <Where form={q.type !== "calculated" || Boolean(q.settings.show_in_form)} pdf={printed.has(q.id)} />
                     </span>
                   </span>
                 </button>
@@ -276,13 +305,19 @@
     <fieldset class="unstyled" disabled={draft.readonly}>
       {#if where?.question}
         {@const q = where.question}
-        <QuestionPanel question={q} {content} {engine} {entries} problems={draft.problemsFor(q.id)}
-          first={where.stepIndex === 0 && where.index === 0} last={lastQuestion(where.stepIndex, where.index)}
-          onrename={(key) => rename(q, key)} onremove={() => removeQuestion(where.step, q)} onmove={moveQuestion} />
+        <!-- A panel of its own for each question and step, so nothing half-written in
+             one (a rule being typed, a choice being added) carries over to the next. -->
+        {#key q.id}
+          <QuestionPanel question={q} {content} {engine} {entries} problems={draft.problemsFor(q.id)}
+            first={where.stepIndex === 0 && where.index === 0} last={lastQuestion(where.stepIndex, where.index)}
+            onrename={(key) => rename(q, key)} onremove={() => removeQuestion(where.step, q)} onmove={moveQuestion} />
+        {/key}
       {:else if where}
-        <StepPanel step={where.step} number={where.stepIndex + 1} {engine} {entries} problems={draft.problemsFor(where.step.id)}
-          first={where.stepIndex === 0} last={where.stepIndex === content.form.length - 1} only={content.form.length === 1}
-          onremove={removeStep} onmove={moveStep} />
+        {#key where.step.id}
+          <StepPanel step={where.step} number={where.stepIndex + 1} {engine} {entries} problems={draft.problemsFor(where.step.id)}
+            first={where.stepIndex === 0} last={where.stepIndex === content.form.length - 1} only={content.form.length === 1}
+            onremove={removeStep} onmove={moveStep} />
+        {/key}
       {:else}
         <p class="small muted">Select a step or a question to change it.</p>
       {/if}

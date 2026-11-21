@@ -444,12 +444,17 @@ test("a designer drags blocks in the outline and on the pages", async ({ browser
   await expect(outline.locator(":scope > li").filter({ has: page.getByRole("button", { name: "Section: Summary, edit" }) })).toHaveCount(1);
   await expect(outline.locator(":scope > li")).toHaveCount(2);
 
-  // A section moved can be moved again straight away (its card was left unhooked after a drop).
+  // A section moved can be moved again straight away (its card was left unhooked after a
+  // drop): to the end of the PDF, then back to the top. Those places say one thing only.
+  // Dropped on the other section's own card it goes before it, after it or into it, by
+  // where the pointer is once the cards have made room, which is not for a test to rely
+  // on: this one dropped it there, and failed one run in three.
   for (let i = 0; i < 2; i++) {
     const wasFirst = ((await outline.locator(":scope > li").first().textContent()) ?? "").includes("Summary");
-    const other = outline.locator(":scope > li").filter({ hasText: "New section" }).locator(":scope > button");
-    await dragTo(page, page.getByRole("button", { name: "Section: Summary, edit" }), () => pointIn(other), 600);
+    await dragTo(page, page.getByRole("button", { name: "Section: Summary, edit" }),
+      () => pointIn(outline, wasFirst ? { dy: 10, fromBottom: true } : { dy: 4 }), 600);
     await expect(outline.locator(":scope > li").first()).toContainText(wasFirst ? "New section" : "Summary");
+    await expect(outline.locator(":scope > li")).toHaveCount(2);
   }
 
   // Typing {{ in a title suggests names; Enter takes one.

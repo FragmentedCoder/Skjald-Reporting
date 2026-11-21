@@ -45,6 +45,8 @@
 
   // Adding or changing one
   let editing = $state(false);
+  // Counts the times the dialog has opened.
+  let opened = $state(0);
   let current = $state<LibraryEntry | null>(null);
   let key = $state("");
   let description = $state("");
@@ -62,6 +64,7 @@
     key = entry?.key ?? "";
     description = entry?.description ?? "";
     value = entry ? structuredClone($state.snapshot(entry.value) as LibraryValue) : blank(shown);
+    opened += 1;
     editing = true;
   }
 
@@ -207,7 +210,11 @@
         <span class="hint">Variables can go in {"{{ }}"}, such as {"{{vars.support_phone}}"}; other snippets can't.</span>
       </div>
     {:else}
-      <TableEditor bind:value={() => value as TableValue, (v) => (value = v)} />
+      <!-- A new editor each time the dialog opens: it keeps the rows as a list of its own
+           while they're typed, which must start from this table, not the last one edited. -->
+      {#key opened}
+        <TableEditor bind:value={() => value as TableValue, (v) => (value = v)} />
+      {/key}
     {/if}
   </form>
   {#snippet actions()}

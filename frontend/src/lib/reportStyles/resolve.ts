@@ -147,6 +147,12 @@ export function colourOf(style: ResolvedStyle, ref: string): string {
   return ref.startsWith("#") ? ref : (style.colours[ref as ColourKey] ?? style.colours.text);
 }
 
+/** A colour as someone types it, with or without its #, as the #RRGGBB a style keeps; null if it isn't one. */
+export function typedColour(text: string): string | null {
+  const hex = text.trim().replace(/^#?/, "#");
+  return /^#[0-9A-Fa-f]{6}$/.test(hex) ? hex.toUpperCase() : null;
+}
+
 export const COLOUR_LABELS: Record<ColourKey, string> = {
   text: "Text",
   muted: "Muted text",

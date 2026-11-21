@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 from sqlalchemy import select
+from sqlalchemy.orm import sessionmaker
 
 from app import backgrounds, jobs
 from app.audit import AuditEntry
@@ -23,15 +24,19 @@ from app.roles import Role, grant_role
 CUSTOMERS = "/api/customers"
 
 
-def minimal_pdf(width: float = 595.28, height: float = 841.89, pages: int = 1) -> bytes:
-    """A small PDF with a filled box on each page, its cross-reference table worked out."""
+def minimal_pdf(width: float = 595.28, height: float = 841.89, pages: int = 1, rotate: int = 0,
+                last: tuple[float, float] | None = None) -> bytes:
+    """A small PDF with a filled box on each page, its cross-reference table worked out.
+    Each page is turned by `rotate` degrees; `last` is the last page's size, if another."""
     objects = ["<< /Type /Catalog /Pages 2 0 R >>"]
     kids = " ".join(f"{3 + 2 * i} 0 R" for i in range(pages))
     objects.append(f"<< /Type /Pages /Kids [{kids}] /Count {pages} >>")
     for i in range(pages):
+        if last and i == pages - 1:
+            width, height = last
         stream = f"0.17 0.36 0.54 rg 40 {height - 120} 200 80 re f"
         objects.append(f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {width} {height}] "
-                       f"/Contents {4 + 2 * i} 0 R >>")
+                       f"/Rotate {rotate} /Contents {4 + 2 * i} 0 R >>")
         objects.append(f"<< /Length {len(stream)} >>\nstream\n{stream}\nendstream")
     out = io.BytesIO()
     out.write(b"%PDF-1.4\n")
@@ -91,6 +96,16 @@ def test_a_picture_of_a_page_is_ready_at_once(client, admin, customer) -> None:
     assert "A4" in wrong.json()["detail"]
 
 
+def test_a_picture_of_too_many_pixels_is_refused(client, admin, customer) -> None:
+    _, headers = admin
+    out = io.BytesIO()
+    Image.new("1", (5700, 8060)).save(out, format="PNG")  # 46 million pixels in 6 KB
+    refused = upload(client, headers, customer["id"], out.getvalue())
+    assert refused.status_code == 400
+    assert refused.json()["detail"] == (
+        "The picture has more than 40 million pixels. Use a smaller one.")
+
+
 def test_an_svg_page_is_cleaned(client, admin, customer) -> None:
     _, headers = admin
     svg = (b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 210 297"><script>x()</script>'
@@ -126,6 +141,32 @@ def test_a_pdf_is_converted_by_the_renderer(client, admin, customer, session, mo
     session.commit()
     shown = client.get(f"{CUSTOMERS}/{customer['id']}/background", headers=headers).json()
     assert (shown["status"], shown["message"]) == ("failed", refusal)
+
+
+def test_a_background_replaced_while_converting_keeps_the_new_file(
+        client, admin, customer, session, monkeypatch) -> None:
+    _, headers = admin
+    upload(client, headers, customer["id"], minimal_pdf())
+    [job] = session.scalars(select(jobs.Job).where(jobs.Job.kind == "background.convert"))
+    session.commit()
+    old_page = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 595 842">'
+                '<rect width="1" height="1"/></svg>')
+    picture = (b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 210 297">'
+               b'<rect width="210" height="20"/></svg>')
+
+    def replaced_meanwhile(pdf: bytes) -> list[str]:
+        # While the first file converts, another replaces it (ready at once, as a picture).
+        assert upload(client, headers, customer["id"], picture).json()["status"] == "ready"
+        return [old_page]
+
+    monkeypatch.setattr(backgrounds, "render_pdf", replaced_meanwhile)
+    # As the worker's sessions are: what they've loaded stays loaded across commits.
+    worker = sessionmaker(bind=session.get_bind(), autoflush=False, expire_on_commit=False)
+    with worker() as db:
+        assert backgrounds.convert(db, db.get(jobs.Job, job.id)) == {"skipped": "replaced"}
+        db.commit()
+    page = client.get(f"{CUSTOMERS}/{customer['id']}/background/pages/1", headers=headers).content
+    assert b'width="210"' in page
 
 
 def test_the_worker_and_the_renderer_meet_in_their_folder(tmp_path: Path) -> None:
@@ -168,6 +209,32 @@ def test_the_renderer_turns_an_a4_pdf_into_svg_pages(tmp_path: Path) -> None:
     broken.write_bytes(b"%PDF-1.4 not really")
     with pytest.raises(RenderError):
         convert_background(broken)
+
+
+@pytest.mark.skipif(shutil.which("pdftocairo") is None, reason="needs poppler, as the renderer has")
+def test_the_renderer_checks_every_page_it_uses_as_it_is_shown(tmp_path: Path) -> None:
+    # A landscape sheet turned a quarter is shown as A4 portrait: scanners write these.
+    turned = tmp_path / "turned.pdf"
+    turned.write_bytes(minimal_pdf(width=841.89, height=595.28, rotate=90))
+    [page] = convert_background(turned)
+    assert 'width="595.28" height="841.89"' in page
+    # A portrait sheet turned a quarter is shown lying down.
+    sideways = tmp_path / "sideways.pdf"
+    sideways.write_bytes(minimal_pdf(rotate=270))
+    with pytest.raises(RenderError, match="its first page is 297 × 210 mm"):
+        convert_background(sideways)
+    upside_down = tmp_path / "upside-down.pdf"
+    upside_down.write_bytes(minimal_pdf(rotate=180))
+    assert len(convert_background(upside_down)) == 1
+    # The second page goes behind the rest of a report, so it's held to A4 too.
+    mixed = tmp_path / "mixed.pdf"
+    mixed.write_bytes(minimal_pdf(pages=2, last=(841.89, 1190.55)))
+    with pytest.raises(RenderError, match="A4 portrait.*its second page is 297 × 420 mm"):
+        convert_background(mixed)
+    # A third page is never used, whatever its size.
+    longer = tmp_path / "longer.pdf"
+    longer.write_bytes(minimal_pdf(pages=3, last=(841.89, 1190.55)))
+    assert len(convert_background(longer)) == 2
 
 
 def test_who_changes_backgrounds(client, person, customer, session) -> None:

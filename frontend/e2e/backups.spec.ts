@@ -22,7 +22,9 @@ test("backups: back up, test a restore, and switch them off only after confirmin
     timeout: 90_000,
   });
   const runs = page.getByRole("region", { name: "Recent runs" });
-  await expect(runs.getByRole("row", { name: /Restore test/ }).first()).toContainText("OK");
+  // The newest restore test in the list may be one the schedule has just started: the
+  // list follows it until it's done.
+  await expect(runs.getByRole("row", { name: /Restore test/ }).first()).toContainText("OK", { timeout: 60_000 });
   await page.screenshot({ path: "e2e-results/screens/backups-1-page.png", fullPage: true });
 
   // Server health reports both; a backup on this server only is a warning.

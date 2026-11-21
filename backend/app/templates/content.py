@@ -39,7 +39,16 @@ from app.templates.fields import FIELD_TYPES, KEY_PATTERN
 from app.templates.text import check_doc
 
 SCHEMA_VERSION = 1
+# How large a template may be. The builder draws every block and question, checks the
+# whole template as it's changed and works its preview out again, so these keep it
+# quick (measured in docs/architecture.md, "How large a template can be").
 MAX_CONTENT_BYTES = 2 * 1024 * 1024
+MAX_QUESTIONS = 500
+MAX_BLOCKS = 1000
+# Blocks inside blocks (a section in a section, a switch in columns). Ten levels are
+# far more than a report's outline has, and keep every template within what a
+# template file may hold when it's imported.
+MAX_BLOCK_DEPTH = 10
 
 Id = Annotated[str, StringConstraints(pattern=r"^[a-z]_[a-z0-9]{4,32}$")]
 Key = Annotated[str, StringConstraints(pattern=KEY_PATTERN)]
@@ -84,6 +93,10 @@ class Settings(Strict):
         default=["company", "customer"], min_length=1)
     # Whether reports print on the customer's report background, if it has one.
     customer_background: bool = True
+    # Whether reports carry the small "Made with Skjald" line. It prints only where the
+    # company's branding has it on too (Admin, Branding); off here takes it off this
+    # template's reports alone.
+    made_with_skjald: bool = True
 
     _delivery = field_validator("delivery")(_unique)
     _styles = field_validator("styles")(_unique)
@@ -314,6 +327,41 @@ class TemplateContent(Strict):
 
     def dump(self) -> dict[str, Any]:
         return self.model_dump(by_alias=True, mode="json")
+
+
+def inner_blocks(block: Block) -> list[Block]:
+    """The blocks a block holds: a section's, each column's, each case's."""
+    if isinstance(block, Section):
+        return block.blocks
+    if isinstance(block, Columns):
+        return [child for column in block.columns for child in column]
+    if isinstance(block, Switch):
+        return [child for case in block.cases for child in case.blocks] + block.otherwise
+    return []
+
+
+class TooLarge(ValueError):
+    """The template is over a size limit; the message says which, in plain words."""
+
+
+def check_size(content: TemplateContent) -> None:
+    """Refuses a template with more questions or blocks, or deeper nesting, than allowed."""
+    asked = sum(len(step.questions) for step in content.form)
+    if asked > MAX_QUESTIONS:
+        raise TooLarge(f"A template takes up to {MAX_QUESTIONS:,} questions and headings; "
+                       f"this one has {asked:,}.")
+    count = 0
+    level = list(content.layout)
+    depth = 1
+    while level:
+        if depth > MAX_BLOCK_DEPTH:
+            raise TooLarge(f"Blocks can sit inside each other up to {MAX_BLOCK_DEPTH} levels deep; "
+                           "this template goes deeper.")
+        count += len(level)
+        level = [child for block in level for child in inner_blocks(block)]
+        depth += 1
+    if count > MAX_BLOCKS:
+        raise TooLarge(f"A template takes up to {MAX_BLOCKS:,} blocks; this one has {count:,}.")
 
 
 def starter_content() -> TemplateContent:

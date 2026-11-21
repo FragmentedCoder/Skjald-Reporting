@@ -130,6 +130,45 @@ def test_tables_import_from_csv_and_json(client, tech, session) -> None:
     assert entries(session, "library.imported")
 
 
+def test_a_table_import_says_what_it_cannot_read(client, tech) -> None:
+    _, headers = tech
+    table = add(client, headers, "table", "regions", {"columns": ["Name"], "rows": {}}).json()
+    upload = {**headers, "Content-Type": "application/octet-stream"}
+
+    def send(data: bytes, format: str = "csv"):
+        return client.post(f"{LIBRARY}/{table['id']}/import?format={format}", content=data,
+                           headers=upload)
+
+    # Read as people write them: semicolons, a byte-order mark, old Mac line endings.
+    semicolons = send("\ufeffKode;Navn\rdk;Danmark\rse;Sverige\r".encode())
+    assert semicolons.json()["value"] == {"key_label": "Kode", "columns": ["Navn"],
+                                          "rows": {"dk": ["Danmark"], "se": ["Sverige"]}}
+    numbers = send("\ufeff".encode() + json.dumps({"low": 1, "high": 9.5, "none": None}).encode(),
+                   "json")
+    assert numbers.json()["value"]["rows"] == {"low": ["1"], "high": ["9.5"], "none": [""]}
+    nested = send(json.dumps({"dk": {"key": "x", "name": "Danmark"}}).encode(), "json")
+    assert nested.json()["value"] == {"key_label": "Key", "columns": ["key", "name"],
+                                      "rows": {"dk": ["x", "Danmark"]}}
+
+    # Refused with what's wrong, never half taken and never a crash.
+    for data, format, says in (
+        (b"Code,Name\ndk,Danmark\ndk,Denmark\n", "csv", "is there twice"),
+        (b"Code,Name\ndk,Danmark,extra\n", "csv", "more cells than the header"),
+        (b"Code,Name\n,Danmark\n", "csv", "has no key"),
+        (b'Code,Name\ndk,"Dan\n', "csv", "can't be read as CSV"),
+        (json.dumps({"a": "x", "b": {"col": "y"}}).encode(), "json", "not some of each"),
+        (json.dumps([{}]).encode(), "json", "a key first"),
+        (json.dumps([{"k": "a", "v": 1}, {"k": "a", "v": 2}]).encode(), "json", "is there twice"),
+        (json.dumps({"a": ["x"]}).encode(), "json", "text or a number"),
+        (b"[" * 100_000, "json", "nested too deeply"),
+    ):
+        refused = send(data, format)
+        assert refused.status_code == 422, (data[:40], refused.text)
+        assert says in refused.json()["detail"], refused.json()["detail"]
+    [kept] = client.get(LIBRARY, headers=headers).json()
+    assert kept["value"]["rows"] == {"dk": ["x", "Danmark"]}
+
+
 def test_removing_keeps_the_history_and_frees_nothing_to_rewrite(client, tech, engine) -> None:
     _, headers = tech
     entry = add(client, headers, "variable", "old", {"value": "1"}).json()

@@ -6,9 +6,9 @@
   import StylePicker from "#lib/components/preview/StylePicker.svelte";
   import { branding } from "#lib/branding.svelte.js";
   import { PreviewStyle } from "#lib/reportStyles/preview.svelte.js";
-  import { checkAnswer } from "#lib/templates/answers.js";
   import { useDraft } from "#lib/templates/draft.svelte.js";
-  import { fieldType, settingsOf } from "#lib/templates/fields.js";
+  import { fieldType } from "#lib/templates/fields.js";
+  import { answerProblem } from "#lib/templates/formChecks.js";
   import { LivePreview } from "#lib/templates/live.svelte.js";
   import { samplePeople } from "#lib/templates/preview.js";
   import type { Question, TemplateContent } from "#lib/templates/types.js";
@@ -72,10 +72,10 @@
       for (const q of s.questions) {
         if (hidden.has(q.id) || !fieldType(q.type).asks || q.type === "calculated") continue;
         const value = answer(q);
-        const empty = value === undefined || value === null || value === "" || (Array.isArray(value) && !value.length);
-        const vector = q.type === "cvss" ? (value as { vector?: string } | undefined)?.vector : value;
-        const typed = empty ? null : checkAnswer(q.type, settingsOf(q.type, q.settings), vector);
-        const message = typed ?? invalid.get(q.id) ?? (required.has(q.id) && empty ? "is required." : null);
+        const empty = value === undefined || value === null || value === "" || (Array.isArray(value) && !value.length)
+          || (q.type === "cvss" && !(value as { vector?: string } | null)?.vector);
+        // What the field itself says: its own check, how many are chosen, the rows and their cells.
+        const message = answerProblem(q, value) ?? invalid.get(q.id) ?? (required.has(q.id) && empty ? "is required." : null);
         if (message) found.push({ step: i, question: q, message });
       }
     });
@@ -117,7 +117,7 @@
         {#each step.questions as q (q.id)}
           {#if !(q.type === "calculated" && !q.settings.show_in_form)}
             <AnswerField question={q} bind:value={() => answer(q), (v) => set(q, v)} required={required.has(q.id)}
-              hidden={hidden.has(q.id)} invalid={invalid.get(q.id) ?? null} computed={q.key ? model?.values[q.key] : undefined} {checked} {people} />
+              hidden={hidden.has(q.id)} invalid={invalid.get(q.id) ?? null} computed={q.key ? model?.values[q.key] : undefined} {checked} {people} zone={branding.current.time_zone} />
           {/if}
         {:else}
           <p class="small muted">This step has no questions yet.</p>
@@ -142,7 +142,7 @@
         {#if missing.length}
           <ul>
             {#each missing as m (m.question.id)}
-              <li><button class="link-button" type="button" onclick={() => (current = m.step)}>{m.question.label}</button> {m.message}</li>
+              <li><button class="link-button" type="button" onclick={() => (current = m.step)}>{m.question.label}</button>{m.message === "is required." ? " " : ": "}{m.message}</li>
             {/each}
           </ul>
         {:else}
@@ -160,9 +160,9 @@
     {#if looks.problem}<p class="alert alert-warning small">{looks.problem}</p>{/if}
     {#if live.problem}<p class="alert alert-warning small">{live.problem}</p>{/if}
     {#if live.paged}
-      <PdfPages paged={live.paged} look={looks.look(live.model?.pageTexts)} language={content.settings.language} reportNumber={String(draft.sampleContext.report.number)}
+      <PdfPages paged={live.paged} look={looks.look(live.model?.pageTexts, content.settings.made_with_skjald ?? true)} language={content.settings.language} reportNumber={String(draft.sampleContext.report.number)}
         classification={String(draft.sampleContext.project.classification)} />
-    {:else}
+    {:else if !live.problem}
       <p class="muted">Working out the pages…</p>
     {/if}
   </section>

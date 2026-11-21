@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { customFieldsApi, type AppliesTo, type CustomField } from "#lib/customFields.js";
+  import { choicesFor, customFieldsApi, type AppliesTo, type CustomField } from "#lib/customFields.js";
 
   // The company's custom fields for a customer or a project, as inputs. An emptied field
   // is sent as "", which clears its value. Kept encrypted with the customer's own key.
@@ -50,7 +50,7 @@
         {:else if field.type === "dropdown"}
           <select {id} class="input" value={text(field.key)} onchange={(e) => (values[field.key] = e.currentTarget.value)}>
             <option value="">Not set</option>
-            {#each field.options as option (option)}<option value={option}>{option}</option>{/each}
+            {#each choicesFor(field, values[field.key]) as choice (choice.value)}<option value={choice.value}>{choice.label}</option>{/each}
           </select>
         {:else}
           <input {id} class="input" type={field.type === "email" ? "email" : field.type === "phone" ? "tel" : "text"} maxlength="500"

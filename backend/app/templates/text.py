@@ -13,6 +13,7 @@ text through variable nodes. The browser finds them the same way
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any
@@ -22,6 +23,25 @@ MAX_DEPTH = 12
 MAX_TEXT = 100_000
 LINK_SCHEMES = ("https://", "http://", "mailto:")
 MARKS = frozenset({"bold", "italic", "underline", "strike", "code", "link"})
+
+
+# What isn't seen at either end of a text: spaces of every kind, line breaks, the old
+# separator controls, and marks with no width (a byte order mark, a zero-width space).
+# Python's strip() and JavaScript's trim() don't take the same ones, so both sides
+# use this list (frontend/src/lib/templates/text.ts).
+UNSEEN = ("\t\n\v\f\r \x1c-\x1f\x85\xa0\u1680\u2000-\u200d\u2028\u2029\u202f\u205f\u2060"
+          "\u3000\ufeff")
+_ENDS = re.compile(f"^[{UNSEEN}]+|[{UNSEEN}]+$")
+
+
+def trimmed(text: str) -> str:
+    """The text without what isn't seen at either end."""
+    return _ENDS.sub("", text)
+
+
+def blank(text: str) -> bool:
+    """Whether there's nothing to see in the text."""
+    return not trimmed(text)
 
 
 class RichTextError(ValueError):
@@ -38,6 +58,16 @@ def _keys(node: dict[str, Any], allowed: set[str], where: str) -> None:
     extra = set(node) - allowed
     if extra:
         raise RichTextError(f"{where} has unexpected parts: {', '.join(sorted(extra))}.")
+
+
+def _whole(text: str) -> None:
+    """Refuses half of a character pair (a lone surrogate): it can't be stored or
+    sent, and the rest of a template's text is refused the same way as it's read."""
+    try:
+        text.encode()
+    except UnicodeEncodeError:
+        raise RichTextError("Text holds half of a character, such as half an emoji: take it "
+                            "out and type it again.") from None
 
 
 def _content(node: dict[str, Any], where: str) -> list[Any]:
@@ -57,6 +87,7 @@ def _inline(node: Any, walk: _Walk) -> None:
         text = node.get("text")
         if not isinstance(text, str) or not text:
             raise RichTextError("A text node needs its text.")
+        _whole(text)
         walk.text += len(text)
         marks = node.get("marks", [])
         if not isinstance(marks, list):
@@ -74,6 +105,7 @@ def _inline(node: Any, walk: _Walk) -> None:
                 if (not isinstance(href, str) or not href.startswith(LINK_SCHEMES)
                         or len(href) > 2000):
                     raise RichTextError("Links must start with https://, http:// or mailto:.")
+                _whole(href)
             else:
                 _keys(mark, {"type"}, "A mark")
     elif kind == "hardBreak":
@@ -84,6 +116,7 @@ def _inline(node: Any, walk: _Walk) -> None:
         if (not isinstance(attrs, dict) or set(attrs) != {"expr"}
                 or not isinstance(attrs["expr"], str)):
             raise RichTextError("A variable needs its expression, and nothing else.")
+        _whole(attrs["expr"])
     else:
         raise RichTextError(f"Text can't hold a {kind!r} node.")
 
@@ -232,8 +265,8 @@ def interpolations(text: str) -> list[Interpolation]:
                 depth = max(depth - 1, 0)
             j += 1
         if end < 0:
-            found.append(Interpolation(start, len(text), text[start + 2:].strip(), closed=False))
+            found.append(Interpolation(start, len(text), trimmed(text[start + 2:]), closed=False))
             break
-        found.append(Interpolation(start, end + 2, text[start + 2:end].strip()))
+        found.append(Interpolation(start, end + 2, trimmed(text[start + 2:end])))
         i = end + 2
     return found

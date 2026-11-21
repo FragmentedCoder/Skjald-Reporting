@@ -2,14 +2,19 @@
 
 /**
  * Whether a key press asks to remove what's selected: Delete, or Backspace (the Mac's
- * delete key), on its own, and not while typing in a field or with a dialog open.
+ * delete key), on its own, and not while typing in a field or with a dialog open. A
+ * key held down removes one thing, not what gets selected after it as well.
  */
 export function removesSelection(event: KeyboardEvent): boolean {
   if (event.key !== "Delete" && event.key !== "Backspace") return false;
+  if (event.repeat) return false;
   if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || event.defaultPrevented) return false;
   const target = event.target instanceof Element ? event.target : null;
   return !target?.closest("input, textarea, select, [contenteditable='true'], [contenteditable=''], dialog, [role='dialog']");
 }
+
+// Kinds of <input> nobody types in: they keep no typing of their own to undo.
+const UNTYPED = new Set(["checkbox", "radio", "range", "color", "file", "button", "submit", "reset"]);
 
 /**
  * Whether a key press asks to undo (Ctrl or ⌘ with Z) or redo (with Shift too, or Ctrl
@@ -21,6 +26,9 @@ export function undoes(event: KeyboardEvent): "undo" | "redo" | null {
   const key = event.key.toLowerCase();
   if (key !== "z" && key !== "y") return null;
   const target = event.target instanceof Element ? event.target : null;
-  if (target?.closest("input, textarea, select, [contenteditable='true'], [contenteditable=''], dialog, [role='dialog']")) return null;
+  if (target?.closest("textarea, [contenteditable='true'], [contenteditable=''], dialog, [role='dialog']")) return null;
+  // A box that's typed in undoes its own typing; one that's ticked or chosen from has
+  // nothing of its own to undo, so the template's change is taken back.
+  if (target instanceof HTMLInputElement && !UNTYPED.has(target.type)) return null;
   return key === "y" || event.shiftKey ? "redo" : "undo";
 }
