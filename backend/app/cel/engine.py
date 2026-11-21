@@ -254,10 +254,12 @@ def _key(tokens: list[Token], start: int, end: int) -> tuple[str, object] | None
     return None
 
 
-def inspect(expr: str, declared: Collection[str]) -> tuple[list[Token], Shape]:
-    """Skjald's own checks, the same on both sides; the engine's type check follows.
+def validate(expr: str, declared: Collection[str]) -> list[Token]:
+    """What Skjald refuses from the words alone, the same on both sides: functions
+    outside the list, matches(), unknown names and a whole group of names as a value.
 
-    Gives the expression's tokens and its shape (app/cel/reader.py).
+    An expression can pass this half-written; whether it reads is inspect()'s to say.
+    Gives the expression's tokens.
     """
     if len(expr) > MAX_LENGTH:
         raise ExpressionError("invalid", f"Expressions are limited to {MAX_LENGTH:,} characters.")
@@ -283,8 +285,19 @@ def inspect(expr: str, declared: Collection[str]) -> tuple[list[Token], Shape]:
             )
         if len(path.names) > 1 and path.names[0] in roots:
             raise ExpressionError("invalid", f"{dotted} isn't a name this template has.")
-        if path.names[0] in TYPE_WORDS:
-            raise ExpressionError("compile", unknown_name(dotted))
+    return tokens
+
+
+def inspect(expr: str, declared: Collection[str]) -> tuple[list[Token], Shape]:
+    """Skjald's own checks, the same on both sides; the engine's type check follows.
+
+    After validate(), the syntax is read (app/cel/reader.py) and every call and map
+    held to how it may be written. Gives the expression's tokens and its shape.
+    """
+    tokens = validate(expr, declared)
+    for path in paths(tokens):
+        if path.names[0] in TYPE_WORDS and declared_prefix(path, declared) is None:
+            raise ExpressionError("compile", unknown_name(path.dotted))
     try:
         shape = read(tokens)
     except Unreadable as exc:
@@ -315,11 +328,6 @@ def inspect(expr: str, declared: Collection[str]) -> tuple[list[Token], Shape]:
     return tokens, shape
 
 
-def validate(expr: str, declared: Collection[str]) -> list[Token]:
-    """The expression's tokens, if it passes Skjald's own checks; else ExpressionError."""
-    return inspect(expr, declared)[0]
-
-
 def human(type_: str) -> str:
     """A type in words: bool is "yes or no", list<string> "a list"."""
     if type_.startswith("list"):
@@ -336,7 +344,9 @@ def human(type_: str) -> str:
 
 
 def _and(words: list[str]) -> str:
-    return words[0] if len(words) == 1 else ", ".join(words[:-1]) + " and " + words[-1]
+    if len(words) < 2:
+        return words[0] if words else "nothing"
+    return ", ".join(words[:-1]) + " and " + words[-1]
 
 
 # The engines word their errors differently; the common ones are said the same way on
@@ -508,7 +518,7 @@ def _engine_message(raw: str, source: str = "", asked: bool = False) -> str:
     select = _SELECT.search(raw)
     if select:
         return pick_problem(select.group(1))
-    if "recursion" in raw and "limit" in raw or "max recursion depth" in raw:
+    if "Exceeded max recursion depth" in raw or "Expression recursion limit exceeded" in raw:
         return TOO_DEEP
     found = re.search(r"ERROR: <input>:(\d+):(\d+): ([^\n]*)", raw)
     if found:

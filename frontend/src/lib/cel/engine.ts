@@ -46,7 +46,7 @@ export function human(type: string): string {
 }
 
 const and = (words: string[]) =>
-  words.length === 1 ? words[0] : `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
+  words.length < 2 ? (words[0] ?? "nothing") : `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
 
 // The engines word their errors differently; the common ones are said the same way on
 // both sides (backend/app/cel/engine.py), from the facts each engine gives. cel-js
@@ -232,10 +232,11 @@ function keyOf(tokens: Token[], start: number, end: number): string | null {
 }
 
 /**
- * Skjald's own checks, the same on both sides; the engine's type check follows. Gives
- * the expression's tokens and its shape (reader.ts).
+ * What Skjald refuses from the words alone, the same on both sides: functions outside
+ * the list, matches(), unknown names and a whole group of names as a value. An
+ * expression can pass this half-written; whether it reads is inspect()'s to say.
  */
-export function inspect(expr: string, declared: ReadonlySet<string>): { tokens: Token[]; shape: Shape } {
+export function validate(expr: string, declared: ReadonlySet<string>): Token[] {
   // Counted in characters, as the server counts: an emoji is one, not two.
   if (expr.length > MAX_LENGTH && characters(expr) > MAX_LENGTH) {
     throw new ExpressionError("invalid", `Expressions are limited to ${MAX_LENGTH.toLocaleString("en")} characters.`);
@@ -265,7 +266,21 @@ export function inspect(expr: string, declared: ReadonlySet<string>): { tokens: 
     if (path.names.length > 1 && roots.has(path.names[0])) {
       throw new ExpressionError("invalid", `${dotted} isn't a name this template has.`);
     }
-    if (TYPE_WORDS.has(path.names[0])) throw new ExpressionError("compile", unknownName(dotted));
+  }
+  return tokens;
+}
+
+/**
+ * Skjald's own checks, the same on both sides; the engine's type check follows. After
+ * validate(), the syntax is read (reader.ts) and every call and map held to how it may
+ * be written. Gives the expression's tokens and its shape.
+ */
+export function inspect(expr: string, declared: ReadonlySet<string>): { tokens: Token[]; shape: Shape } {
+  const tokens = validate(expr, declared);
+  for (const path of paths(tokens)) {
+    if (TYPE_WORDS.has(path.names[0]) && declaredPrefix(path, declared) === null) {
+      throw new ExpressionError("compile", unknownName(path.names.join(".")));
+    }
   }
   let shape: Shape;
   try {
@@ -300,11 +315,6 @@ export function inspect(expr: string, declared: ReadonlySet<string>): { tokens: 
     }
   }
   return { tokens, shape };
-}
-
-/** The expression's tokens, if it passes Skjald's own checks; else ExpressionError. */
-export function validate(expr: string, declared: ReadonlySet<string>): Token[] {
-  return inspect(expr, declared).tokens;
 }
 
 /** cel-js's names for types as Skjald writes them: a value read from a row is dyn<int>. */

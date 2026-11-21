@@ -286,6 +286,22 @@ def test_validate_reads_nested_names_and_locals() -> None:
         validate("customer.custom", declared)
 
 
+def test_validate_takes_a_half_written_expression() -> None:
+    # A draft is saved and a template file imported with rules still being written:
+    # validate() refuses what must never be there (matches(), unknown functions and
+    # names), and leaves whether the rule reads to the check.
+    declared = {"answers.cvss": "double"}
+    for unfinished in ("answers.cvss >=", "date()", "answers.cvss ? 1 ? 2 : 3 : 4",
+                       "(answers.cvss"):
+        assert validate(unfinished, declared)
+        with pytest.raises(ExpressionError):
+            Engine(declared).check(unfinished)
+    for refused in ("answers.cvss.matches(\"9\")", "now()", "answers.nope >="):
+        with pytest.raises(ExpressionError) as caught:
+            validate(refused, declared)
+        assert caught.value.kind == "invalid"
+
+
 def test_types_parse() -> None:
     assert str(parse_type("map<string,list<map<string, dyn>>>")) == (
         "map<string, list<map<string, dyn>>>")

@@ -123,6 +123,18 @@ describe("the engine", () => {
     expect(engine.evaluate("answers.n", { answers: { n: 7 } })).toBe(7);
   });
 
+  it("validates a half-written expression, as the server does", () => {
+    const declared = new Set(["answers.cvss"]);
+    const engine = new Engine({ "answers.cvss": "double" });
+    for (const unfinished of ["answers.cvss >=", "date()", "answers.cvss ? 1 ? 2 : 3 : 4", "(answers.cvss"]) {
+      expect(validate(unfinished, declared).length).toBeGreaterThan(0);
+      expect(() => engine.check(unfinished)).toThrow(ExpressionError);
+    }
+    for (const refused of ['answers.cvss.matches("9")', "now()", "answers.nope >="]) {
+      expect(() => validate(refused, declared)).toThrow(ExpressionError);
+    }
+  });
+
   it("reads nested names and list functions' own names", () => {
     const declared = new Set(["answers.rows", "customer.custom.sla"]);
     expect(() => validate("answers.rows.map(r, r.n) + [customer.custom.sla]", declared)).not.toThrow();
