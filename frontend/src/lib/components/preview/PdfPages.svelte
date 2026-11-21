@@ -24,7 +24,7 @@
   import { FONT_STACKS, plainLook, pointsToCqi, textKey, type PageLook } from "#lib/reportStyles/look.js";
   import { colourOf, TONE_NAMES, type Element, type PageName } from "#lib/reportStyles/resolve.js";
   import type { Paged, Placed } from "#lib/templates/pages.js";
-  import type { Grid, Shown } from "#lib/templates/preview.js";
+  import { sampleContext, type Grid, type Shown } from "#lib/templates/preview.js";
   import { strokeBox, strokePath } from "#lib/templates/signature.js";
   import RichView from "./RichView.svelte";
 
@@ -84,7 +84,9 @@
   });
 
   // Who signs in the sample, and when: in the PDF, the signers' own signatures.
-  const SAMPLE_SIGNERS = { technician: "Freja Holm", reviewer: "Ivar Lund" } as const;
+  // The sample report's author and reviewer, as its text names them.
+  const SAMPLE = sampleContext();
+  const SAMPLE_SIGNERS = { technician: String(SAMPLE.author.display_name), reviewer: String(SAMPLE.reviewer.display_name) };
   const signedOn = $derived(
     new Intl.DateTimeFormat(language === "da" ? "da-DK" : "en-GB", { day: "numeric", month: "short", year: "numeric" }).format(new Date("2026-10-24T09:30:00Z")),
   );

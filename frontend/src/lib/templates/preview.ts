@@ -523,7 +523,9 @@ export function preview(input: PreviewInput): PreviewModel {
       errors.push({ element: q.id, message: error instanceof ExpressionError ? error.message : String(error) });
     }
   }
-  const worker = new Worker(input, { engine, values }, itemEngine);
+  // Blocks that print an answer as it's kept (an Answer block, a table) read what a
+  // question starts as too, as text and rules do.
+  const worker = new Worker({ ...input, answers: { ...input.answers, ...defaults } }, { engine, values }, itemEngine);
   worker.errors.push(...errors);
   const blocks = worker.blocks({ engine, values }, content.layout, false);
 

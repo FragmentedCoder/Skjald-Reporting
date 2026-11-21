@@ -223,7 +223,8 @@ describe("what questions start as", () => {
       q("q_when", "moment", "datetime", "report.started", { mode: "datetime" }),
       q("q_who1", "who", "text", "author.display_name"),
     );
-    c.layout.push({ id: "b_start", kind: "heading", visible_when: null, text: "{{answers.day}} / {{answers.moment}} / {{answers.who}}" });
+    c.layout.push({ id: "b_start", kind: "heading", visible_when: null, text: "{{answers.day}} / {{answers.moment}} / {{answers.who}}" },
+      { id: "b_startday", kind: "answer", visible_when: null, question: "q_day1", show_label: true });
     return c;
   };
   const run = (c: TemplateContent, answers: Record<string, unknown>) => {
@@ -238,6 +239,8 @@ describe("what questions start as", () => {
     expect(model.errors).toEqual([]);
     expect(model.defaults).toEqual({ q_day1: "2026-11-19T23:00:00.000Z", q_when: "2026-11-20T13:47:00.000Z", q_who1: "Freja Holm" });
     expect(find(model.blocks, "b_start")).toMatchObject({ text: "20 November 2026 / 20 November 2026, 14:47 / Freja Holm" });
+    // An Answer block prints the start value too, as the question's own kind of answer.
+    expect(find(model.blocks, "b_startday")).toMatchObject({ label: "day", text: "20 November 2026" });
   });
 
   it("leaves answered questions, and ones cleared on purpose, as they are", () => {
