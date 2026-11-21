@@ -94,10 +94,16 @@ def test_technicians_see_only_the_customers_they_are_assigned_to(
 
     listed = client.get(CUSTOMERS, headers=as_astrid).json()
     assert [(c["name"], c["visibility"]) for c in listed] == [("Nordlys IT ApS", "full")]
-    # The list says how many people work with each customer.
+    # The list says how many people work with each customer, as what, and more.
     everyone = client.get(CUSTOMERS, headers=headers).json()
     assert [(c["name"], c["people"]) for c in everyone] == [
         ("Fjeldstue A/S", 0), ("Nordlys IT ApS", 1)]
+    listed_nordlys = everyone[1]
+    assert {k: listed_nordlys[k] for k in ("technicians", "reviewers", "sites_count",
+                                           "contacts_count", "address", "language")} == {
+        "technicians": 1, "reviewers": 0, "sites_count": 1, "contacts_count": 1,
+        "address": "Fjordvej 1, 8000 Aarhus C", "language": "da"}
+    assert listed_nordlys["created_at"]
     detail = client.get(f"{CUSTOMERS}/{nordlys['id']}", headers=as_astrid).json()
     assert detail["contacts"][0]["email"] == "sigrid@nordlys.example"
     assert not detail["may_manage"] and not detail["may_manage_projects"]
@@ -117,7 +123,9 @@ def test_designers_see_names_and_auditors_see_metadata(
     names = client.get(CUSTOMERS, headers=as_designer).json()
     assert names == [{"id": nordlys["id"], "name": "Nordlys IT ApS", "visibility": "names",
                       "cvr": None, "active_projects": None, "archived_projects": None,
-                      "people": None, "logo_url": None}]
+                      "people": None, "logo_url": None, "address": None, "language": None,
+                      "created_at": None, "technicians": None, "reviewers": None,
+                      "sites_count": None, "contacts_count": None}]
     metadata = client.get(f"{CUSTOMERS}/{nordlys['id']}", headers=as_auditor).json()
     assert metadata["visibility"] == "metadata" and metadata["active_projects"] == 0
     assert metadata["contacts"] is None and metadata["address"] is None

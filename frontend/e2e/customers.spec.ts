@@ -74,6 +74,17 @@ test("customers and projects, from adding one to deleting it", async ({ browser 
   await menu(boss, "Overview").click();
   await expect(boss.getByRole("region", { name: "People on this customer" })).toContainText("Tor Tekniker");
 
+  // All customers: the totals, and for each customer who works on it and what it has.
+  await menu(boss, "All customers").click();
+  const row = boss.getByRole("row").filter({ has: boss.getByRole("link", { name: CUSTOMER }) });
+  await expect(row).toContainText("CVR 12 34 56 78");
+  await expect(row).toContainText("1 technician");
+  await expect(row).toContainText("1 reviewer");
+  await expect(row).toContainText("1 contact");
+  await expect(row).toContainText("1 site");
+  await expect(boss.getByRole("list", { name: "Totals" })).toContainText(/no technician/);
+  await shot(boss, "1-all-customers");
+
   // A Manager starts a project and chooses who writes and who reviews it.
   const { context: managerContext, page: manager } = await signedIn(browser, "e2e-manager");
   await pickCustomer(manager);
