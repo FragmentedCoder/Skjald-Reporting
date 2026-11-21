@@ -58,7 +58,13 @@ def clean_asset(raw: bytes) -> CleanAsset:
             photo = opened.format == "JPEG"
             opened.load()
             image = ImageOps.exif_transpose(opened)
-    except (UnidentifiedImageError, Image.DecompressionBombError, OSError) as exc:
+    except AssetRejected:
+        raise
+    except Image.DecompressionBombError as exc:
+        raise AssetRejected(
+            "The image has more than 40 million pixels. Use a smaller one.") from exc
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
+        # ValueError is Pillow's word for a PNG whose packed text unpacks too large.
         raise AssetRejected("That file isn't an image Skjald can use.") from exc
     image.thumbnail(MAX_SIZE)
     out = io.BytesIO()
