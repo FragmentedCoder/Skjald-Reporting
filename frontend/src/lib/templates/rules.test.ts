@@ -7,6 +7,7 @@ import {
   valueFromCel,
   valueToCel,
   type Condition,
+  type Group,
   type Shape,
   type ValueRule,
 } from "./rules";
@@ -94,10 +95,13 @@ describe("conditions", () => {
   });
 });
 
+// An IF's condition is held as a group, even of one: the editor adds to its list.
+const all = (...items: Condition[]): Group => ({ kind: "all", items });
+
 const VALUES: [ValueRule, Shape, string][] = [
   [{ kind: "fixed", value: "Low" }, "text", '"Low"'],
   [{ kind: "fixed", value: 2 }, "number", "2.0"],
-  [{ kind: "if", branches: [{ when: c("answers.cvss", "ge", { value: 9 }), value: "Critical" }, { when: c("answers.cvss", "ge", { value: 7 }), value: "High" }], otherwise: "Lower" },
+  [{ kind: "if", branches: [{ when: all(c("answers.cvss", "ge", { value: 9 })), value: "Critical" }, { when: all(c("answers.cvss", "ge", { value: 7 })), value: "High" }], otherwise: "Lower" },
     "text", 'answers.cvss >= 9.0 ? "Critical" : answers.cvss >= 7.0 ? "High" : "Lower"'],
   [{ kind: "if", branches: [{ when: { kind: "any", items: [c("answers.found", "yes"), c("answers.monitored", "yes")] }, value: "critical" }], otherwise: "info" },
     "text", 'answers.found || answers.monitored ? "critical" : "info"'],
@@ -107,7 +111,7 @@ const VALUES: [ValueRule, Shape, string][] = [
     "text", 'switch(answers.count, {1: "One"}, "Several")'],
   [{ kind: "switch", name: "answers.status", cases: [{ match: "blocked", value: 1.5 }], otherwise: 0 },
     "number", 'switch(answers.status, {"blocked": 1.5}, 0.0)'],
-  [{ kind: "if", branches: [{ when: c("answers.found", "yes"), value: true }], otherwise: false }, "bool", "answers.found ? true : false"],
+  [{ kind: "if", branches: [{ when: all(c("answers.found", "yes")), value: true }], otherwise: false }, "bool", "answers.found ? true : false"],
 ];
 
 describe("values", () => {
@@ -121,6 +125,11 @@ describe("values", () => {
     expect(valueToCel({ kind: "name", name: "answers.status" }, "text", SHAPES)).toBe("answers.status");
     expect(valueFromCel("answers.status", "text", SHAPES)).toEqual({ kind: "name", name: "answers.status" });
     expect(valueFromCel("answers.nothing_here", "text", SHAPES)).toBeNull();
+  });
+
+  it("reads each IF's condition as a group, so a condition can be added to it", () => {
+    const rule = valueFromCel('answers.found ? "yes" : "no"', "text", SHAPES);
+    expect(rule).toMatchObject({ kind: "if", branches: [{ when: { kind: "all", items: [{ kind: "compare", name: "answers.found" }] } }] });
   });
 
   it("leaves other expressions as text", () => {

@@ -5,6 +5,7 @@
   import {
     conditionFromCel,
     conditionToCel,
+    grouped,
     OPS,
     shapeOf,
     valueFromCel,
@@ -57,29 +58,33 @@
   let rule = $state<ValueRule>({ kind: "fixed", value: "" });
   let written: string | null = null;
 
-  // The stored text, read into the visual form when it changes from elsewhere (a
-  // rename, a reload) or when the field opens.
+  // Reads a rule's text into the visual form, which shows if it's one it could have written.
+  function read(text: string | null) {
+    written = text;
+    if (text === null || !text.trim()) {
+      adding = false;
+      condition = { kind: "all", items: [] };
+      rule = { kind: "fixed", value: result === "number" || result === "whole" ? 0 : result === "bool" ? false : "" };
+      mode = "visual";
+      return;
+    }
+    if (kind === "condition") {
+      const found = conditionFromCel(text, shapes);
+      if (found) condition = grouped(found);
+      mode = found ? "visual" : "text";
+    } else {
+      const found = valueFromCel(text, result, shapes);
+      if (found) rule = found;
+      mode = found ? "visual" : "text";
+    }
+  }
+
+  // The stored text is read when the field opens and when it changes from elsewhere (a
+  // rename, a reload, another block selected), not when this field wrote it itself.
   $effect.pre(() => {
     const text = value;
     untrack(() => {
-      if (text === written) return;
-      written = text;
-      if (text === null || !text.trim()) {
-        adding = false;
-        condition = { kind: "all", items: [] };
-        rule = { kind: "fixed", value: result === "number" || result === "whole" ? 0 : result === "bool" ? false : "" };
-        mode = "visual";
-        return;
-      }
-      if (kind === "condition") {
-        const read = conditionFromCel(text, shapes);
-        if (read) condition = read.kind === "compare" || read.kind === "not" ? { kind: "all", items: [read] } : read;
-        mode = read ? "visual" : "text";
-      } else {
-        const read = valueFromCel(text, result, shapes);
-        if (read) rule = read;
-        mode = read ? "visual" : "text";
-      }
+      if (text !== written) read(text);
     });
   });
 
@@ -128,7 +133,7 @@
     {#if mode === "visual"}
       <button class="link-button small" type="button" onclick={() => (mode = "text")}>Edit as text</button>
     {:else if readable}
-      <button class="link-button small" type="button" onclick={() => { written = null; mode = "visual"; value = value; }}>Edit visually</button>
+      <button class="link-button small" type="button" onclick={() => read(value)}>Edit visually</button>
     {/if}
   </div>
   {#if mode === "visual"}

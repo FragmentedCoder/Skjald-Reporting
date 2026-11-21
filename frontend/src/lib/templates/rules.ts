@@ -43,9 +43,15 @@ export interface Not {
 
 export type Condition = Compare | Group | Not;
 
+/** A condition as a group: itself, or a group of the one comparison it is. */
+export function grouped(condition: Condition): Group {
+  return condition.kind === "compare" || condition.kind === "not" ? { kind: "all", items: [condition] } : condition;
+}
+
 export interface IfValue {
   kind: "if";
-  branches: { when: Condition; value: Literal }[];
+  /** Each IF's condition is a group, even of one, so the editor has a list to add to. */
+  branches: { when: Group; value: Literal }[];
   otherwise: Literal;
 }
 
@@ -427,7 +433,8 @@ function conditionFrom(node: Node, shapes: Record<string, Shape>): Condition | n
   if (compared) return compared;
   if (node.op === "!_" && isNode(node.args)) {
     const inner = conditionFrom(node.args, shapes);
-    return inner ? { kind: "not", item: inner } : null;
+    // A NOT of a NOT is nothing the editor writes: it stays text.
+    return inner && inner.kind !== "not" ? { kind: "not", item: inner } : null;
   }
   return null;
 }
@@ -475,7 +482,7 @@ function valueFrom(node: Node, shapes: Record<string, Shape>): ValueRule | null 
       const when = isNode(test) ? conditionFrom(test, shapes) : null;
       const value = valueOf(yes);
       if (when === null || value === undefined) return null;
-      branches.push({ when, value });
+      branches.push({ when: grouped(when), value });
       current = no;
     }
     const otherwise = valueOf(current);
