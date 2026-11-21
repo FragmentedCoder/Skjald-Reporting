@@ -9,6 +9,7 @@ import { formatDate, formatDuration, isMidnight, startOfDay } from "#lib/cel/dat
 import { LOCALES, type Table as LookupTable } from "#lib/cel/library.js";
 import { formatNumber } from "#lib/cel/numbers.js";
 import { fieldType, PERSON_PARTS, settingsOf } from "./fields";
+import { repeatedColumns, shownAs, type LabelColumn, type LabelContext } from "./labels";
 import { CONTEXT_GROUPS, declarations, ITEM } from "./names";
 import { printed } from "./secrets";
 import { drawn } from "./signature";
@@ -257,6 +258,8 @@ interface Scope {
    * ID of its own; the part before the first ~ is the layout's block.
    */
   suffix?: string;
+  /** Inside a section repeated for each row of a list: that list's columns, so {{item.x}} prints as its column shows it. */
+  item?: LabelColumn[];
 }
 
 class Worker {
@@ -265,6 +268,7 @@ class Worker {
   readonly language: string;
   readonly zone: string;
   readonly byId: Map<Id, Question>;
+  readonly byKey: Map<string, Question>;
 
   constructor(
     readonly input: PreviewInput,
@@ -274,6 +278,7 @@ class Worker {
     this.language = input.content.settings.language;
     this.zone = input.timezone ?? "Europe/Copenhagen";
     this.byId = new Map(questionsOf(input.content).map((q) => [q.id, q]));
+    this.byKey = new Map(questionsOf(input.content).filter((q) => q.key).map((q) => [q.key as string, q]));
   }
 
   /** What's printed where a signature pad isn't signed. */
@@ -299,11 +304,17 @@ class Worker {
       return "⚠";
     }
     try {
-      return printValue(plain(value), this.language, this.zone);
+      // A name standing on its own prints as its question shows it (labels.ts).
+      return printValue(shownAs(expr, plain(value), this.labels(scope)), this.language, this.zone);
     } catch (error) {
       this.errors.push({ element, message: error instanceof Error ? error.message : String(error) });
       return "⚠";
     }
+  }
+
+  /** What labels.ts needs to print a choice as its question shows it. */
+  labels(scope: Scope): LabelContext {
+    return { questions: this.byKey, item: scope.item, rows: (key) => plain((scope.values.answers as Record<string, unknown> | undefined)?.[key]) };
   }
 
   shows(scope: Scope, element: Id, rule: string | null | undefined): boolean {
@@ -438,7 +449,8 @@ class Worker {
       if (!items.length) this.hidden.push({ id: b.id, reason: "Repeated for each item, and there are none" });
       return items.flatMap((entry, i) => {
         // The item as the list gave it: its cells keep their kinds (see answerValue).
-        const inner: Scope = { engine: this.itemEngine, values: { ...scope.values, item: new CelValue(entry) }, suffix: `${scope.suffix ?? ""}~${i}` };
+        const inner: Scope = { engine: this.itemEngine, values: { ...scope.values, item: new CelValue(entry) }, suffix: `${scope.suffix ?? ""}~${i}`,
+          item: repeatedColumns(b.repeat_for, this.byKey) ?? scope.item };
         return this.section(inner, b, `${b.id}${inner.suffix}`, true);
       });
     }

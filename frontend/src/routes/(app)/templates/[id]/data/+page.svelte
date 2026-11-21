@@ -9,7 +9,7 @@
   import { LivePreview } from "#lib/templates/live.svelte.js";
   import { nameGroups } from "#lib/templates/nameGroups.js";
   import { declarations } from "#lib/templates/names.js";
-  import type { TemplateContent } from "#lib/templates/types.js";
+  import { questionsOf, type TemplateContent } from "#lib/templates/types.js";
 
   // The Data tab: every name the template can read, its answers first, to search and
   // look up (what each is, its kind, an example from the sample answers); a box to try
@@ -35,7 +35,7 @@
 <div class="data">
   <section class="section" aria-labelledby="try-title">
     <h2 id="try-title" class="section-title">Try an expression <Where builder /></h2>
-    <TryExpression declarations={declared} {values} language={content.settings.language} tables={draft.libraryPreview.tables}
+    <TryExpression declarations={declared} {values} language={content.settings.language} tables={draft.libraryPreview.tables} questions={questionsOf(content)}
       about={"An expression as rules have it, a name in {{ }}, or text with names in {{ }} as a text block has, worked out on the sample answers."} />
   </section>
 
