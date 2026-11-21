@@ -81,13 +81,15 @@
   async function upload(event: Event) {
     const input = event.currentTarget as HTMLInputElement;
     const file = input.files?.[0];
-    if (!file || block.kind !== "image") return;
+    // The block it's for: another may be selected by the time the upload is done.
+    const target = block;
+    if (!file || target.kind !== "image") return;
     uploading = true;
     uploadError = null;
     const asset = await onupload(file);
     uploading = false;
     input.value = "";
-    if (asset) block.asset = asset.sha256;
+    if (asset) target.asset = asset.sha256;
     else uploadError = "The image couldn't be added.";
   }
 
@@ -265,7 +267,13 @@
   {:else if block.kind === "callout"}
     <div class="field">
       <label for="{id}-tone">Tone</label>
-      <select id="{id}-tone" class="input" bind:value={block.tone}>
+      <select id="{id}-tone" class="input" value={block.tone}
+        onchange={(e) => {
+          if (block.kind !== "callout") return;
+          block.tone = e.currentTarget.value as typeof block.tone;
+          // The swatch shows a colour straight away: the block holds that one.
+          if (block.tone === "custom") block.colour ??= "#DCE6EE";
+        }}>
         {#each TONES as tone (tone.value)}<option value={tone.value}>{tone.label}</option>{/each}
         <option value="custom">A colour of my own</option>
       </select>
