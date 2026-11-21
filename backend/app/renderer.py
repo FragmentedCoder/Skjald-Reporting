@@ -55,23 +55,26 @@ def _run(*command: str) -> str:
 
 
 def page_sizes(pdf: Path) -> list[tuple[float, float]]:
-    """The width and height in points of the first pages."""
+    """The width and height in points of the first pages, as they're shown: a page
+    turned a quarter (/Rotate 90 or 270, as scanners write) has the two swapped."""
     info = _run("pdfinfo", "-f", "1", "-l", str(MAX_PAGES), str(pdf))
-    sizes = [(float(w), float(h)) for w, h in
-             re.findall(r"^Page\s+\d+\s+size:\s+([\d.]+)\s+x\s+([\d.]+)\s+pts", info, re.M)]
+    sizes = {int(page): (float(w), float(h)) for page, w, h in re.findall(
+        r"^Page\s+(\d+)\s+size:\s+([\d.]+)\s+x\s+([\d.]+)\s+pts", info, re.M)}
+    turned = {int(page) for page, turn in
+              re.findall(r"^Page\s+(\d+)\s+rot:\s+(-?\d+)", info, re.M) if int(turn) % 180 == 90}
     if not sizes:
         raise RenderError("That file isn't a PDF Skjald can read.")
-    return sizes
+    return [(h, w) if page in turned else (w, h) for page, (w, h) in sorted(sizes.items())]
 
 
 def convert_background(pdf: Path) -> list[str]:
     """The first one or two pages of an A4 portrait PDF, as SVG."""
     sizes = page_sizes(pdf)
-    width, height = sizes[0]
-    if abs(width - A4_POINTS[0]) > 6 or abs(height - A4_POINTS[1]) > 6:
-        raise RenderError(
-            f"The background must be A4 portrait (210 × 297 mm); its first page is "
-            f"{width / POINTS_PER_MM:.0f} × {height / POINTS_PER_MM:.0f} mm.")
+    for (width, height), which in zip(sizes, ("first", "second"), strict=False):
+        if abs(width - A4_POINTS[0]) > 6 or abs(height - A4_POINTS[1]) > 6:
+            raise RenderError(
+                f"The background must be A4 portrait (210 × 297 mm); its {which} page is "
+                f"{width / POINTS_PER_MM:.0f} × {height / POINTS_PER_MM:.0f} mm.")
     pages = []
     with tempfile.TemporaryDirectory() as work:
         for number in range(1, len(sizes) + 1):

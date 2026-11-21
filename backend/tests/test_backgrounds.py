@@ -24,15 +24,19 @@ from app.roles import Role, grant_role
 CUSTOMERS = "/api/customers"
 
 
-def minimal_pdf(width: float = 595.28, height: float = 841.89, pages: int = 1) -> bytes:
-    """A small PDF with a filled box on each page, its cross-reference table worked out."""
+def minimal_pdf(width: float = 595.28, height: float = 841.89, pages: int = 1, rotate: int = 0,
+                last: tuple[float, float] | None = None) -> bytes:
+    """A small PDF with a filled box on each page, its cross-reference table worked out.
+    Each page is turned by `rotate` degrees; `last` is the last page's size, if another."""
     objects = ["<< /Type /Catalog /Pages 2 0 R >>"]
     kids = " ".join(f"{3 + 2 * i} 0 R" for i in range(pages))
     objects.append(f"<< /Type /Pages /Kids [{kids}] /Count {pages} >>")
     for i in range(pages):
+        if last and i == pages - 1:
+            width, height = last
         stream = f"0.17 0.36 0.54 rg 40 {height - 120} 200 80 re f"
         objects.append(f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {width} {height}] "
-                       f"/Contents {4 + 2 * i} 0 R >>")
+                       f"/Rotate {rotate} /Contents {4 + 2 * i} 0 R >>")
         objects.append(f"<< /Length {len(stream)} >>\nstream\n{stream}\nendstream")
     out = io.BytesIO()
     out.write(b"%PDF-1.4\n")
@@ -205,6 +209,32 @@ def test_the_renderer_turns_an_a4_pdf_into_svg_pages(tmp_path: Path) -> None:
     broken.write_bytes(b"%PDF-1.4 not really")
     with pytest.raises(RenderError):
         convert_background(broken)
+
+
+@pytest.mark.skipif(shutil.which("pdftocairo") is None, reason="needs poppler, as the renderer has")
+def test_the_renderer_checks_every_page_it_uses_as_it_is_shown(tmp_path: Path) -> None:
+    # A landscape sheet turned a quarter is shown as A4 portrait: scanners write these.
+    turned = tmp_path / "turned.pdf"
+    turned.write_bytes(minimal_pdf(width=841.89, height=595.28, rotate=90))
+    [page] = convert_background(turned)
+    assert 'width="595.28" height="841.89"' in page
+    # A portrait sheet turned a quarter is shown lying down.
+    sideways = tmp_path / "sideways.pdf"
+    sideways.write_bytes(minimal_pdf(rotate=270))
+    with pytest.raises(RenderError, match="its first page is 297 × 210 mm"):
+        convert_background(sideways)
+    upside_down = tmp_path / "upside-down.pdf"
+    upside_down.write_bytes(minimal_pdf(rotate=180))
+    assert len(convert_background(upside_down)) == 1
+    # The second page goes behind the rest of a report, so it's held to A4 too.
+    mixed = tmp_path / "mixed.pdf"
+    mixed.write_bytes(minimal_pdf(pages=2, last=(841.89, 1190.55)))
+    with pytest.raises(RenderError, match="A4 portrait.*its second page is 297 × 420 mm"):
+        convert_background(mixed)
+    # A third page is never used, whatever its size.
+    longer = tmp_path / "longer.pdf"
+    longer.write_bytes(minimal_pdf(pages=3, last=(841.89, 1190.55)))
+    assert len(convert_background(longer)) == 2
 
 
 def test_who_changes_backgrounds(client, person, customer, session) -> None:
