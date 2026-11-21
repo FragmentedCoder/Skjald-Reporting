@@ -27,7 +27,10 @@ class Strict(BaseModel):
 
 class Option(Strict):
     value: str = Field(min_length=1, max_length=200)
-    label: str = Field(min_length=1, max_length=200)
+    # What a designer is halfway through typing may be empty in a draft: the checks
+    # (app/templates/checks.py) ask for it before publishing. The same goes for the
+    # other labels here.
+    label: str = Field(max_length=200)
 
 
 def _unique_options(options: list[Option]) -> list[Option]:
@@ -68,8 +71,8 @@ class DateTimeSettings(Strict):
 
 
 class YesNoSettings(Strict):
-    yes_label: str = Field(default="Yes", min_length=1, max_length=50)
-    no_label: str = Field(default="No", min_length=1, max_length=50)
+    yes_label: str = Field(default="Yes", max_length=50)
+    no_label: str = Field(default="No", max_length=50)
 
 
 class ChoiceSettings(Strict):
@@ -125,7 +128,7 @@ COLUMN_TYPES = ("text", "number", "yes_no", "dropdown", "datetime", "ip", "hostn
 
 class Column(Strict):
     key: str = Field(pattern=KEY_PATTERN)
-    label: str = Field(min_length=1, max_length=200)
+    label: str = Field(max_length=200)
     type: Literal["text", "number", "yes_no", "dropdown", "datetime", "ip", "hostname", "mac",
                   "serial", "email", "phone"]
     required: bool = False
@@ -139,7 +142,7 @@ class Column(Strict):
 
 class Row(Strict):
     key: str = Field(pattern=KEY_PATTERN)
-    label: str = Field(min_length=1, max_length=200)
+    label: str = Field(max_length=200)
 
 
 class RepeatingSettings(Strict):
@@ -151,6 +154,18 @@ class RepeatingSettings(Strict):
 class TableSettings(Strict):
     rows: list[Row] = Field(min_length=1, max_length=100)
     columns: list[Column] = Field(min_length=1, max_length=20)
+
+
+class PersonSettings(Strict):
+    # Whom the technician picks among: the company's technicians or reviewers, the
+    # people on the report's project, or everyone who can sign in.
+    who: Literal["technicians", "reviewers", "team", "everyone"] = "technicians"
+
+
+# What a picked person gives expressions, as author and reviewer do: their business
+# details as they were when picked, never anything private.
+PERSON_PARTS = ("display_name", "first_name", "middle_name", "last_name", "job_title",
+                "department", "company", "email", "phone")
 
 
 class CalculatedSettings(Strict):
@@ -196,6 +211,8 @@ FIELD_TYPES: dict[str, FieldType] = {
     "photo": FieldType(PhotoSettings, lambda _s: {".filled": "bool", ".count": "int"}),
     "barcode": FieldType(BarcodeSettings, _one("string")),
     "signature": FieldType(NoSettings, lambda _s: {".filled": "bool"}),
+    "person": FieldType(PersonSettings, lambda _s: {
+        ".filled": "bool", **{f".{part}": "string" for part in PERSON_PARTS}}),
     "repeating": FieldType(RepeatingSettings, _one("list<map<string, dyn>>")),
     "table": FieldType(TableSettings, _one("list<map<string, dyn>>")),
     "calculated": FieldType(CalculatedSettings, lambda s: {"": _RESULT_TYPES[s.result]}),

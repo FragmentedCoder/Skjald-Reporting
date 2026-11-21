@@ -88,9 +88,9 @@
   const look = dragLook<Item>((q) => ("palette" in q ? q.label : `${fieldType(q.type).label}: ${q.label}`));
   // Each step's list: what the drag library is given.
   function zoneOf(step: Step) {
-    const options = { items: itemsOf(step), type: "questions", flipDurationMs: 150, dragDisabled: draft.readonly,
-      dropTargetStyle: { outline: "2px dashed var(--link)", outlineOffset: "2px" }, transformDraggedElement: look, ...DRAG_OPTIONS, hooked: hooks.hooked };
-    return options;
+    hooks.watch();
+    return { items: itemsOf(step), type: "questions", flipDurationMs: 150, dragDisabled: draft.readonly,
+      dropTargetStyle: { outline: "2px dashed var(--link)", outlineOffset: "2px" }, transformDraggedElement: look, ...DRAG_OPTIONS };
   }
 
   function consider(step: Step, event: CustomEvent<DndEvent<Item>>) {
@@ -132,6 +132,7 @@
 
   function removeQuestion(step: Step, question: Question) {
     const remove = () => {
+      draft.removing(`“${question.label}”`);
       step.questions = step.questions.filter((q) => q.id !== question.id);
       draft.selection = { kind: "step", id: step.id };
     };
@@ -172,6 +173,7 @@
     if (!where || where.question || content.form.length === 1) return;
     const { step, stepIndex } = where;
     const remove = () => {
+      draft.removing(`the step “${step.title}”${step.questions.length ? " and its questions" : ""}`);
       content.form.splice(stepIndex, 1);
       draft.selection = null;
     };
@@ -306,14 +308,14 @@
   .workspace {
     display: grid;
     grid-template-columns: 210px minmax(0, 1fr) minmax(290px, 360px);
-    grid-template-areas: ". intro ." "palette canvas panel";
+    grid-template-areas: "intro intro intro" "palette canvas panel";
     gap: var(--space-4);
     align-items: start;
     margin-top: var(--space-4);
   }
   .workspace.readonly {
     grid-template-columns: minmax(0, 1fr) minmax(290px, 360px);
-    grid-template-areas: "intro ." "canvas panel";
+    grid-template-areas: "intro intro" "canvas panel";
   }
   .workspace > :global(.palette) {
     grid-area: palette;

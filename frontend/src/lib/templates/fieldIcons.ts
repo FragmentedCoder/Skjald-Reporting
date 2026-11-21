@@ -24,6 +24,7 @@ import Table from "@lucide/svelte/icons/table";
 import Tag from "@lucide/svelte/icons/tag";
 import ToggleLeft from "@lucide/svelte/icons/toggle-left";
 import Type from "@lucide/svelte/icons/type";
+import UserRound from "@lucide/svelte/icons/user-round";
 import type { Component } from "svelte";
 
 export type Icon = Component<{ size?: number; "aria-hidden"?: boolean | "true" }>;
@@ -34,6 +35,7 @@ export const FIELD_ICONS: Record<string, Icon> = {
   dropdown: SquareChevronDown,
   multi_select: ListChecks,
   yes_no: ToggleLeft,
+  person: UserRound,
   number: Hash,
   datetime: CalendarClock,
   cvss: Gauge,

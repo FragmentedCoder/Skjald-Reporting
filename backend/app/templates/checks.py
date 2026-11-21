@@ -20,6 +20,7 @@ import re2
 from app.cel import Engine, ExpressionError
 from app.cel.engine import human, unknown_name
 from app.templates.content import (
+    SIGNS,
     Answer,
     Block,
     Callout,
@@ -51,6 +52,8 @@ RESERVED = frozenset({
 })
 LISTS = ("repeating", "table")
 ITEM_OUTSIDE = "item is only there inside a section repeated for each item."
+SIGNERS = {"technician": "The technician", "reviewer": "The reviewer",
+           "company": "The company seal"}
 
 
 @dataclass(frozen=True)
@@ -141,6 +144,9 @@ class _Checker:
     def question(self, q: Question, seen_keys: set[str]) -> None:
         self.id(q.id)
         field_type = FIELD_TYPES[q.type]
+        if not q.label.strip():
+            self.add(q.id, "label",
+                     "Write the question." if field_type.asks else "Write the heading.")
         if field_type.asks:
             if q.key is None:
                 self.add(q.id, "key", "Give the question a variable name.")
@@ -171,6 +177,22 @@ class _Checker:
 
     def settings(self, q: Question) -> None:
         s = q.settings
+        if q.type in ("dropdown", "multi_select"):
+            for i, option in enumerate(s["options"]):
+                if not option["label"].strip():
+                    self.add(q.id, "settings.options", f"Write what choice {i + 1} is shown as.")
+        if q.type == "yes_no":
+            for name, word in (("yes_label", "Yes"), ("no_label", "No")):
+                if not s[name].strip():
+                    self.add(q.id, f"settings.{name}", f"Write what {word} is shown as.")
+        if q.type in LISTS:
+            for i, column in enumerate(s["columns"]):
+                if not column["label"].strip():
+                    self.add(q.id, "settings.columns", f"Give column {i + 1} a heading.")
+        if q.type == "table":
+            for i, row in enumerate(s["rows"]):
+                if not row["label"].strip():
+                    self.add(q.id, "settings.rows", f"Give row {i + 1} a heading.")
         if q.type in ("text", "serial") and s.get("pattern"):
             try:
                 re2.compile(s["pattern"])
@@ -250,6 +272,17 @@ class _Checker:
         if key not in [c["key"] for c in q.settings["columns"]]:
             self.add(element, field_, f"“{q.label}” has no column {key}.")
 
+    def pad(self, element: str, field_: str, question_id: str | None) -> None:
+        """A signature drawn in the form: its signature pad question is there."""
+        if question_id is None:
+            self.add(element, field_, "Choose the signature pad this signature shows.")
+            return
+        q = self.by_id.get(question_id)
+        if q is None:
+            self.add(element, field_, "The signature pad this signature shows was removed.")
+        elif q.type != "signature":
+            self.add(element, field_, f"“{q.label}” isn't a signature pad.")
+
     def switched(self, b: Switch, *, item: bool) -> None:
         """What picks a switch's case gives text or a whole number, and each case's
         value is one of those, picked by no other case."""
@@ -298,12 +331,16 @@ class _Checker:
         elif isinstance(b, Contents):
             self.text(b.id, "title", b.title, item=item)
         elif isinstance(b, Section):
+            if not b.title.strip():
+                self.add(b.id, "title", "Give the section a title.")
             self.text(b.id, "title", b.title, item=item)
             self.rich(b.id, "intro", b.intro, item=item)
             self.expr(b.id, "repeat_for", b.repeat_for, "list", item=outer)
             for child in b.blocks:
                 self.block(child, item=item)
         elif isinstance(b, HeadingBlock):
+            if not b.text.strip():
+                self.add(b.id, "text", "Write the heading.")
             self.text(b.id, "text", b.text, item=item)
         elif isinstance(b, TextBlock):
             self.rich(b.id, "content", b.content, item=item)
@@ -354,12 +391,22 @@ class _Checker:
             self.text(b.id, "caption", b.caption, item=item)
         elif isinstance(b, Sources):
             self.text(b.id, "intro", b.intro, item=item)
+            for i, source in enumerate(b.items):
+                if not source.title.strip():
+                    self.add(b.id, f"items.{i}.title", f"Give source {i + 1} a title.")
             if b.question is not None:
                 q = self.chosen(b.id, b.question, "")
                 if q is not None:
                     self.is_list(b.id, q)
         elif isinstance(b, Signatures):
+            signs = SIGNS[self.content.settings.signing]
             for i, signer in enumerate(b.signers):
+                if signer.role == "pad":
+                    self.pad(b.id, f"signers.{i}.question", signer.question)
+                elif signer.role not in signs:
+                    self.add(b.id, f"signers.{i}.role",
+                             f"{SIGNERS[signer.role]} doesn't sign this template's reports: "
+                             "change who signs on the Settings tab, or take this signature out.")
                 self.text(b.id, f"signers.{i}.label", signer.label, item=item)
         elif isinstance(b, Columns):
             for column in b.columns:
@@ -394,6 +441,8 @@ def check(
     seen_keys: set[str] = set()
     for step in content.form:
         checker.id(step.id)
+        if not step.title.strip():
+            checker.add(step.id, "title", "Give the step a title.")
         checker.expr(step.id, "visible_when", step.visible_when, "bool")
         for q in step.questions:
             checker.question(q, seen_keys)

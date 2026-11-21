@@ -66,13 +66,17 @@ export function whileDragging<T extends { id: string }>(items: T[], own: { id: s
 export const DRAG_OPTIONS = { centreDraggedOnCursor: true, morphDisabled: true } as const;
 
 /**
- * The drag library hooks up each card when a list's options change. A dropped card is
- * drawn again just after that, so it would be left unhooked and couldn't be dragged a
- * second time: once it's drawn, the options change once more (with `hooked`).
+ * The drag library hooks up each card when a list is given its options again. A dropped
+ * card is drawn again just after that, so it would be left unhooked and couldn't be
+ * dragged a second time: once it's drawn, the list's options are made anew (they read
+ * `watch()`, so they follow the count; nothing the library doesn't know goes in them).
  */
 export class Hooks {
-  hooked = $state(0);
+  #drops = $state(0);
+
+  /** Read where a list's options are made, so they're made again after a drop. */
+  watch = (): void => void this.#drops;
 
   /** Call on every drop. */
-  again = () => void tick().then(() => this.hooked++);
+  again = () => void tick().then(() => this.#drops++);
 }

@@ -6,8 +6,10 @@
 
 import { getContext, setContext } from "svelte";
 import { ApiError } from "#lib/api.js";
+import { thisMinute } from "#lib/cel/dates.js";
 import { customFieldsApi, customLabels, customNames, sampleCustom, type CustomField } from "#lib/customFields.js";
 import { libraryApi, libraryLabels, libraryNames, libraryValues, type LibraryEntry } from "#lib/library.js";
+import { toast } from "#lib/toast.svelte.js";
 import { templatesApi, type TemplateDetail } from "./api";
 import { check } from "./checks";
 import { sampleContext } from "./preview";
@@ -22,6 +24,9 @@ export interface Selection {
 
 export const SAVE_AFTER_MS = 1200;
 const CHECK_AFTER_MS = 250;
+/** Changes closer together than this are one step to undo, as a word typed is. */
+export const UNDO_GROUP_MS = 800;
+const UNDO_STEPS = 60;
 
 export class Draft {
   template = $state<TemplateDetail | null>(null);
@@ -40,9 +45,20 @@ export class Draft {
   /** Custom fields, which templates read as customer.custom.<key> and project.custom.<key>. */
   customFields = $state<CustomField[]>([]);
 
+  /** Whether there's a change to undo, or an undone one to redo. */
+  canUndo = $state(false);
+  canRedo = $state(false);
+
   revision = 0;
   #saved = "";
   #seen = "";
+  // The content before each step of changes, newest last, and what's been undone.
+  #before: string[] = [];
+  #undone: string[] = [];
+  #changedAt = 0;
+  #stepping = false;
+  // When this look at the template began: the sample report's start, to the minute.
+  #started = thisMinute();
   #saveTimer: ReturnType<typeof setTimeout> | undefined;
   #checkTimer: ReturnType<typeof setTimeout> | undefined;
   #saving: Promise<void> | null = null;
@@ -70,10 +86,19 @@ export class Draft {
     return { ...libraryLabels(this.library), ...customLabels(this.customFields) };
   }
 
-  /** The sample context, custom fields' examples included. */
+  /**
+   * The sample context, custom fields' examples included. The sample report is this
+   * template's: titled with its name (a report's title until the technician changes
+   * it), numbered with its prefix, and started now, so a question that starts as the
+   * moment the report is started shows today.
+   */
   get sampleContext(): Record<string, Record<string, unknown>> {
     const fields = $state.snapshot(this.customFields) as CustomField[];
-    return sampleContext({ customer: sampleCustom(fields, "customer"), project: sampleCustom(fields, "project") });
+    const context = sampleContext({ customer: sampleCustom(fields, "customer"), project: sampleCustom(fields, "project") });
+    context.report.started = this.#started;
+    if (this.template) context.report.title = this.template.name;
+    if (this.content) context.report.number = String(context.report.number).replace(/^[A-Z]+/, this.content.settings.prefix);
+    return context;
   }
 
   /** The library as the preview reads it. */
@@ -108,6 +133,9 @@ export class Draft {
     this.readonly = readonly;
     this.shownVersion = version;
     this.#saved = this.#seen = JSON.stringify(content);
+    this.#before = [];
+    this.#undone = [];
+    this.canUndo = this.canRedo = false;
     this.saveState = "saved";
     this.saveMessage = null;
     this.problems = check(content, { assets: this.assets, library: this.libraryNames });
@@ -115,7 +143,24 @@ export class Draft {
 
   /** Called with the content's JSON whenever it may have changed. */
   noticed(text: string): void {
-    if (text === this.#seen || this.content === null) return;
+    if (text === this.#seen || this.content === null) {
+      this.#stepping = false;
+      return;
+    }
+    if (this.#stepping) {
+      this.#stepping = false;
+    } else if (!this.readonly) {
+      // A new step to undo, unless it follows the last change at once (typing).
+      const now = Date.now();
+      if (now - this.#changedAt > UNDO_GROUP_MS || !this.#before.length) {
+        this.#before.push(this.#seen);
+        if (this.#before.length > UNDO_STEPS) this.#before.shift();
+      }
+      this.#changedAt = now;
+      this.#undone = [];
+      this.canUndo = true;
+      this.canRedo = false;
+    }
     this.#seen = text;
     clearTimeout(this.#checkTimer);
     this.#checkTimer = setTimeout(() => {
@@ -127,6 +172,31 @@ export class Draft {
       clearTimeout(this.#saveTimer);
       this.#saveTimer = setTimeout(() => void this.save(), SAVE_AFTER_MS);
     }
+  }
+
+  /**
+   * Call just before removing something: the removal is a step of its own to undo, and
+   * a note says what went, with Undo on it.
+   */
+  removing(what: string): void {
+    this.#changedAt = 0;
+    toast(`Removed ${what}.`, "info", { key: "template-removed", lifetime: 12_000, action: { label: "Undo", run: () => this.undo() } });
+  }
+
+  /** Takes back the last step of changes (a block removed, a word typed), or with `again` puts back the last one undone. */
+  undo(again = false): void {
+    const [from, to] = again ? [this.#undone, this.#before] : [this.#before, this.#undone];
+    const text = from.pop();
+    if (text === undefined || this.content === null || this.readonly) return;
+    to.push(this.#seen);
+    this.#stepping = true;
+    this.#changedAt = 0;
+    this.content = JSON.parse(text) as TemplateContent;
+    this.canUndo = this.#before.length > 0;
+    this.canRedo = this.#undone.length > 0;
+    // What's selected may not be there any more.
+    const selected = this.selection?.id;
+    if (selected && !text.includes(`"id":"${selected}"`)) this.selection = null;
   }
 
   /** Saves now if anything is unsaved; waits for a save under way. */

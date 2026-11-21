@@ -35,6 +35,7 @@ CONTEXT: dict[str, str] = {
     "report.number": "string",
     "report.revision": "int",
     "report.date": "timestamp",
+    "report.started": "timestamp",
     **{f"{person}.{part}": "string"
        for person in ("author", "reviewer")
        for part in ("display_name", "first_name", "middle_name", "last_name", "job_title",

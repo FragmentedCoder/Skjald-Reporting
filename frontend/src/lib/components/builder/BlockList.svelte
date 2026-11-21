@@ -52,8 +52,11 @@
 
   const hooks = new Hooks();
   const look = dragLook<Item>((b) => ("palette" in b ? b.label : `${BLOCK_TYPES[b.kind].label}: ${blockSummary(b)}`));
-  const zone = $derived({ items, type: "blocks", flipDurationMs: 150, dragDisabled: readonly, dropTargetClasses: ["dropping"],
-    dropTargetStyle: {}, transformDraggedElement: look, ...DRAG_OPTIONS, hooked: hooks.hooked });
+  const zone = $derived.by(() => {
+    hooks.watch();
+    return { items, type: "blocks", flipDurationMs: 150, dragDisabled: readonly, dropTargetClasses: ["dropping"],
+      dropTargetStyle: {}, transformDraggedElement: look, ...DRAG_OPTIONS };
+  });
 
   function finalize(event: CustomEvent<DndEvent<Item>>) {
     let added: Block | null = null;

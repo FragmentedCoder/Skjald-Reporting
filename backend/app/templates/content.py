@@ -61,11 +61,22 @@ def _unique(values: list[Any]) -> list[Any]:
     return values
 
 
+# Who signs a report under each signing setting, in order.
+SIGNS: dict[str, tuple[str, ...]] = {
+    "company": ("company",),
+    "technician": ("technician",),
+    "technician_reviewer": ("technician", "reviewer"),
+    "technician_company": ("technician", "company"),
+    "technician_reviewer_company": ("technician", "reviewer", "company"),
+}
+
+
 class Settings(Strict):
     # Reports are numbered <prefix>-<year>-<n>, such as INC-2026-0142.
     prefix: str = Field(default="REP", pattern=r"^[A-Z]{2,6}$")
     language: Literal["da", "en"] = "en"
-    signing: Literal["company", "technician", "technician_reviewer"] = "technician"
+    signing: Literal["company", "technician", "technician_reviewer", "technician_company",
+                     "technician_reviewer_company"] = "technician"
     review: Literal["mandatory", "optional"] = "optional"
     delivery: list[Literal["download", "email", "protected_pdf"]] = Field(
         default=["download"], min_length=1)
@@ -83,7 +94,8 @@ class Question(Strict):
     # The variable name; headings have none.
     key: Key | None = None
     type: str
-    label: str = Field(min_length=1, max_length=300)
+    # Empty while it's being typed; the checks ask for it (as for the titles below).
+    label: str = Field(max_length=300)
     help: str = Field(default="", max_length=2000)
     required: bool = False
     required_when: Expr | None = None
@@ -108,7 +120,7 @@ class Question(Strict):
 
 class Step(Strict):
     id: Id
-    title: str = Field(min_length=1, max_length=200)
+    title: str = Field(max_length=200)
     help: str = Field(default="", max_length=2000)
     visible_when: Expr | None = None
     questions: list[Question] = Field(default_factory=list, max_length=300)
@@ -143,7 +155,7 @@ class Contents(BlockBase):
 
 class Section(BlockBase):
     kind: Literal["section"]
-    title: str = Field(min_length=1, max_length=300)
+    title: str = Field(max_length=300)
     intro: RichText | None = None
     new_page: bool = True
     numbered: bool = True
@@ -156,7 +168,7 @@ class Section(BlockBase):
 
 class Heading(BlockBase):
     kind: Literal["heading"]
-    text: str = Field(min_length=1, max_length=300)
+    text: str = Field(max_length=300)
 
 
 class TextBlock(BlockBase):
@@ -177,6 +189,9 @@ class Table(BlockBase):
     # Which columns, in what order; all of them when not set.
     columns: list[Key] | None = Field(default=None, max_length=20)
     empty_text: Line = "No rows."
+    # A first column numbering the rows (1, 2, 3), so a row can be found again in
+    # another table of the same rows.
+    row_numbers: bool = False
 
 
 class Image(BlockBase):
@@ -217,7 +232,7 @@ class SeveritySummary(BlockBase):
 
 
 class Source(Strict):
-    title: str = Field(min_length=1, max_length=500)
+    title: str = Field(max_length=500)
     link: str = Field(default="", max_length=2000)
 
 
@@ -230,9 +245,14 @@ class Sources(BlockBase):
 
 
 class Signer(Strict):
-    role: Literal["technician", "reviewer", "company"]
+    # Someone who signs the report digitally, as the template's signing setting says, or
+    # "pad": a signature drawn in the form, on a signature pad question (someone who
+    # isn't a user of Skjald, such as the customer's witness).
+    role: Literal["technician", "reviewer", "company", "pad"]
     label: Line
     style: Literal["handwritten", "stamp"] = "handwritten"
+    # The signature pad question, for a pad.
+    question: Id | None = None
 
 
 class Signatures(BlockBase):

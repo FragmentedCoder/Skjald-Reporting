@@ -37,6 +37,7 @@
   const questions = $derived(questionsOf(content));
   const lists = $derived(questions.filter((q) => q.type === "repeating" || q.type === "table"));
   const photos = $derived(questions.filter((q) => q.type === "photo"));
+  const pads = $derived(questions.filter((q) => q.type === "signature"));
   const problem = (field: string) => problems.find((p) => p.field === field)?.message ?? null;
   const fieldProblems = (prefix: string) => problems.filter((p) => p.field.startsWith(prefix)).map((p) => p.message);
   const columnsOf = (questionId: string | null) => {
@@ -202,6 +203,8 @@
         {#if problem("columns")}<p class="small error">{problem("columns")}</p>{/if}
       </fieldset>
     {/if}
+    <label class="check"><input type="checkbox" checked={block.row_numbers ?? false} onchange={(e) => block.kind === "table" && (block.row_numbers = e.currentTarget.checked)} /> Number the rows</label>
+    <span class="hint">A “No.” column first: 1, 2, 3. Two tables of the same rows then share the numbers, so a row is found again by its number.</span>
     {@render text("caption", "Caption", block.caption, (v) => block.kind === "table" && (block.caption = v), "Printed as “Table 1. …”, numbered for you.")}
     {@render text("empty_text", "When there are no rows", block.empty_text, (v) => block.kind === "table" && (block.empty_text = v))}
   {:else if block.kind === "image"}
@@ -337,14 +340,23 @@
         <div class="signer">
           <select class="input" aria-label="Signature {i + 1}: who" value={signer.role} onchange={(e) => changeSigner(signer, e.currentTarget.value as Signer["role"])}>
             <option value="technician">The technician</option><option value="reviewer">The reviewer</option><option value="company">The company seal</option>
+            <option value="pad">A signature pad in the form</option>
           </select>
-          <select class="input" aria-label="Signature {i + 1}: how it looks" bind:value={signer.style}>
-            <option value="handwritten">Handwritten</option><option value="stamp">A stamp</option>
-          </select>
+          {#if signer.role === "pad"}
+            <select class="input" aria-label="Signature {i + 1}: which signature pad" value={signer.question ?? ""} onchange={(e) => (signer.question = e.currentTarget.value || null)}>
+              <option value="" disabled>{pads.length ? "Choose a signature pad…" : "Add a signature pad question first"}</option>
+              {#each pads as q (q.id)}<option value={q.id}>{questionChoice(q)}</option>{/each}
+            </select>
+          {:else}
+            <select class="input" aria-label="Signature {i + 1}: how it looks" bind:value={signer.style}>
+              <option value="handwritten">Handwritten</option><option value="stamp">A stamp</option>
+            </select>
+          {/if}
           <NameInput label="Signature {i + 1}: label" bind:value={signer.label} {entries} />
           <button class="mini" type="button" aria-label="Remove signature {i + 1}" disabled={block.signers.length === 1} onclick={() => block.kind === "signatures" && block.signers.splice(i, 1)}><X size={14} aria-hidden="true" /></button>
         </div>
       {/each}
+      {#each fieldProblems("signers") as message, i (i)}<p class="small error">{message}</p>{/each}
       {#if block.signers.length < 4}
         <button class="link-button small start" type="button" onclick={() => block.kind === "signatures" && block.signers.push(nextSigner(block.signers))}><Plus size={14} aria-hidden="true" /> Add a signature</button>
       {/if}
@@ -354,7 +366,9 @@
       <select id="{id}-layout" class="input" bind:value={block.layout}><option value="row">Side by side</option><option value="stack">Stacked</option></select>
     </div>
     <label class="check"><input type="checkbox" bind:checked={block.show_date} /> Print the date of signing</label>
-    <p class="small muted">Who signs, and in what order, is the template's signing setting.</p>
+    <p class="small muted">The technician, the reviewer and the company seal sign the finished report digitally: who does, and in what order, is
+      “Who signs” on the Settings tab, and each signs as themselves. A signature pad is drawn in the form, by someone who isn't a user of Skjald,
+      such as the customer's witness; until it's drawn its place says “Not signed”. Make the question required to hold the report back until then.</p>
   {:else if block.kind === "columns"}
     <div class="field">
       <label for="{id}-count">Columns</label>
