@@ -165,12 +165,30 @@ test("a designer builds a template's form, with rules, and publishes it", async 
   await page.getByRole("button", { name: "Edit" }).click();
   await expect(page.getByText("Version 1 is the one in use.")).toBeVisible();
 
-  // The templates list says what's published and what's in a draft.
+  // The templates are cards: the first page, its language and name, who made it, and
+  // a bar with the version and where it stands.
   await page.getByRole("link", { name: "Templates", exact: true }).first().click();
-  const row = page.getByRole("row", { name: new RegExp(TEMPLATE) });
-  await expect(row.getByText("Version 1")).toBeVisible();
-  await expect(row.getByText("Draft", { exact: true })).toBeVisible();
+  const card = page.getByRole("listitem").filter({ has: page.getByRole("link", { name: TEMPLATE, exact: true }) });
+  await expect(card.getByText("EN", { exact: true })).toBeVisible();
+  await expect(card.getByText(/^Version 1/)).toBeVisible();
+  await expect(card.getByText("In use, draft changes", { exact: true })).toBeVisible();
+  await expect(card).toContainText("Created");
+  await expect(card).toContainText("· Dagny Designer");
+  await expect(card.locator(".paper")).toBeVisible();
   await shot(page, "list");
+
+  // Retired, it moves to the Retired tab, out of the way; brought back, it returns.
+  await page.getByRole("button", { name: `Actions for ${TEMPLATE}` }).click();
+  await page.getByRole("menuitem", { name: "Retire" }).click();
+  await expect(card).toHaveCount(0);
+  await page.getByRole("tab", { name: /^Retired/ }).click();
+  await expect(card.getByText("Retired", { exact: true })).toBeVisible();
+  await expect(card).toContainText("Retired");
+  await page.getByRole("button", { name: `Actions for ${TEMPLATE}` }).click();
+  await page.getByRole("menuitem", { name: "Bring back" }).click();
+  await expect(card).toHaveCount(0);
+  await page.getByRole("tab", { name: /^In use/ }).click();
+  await expect(card).toBeVisible();
 
   expect(violations).toEqual([]);
   await context.close();
@@ -469,7 +487,7 @@ test("a designer drags blocks in the outline and on the pages", async ({ browser
   await page.getByRole("button", { name: "Pages", exact: true }).click();
   const first = page.getByRole("region", { name: /^Page 1 of / });
   await expect(first.getByRole("heading", { name: "Security incident report" })).toBeVisible();
-  const intro = await page.locator(".canvas .intro").boundingBox();
+  const intro = await page.locator(".workspace > .intro").boundingBox();
   const sheet = await first.boundingBox();
   expect(sheet!.y - (intro!.y + intro!.height)).toBeLessThan(40);
   const signed = page.getByRole("region", { name: /^Page 2 of / });
