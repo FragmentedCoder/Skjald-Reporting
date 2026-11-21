@@ -7,8 +7,18 @@
 // in Skjald's words, and what's read is the same for both.
 //
 // What comes back is the expression's shape: every call with where its arguments are,
-// every map with where its keys are. How deep it goes is counted the way Google's
-// parser counts, which is what limits it.
+// every map with where its keys are.
+//
+// How deep the expression goes is counted as it's read, the way Google's parser counts
+// (cel-expr-python 0.1.4), which is what limits it: it follows 32 steps. Being inside an
+// expression is a step: the whole expression is the first, and a function's value, an
+// item of a list or a map, what's between [ and ], an ELSE, a pair of brackets and what
+// a single ! or - stands before are each one more. So is each .name, function after a
+// dot, [ ], calculation (+ - * / %) and comparison put on a value, on top of the deeper
+// of the two it joins. So 32 values can be added in a row, or 17 inside 15 lists; 32
+// pairs of brackets or 31 functions, lists or ELSE IFs can be inside each other, but !(
+// only 15 times, being two steps. ANDs and ORs in a row don't count, nor do !! and --,
+// which Google's parser drops.
 
 import { characters, type Token } from "./lexer";
 
@@ -29,10 +39,9 @@ const WIDTHS = new Map([["x", 2], ["X", 2], ["u", 4], ["U", 8]]);
 const HEX = /^[0-9a-fA-F]+$/;
 const MAX_INT = 2n ** 63n - 1n;
 
-// Google's parser follows an expression 32 steps deep and takes 33 expressions inside
-// each other; cel-js would go further, so the limit is said here for both.
+// Google's parser follows an expression 32 steps deep, counted as Reader counts them;
+// cel-js would go further, so the limit is said here for both.
 const MAX_DEPTH = 32;
-const MAX_NESTING = 33;
 
 const END = "The expression stops before it's finished.";
 export const TOO_DEEP =
@@ -56,6 +65,9 @@ export interface Call {
   at: number;
   args: [number, number][];
 }
+
+/** A value in brackets that's been read: where it starts and how deep it goes. */
+type Left = [number, number];
 
 export interface Shape {
   calls: Call[];
@@ -113,10 +125,17 @@ export function unquote(text: string): string | null {
 
 class Reader {
   i = 0;
-  // How many expressions sit inside each other here: brackets, arguments, an ELSE.
-  // Each expression gives back how deep it goes, counted as Google's parser counts:
-  // one for each step that isn't a pair of brackets.
-  level = 0;
+  // Depth is counted as Google's parser counts it, in steps of two kinds that add up.
+  // One is how many expressions this place is inside of: the whole expression is one,
+  // and a pair of brackets, a function's value, an item of a list or a map, what's
+  // between [ and ], an ELSE and what a single ! or - stands before are each one more.
+  // The other is how many steps the value read goes itself, which is what each
+  // reading gives back: nothing for a name or a value written out, one for each .name,
+  // function after a dot, [ ], calculation and comparison on top of the deeper of what
+  // it joins. Brackets, a function before its brackets, a list and a map go as deep as
+  // what's in them; an IF as deep as its ELSE; ANDs and ORs don't count and start
+  // again from nothing.
+  inside = 0;
   readonly calls: Call[] = [];
   readonly maps: [number, number][][] = [];
   readonly selects = new Set<string>();
@@ -154,14 +173,31 @@ class Reader {
     this.i += 1;
   }
 
+  /**
+   * Refuses what Google's parser wouldn't follow: one more step on a value that goes
+   * this many already, or this many more expressions to be inside of.
+   */
+  fits(steps: number) {
+    if (this.inside + steps > MAX_DEPTH) throw new Unreadable("invalid", TOO_DEEP);
+  }
+
   expression(): number {
-    this.level += 1;
-    if (this.level > MAX_NESTING) throw new Unreadable("invalid", TOO_DEEP);
-    const condition = this.either();
-    let height = condition;
+    this.fits(1);
+    this.inside += 1;
+    const height = this.conditional();
+    this.inside -= 1;
+    return height;
+  }
+
+  /**
+   * An expression where it's already counted as one to be inside of. left: a value in
+   * brackets that's been read and that this carries on from.
+   */
+  conditional(left?: Left): number {
+    let height = this.either(left);
     if (this.punct("?")) {
       this.i += 1;
-      const first = this.either();
+      this.either();
       if (this.punct("?")) {
         throw new Unreadable(
           "compile",
@@ -169,52 +205,56 @@ class Reader {
         );
       }
       this.expect(":");
-      height = 1 + Math.max(condition, first, this.expression());
+      height = this.expression();
     }
-    this.level -= 1;
     return height;
   }
 
-  either(): number {
-    const heights = [this.both()];
+  either(left?: Left): number {
+    const height = this.both(left);
+    if (!this.punct("||")) return height;
     while (this.punct("||")) {
       this.i += 1;
-      heights.push(this.both());
+      this.both();
     }
-    return heights.length === 1 ? heights[0] : 1 + Math.max(...heights);
+    return 0;
   }
 
-  both(): number {
-    const heights = [this.relation()];
+  both(left?: Left): number {
+    const height = this.relation(left);
+    if (!this.punct("&&")) return height;
     while (this.punct("&&")) {
       this.i += 1;
-      heights.push(this.relation());
+      this.relation();
     }
-    return heights.length === 1 ? heights[0] : 1 + Math.max(...heights);
+    return 0;
   }
 
-  relation(): number {
-    let height = this.sum();
+  relation(left?: Left): number {
+    let height = this.sum(left);
     while (this.punct(...RELATIONS) || this.word("in")) {
       this.i += 1;
+      this.fits(height);
       height = 1 + Math.max(height, this.sum());
     }
     return height;
   }
 
-  sum(): number {
-    let height = this.product();
+  sum(left?: Left): number {
+    let height = this.product(left);
     while (this.punct("+", "-")) {
       this.i += 1;
+      this.fits(height);
       height = 1 + Math.max(height, this.product());
     }
     return height;
   }
 
-  product(): number {
-    let height = this.unary();
+  product(left?: Left): number {
+    let height = this.unary(left);
     while (this.punct("*", "/", "%")) {
       this.i += 1;
+      this.fits(height);
       height = 1 + Math.max(height, this.unary());
     }
     return height;
@@ -224,23 +264,32 @@ class Reader {
     return this.tokens[this.i + 1]?.kind === "number";
   }
 
-  unary(): number {
-    if (this.punct("!")) {
-      while (this.punct("!")) this.i += 1;
-      return 1 + this.member();
-    }
-    if (this.punct("-") && !this.numberFollows()) {
-      while (this.punct("-")) this.i += 1;
-      return 1 + this.member();
+  unary(left?: Left): number {
+    if (left) return this.member(left);
+    for (const sign of ["!", "-"]) {
+      if (this.punct(sign) && !(sign === "-" && this.numberFollows())) {
+        // Google's parser drops them in pairs: of !!!x one is left, of !!x none.
+        let kept = 0;
+        while (this.punct(sign)) {
+          this.i += 1;
+          kept = 1 - kept;
+        }
+        if (kept) this.fits(0);
+        this.inside += kept;
+        const height = this.member();
+        this.inside -= kept;
+        return height;
+      }
     }
     return this.member();
   }
 
-  member(): number {
-    const start = this.i;
-    let height = this.primary();
+  member(left?: Left): number {
+    const start = left ? left[0] : this.i;
+    let height = left ? left[1] : this.primary();
     for (;;) {
       if (this.punct(".")) {
+        this.fits(height);
         this.i += 1;
         const name = this.tokens[this.i];
         if (name === undefined || name.kind !== "ident" || LITERALS.includes(name.text) || name.text === "in") {
@@ -254,6 +303,7 @@ class Reader {
           this.selects.add(`${start}:${this.i}`);
         }
       } else if (this.punct("[")) {
+        this.fits(height);
         this.i += 1;
         height = 1 + Math.max(height, this.expression());
         this.expect("]");
@@ -289,18 +339,31 @@ class Reader {
       this.i += negative ? 1 : 0;
       this.number(this.tokens[this.i], negative);
       this.i += 1;
-      return 1;
+      return 0;
     }
     if (token.kind === "string") {
       this.text(token);
       this.i += 1;
-      return 1;
+      return 0;
     }
     if (token.kind === "punct") {
       if (token.text === "(") {
-        this.i += 1;
-        const height = this.expression();
-        this.expect(")");
+        // Google's parser takes brackets right inside brackets in one go: the run of
+        // them must fit, and what's in them is inside one expression more, not one for
+        // each pair.
+        const opened: number[] = [];
+        while (this.punct("(")) {
+          opened.push(this.i);
+          this.i += 1;
+        }
+        this.fits(opened.length - 1);
+        this.inside += 1;
+        let height = this.conditional();
+        for (let pair = opened.length - 1; pair >= 0; pair -= 1) {
+          this.expect(")");
+          if (pair > 0 && !this.punct(")")) height = this.conditional([opened[pair], height]);
+        }
+        this.inside -= 1;
         return height;
       }
       if (token.text === "[") {
@@ -312,7 +375,7 @@ class Reader {
           this.i += 1;
         }
         this.expect("]");
-        return 1 + Math.max(...heights);
+        return Math.max(...heights);
       }
       if (token.text === "{") {
         this.i += 1;
@@ -329,7 +392,7 @@ class Reader {
         }
         this.expect("}");
         this.maps.push(keys);
-        return 1 + Math.max(...heights);
+        return Math.max(...heights);
       }
       if (token.text === ".") {
         throw new Unreadable("invalid", `A name can't start with a dot (position ${this.position(token)}).`);
@@ -338,13 +401,13 @@ class Reader {
     }
     if (LITERALS.includes(token.text)) {
       this.i += 1;
-      return 1;
+      return 0;
     }
     if (token.text === "in") throw this.unexpected();
     this.i += 1;
-    if (this.punct("(")) return 1 + Math.max(0, ...this.args(token.text, false, this.i - 1));
+    if (this.punct("(")) return Math.max(0, ...this.args(token.text, false, this.i - 1));
     if (RESERVED.has(token.text)) throw new Unreadable("compile", `${token.text} is a reserved word in expressions.`);
-    return 1;
+    return 0;
   }
 
   number(token: Token, negative: boolean) {
@@ -378,8 +441,7 @@ class Reader {
 /** The expression's shape, if it's one both engines read the same way. */
 export function read(expr: string, tokens: Token[]): Shape {
   const reader = new Reader(expr, tokens);
-  const depth = reader.expression();
+  reader.expression();
   if (reader.i < tokens.length) throw reader.unexpected();
-  if (depth > MAX_DEPTH) throw new Unreadable("invalid", TOO_DEEP);
   return { calls: reader.calls, maps: reader.maps, selects: reader.selects };
 }

@@ -18,10 +18,10 @@ import pytest
 
 from app.cel import Engine, ExpressionError, Table
 from app.cel.checked import calls
-from app.cel.engine import LOCALES, parse_type, validate
+from app.cel.engine import LOCALES, _engine_message, parse_type, validate
 from app.cel.lexer import LexError, tokenize
 from app.cel.library import ALLOWED, BANNED, ENGINE, SIGNATURES
-from app.cel.reader import Unreadable, read, unquote
+from app.cel.reader import TOO_DEEP, Unreadable, read, unquote
 
 SHARED = Path(__file__).resolve().parents[2] / "shared" / "cel"
 CASES = json.loads((SHARED / "cases.json").read_text())
@@ -161,15 +161,60 @@ def test_the_checked_tree_is_read() -> None:
     assert "int64_to_string" in found[1].overloads and len(found[1].overloads) > 1
 
 
+# What goes deeper each time it's written around or after what's there already, from
+# which value, and how many times Google's parser follows it (None: without end).
+DEEPER = [
+    ("answers.n", "{} + answers.n", 31),  # 32 values added in a row
+    ("answers.n", "{} * answers.n", 31),
+    ("answers.ok", "{} == answers.ok", 31),
+    ("answers.n", "(answers.ok ? 1 : 0) + {}", 32),  # 33 ticked boxes counted
+    ("answers.n", "answers.n - ({})", 31),
+    ("answers.n", "({})", 32),
+    ("answers.n", "int({})", 31),
+    ("answers.n", "[{}]", 31),
+    ("answers.n", "{{\"a\": {}}}", 31),
+    ("answers.n", "answers.rows.map(r, {})", 31),
+    ("answers.n", "[({})]", 15),  # an item and a pair of brackets: two steps
+    ("answers.n + answers.n + answers.n", "[{}]", 29),  # steps inside and in a row add up
+    ("answers.t", "{}.trim()", 31),
+    ("answers.rows", "{}.filter(r, true)", 31),
+    ("answers.rows[0]", "{}.a", 30),
+    ("answers.d", "{}[0]", 31),
+    ("0", "answers.d[{}]", 31),
+    ("answers.ok", "answers.ok ? true : {}", 31),  # IF / ELSE IF
+    ("answers.ok", "answers.ok ? ({}) : false", 31),
+    ("answers.ok", "!({})", 15),  # a NOT and its brackets: two steps
+    ("answers.n", "-({})", 15),
+    ("answers.ok", "!!{}", None),  # dropped in pairs
+    ("answers.ok", "{} && answers.ok", None),
+    ("answers.ok", "answers.ok || ({})", 31),
+]
+
+
 def test_the_depth_limit_is_the_engines_own() -> None:
-    # Skjald refuses what Google's parser can't follow, in its own words. If the
-    # engine's limit moves, the one in app/cel/reader.py should move with it.
-    engine = Engine({"answers.n": "int"})
-    engine._env.compile(" + ".join(["answers.n"] * 31))
-    engine._env.compile("(" * 32 + "answers.n" + ")" * 32)
-    for too_deep in (" + ".join(["answers.n"] * 32), "(" * 33 + "answers.n" + ")" * 33):
-        with pytest.raises(RuntimeError, match="recursion"):
-            engine._env.compile(too_deep)
+    # Skjald refuses what Google's parser can't follow, in its own words, and nothing
+    # that it can. If the engine's limit moves or it counts another way, the readers
+    # (app/cel/reader.py and the browser's copy) should move with it.
+    engine = Engine({"answers.n": "int", "answers.ok": "bool", "answers.t": "string",
+                     "answers.rows": "list<map<string, dyn>>", "answers.d": "dyn"})
+    for value, deeper, most in DEEPER:
+        expr, taken = value, []
+        for times in range(41):
+            try:
+                engine._env.compile(expr)
+                followed = True
+            except RuntimeError as exc:
+                # Were the engine ever the one to refuse, it would be in the same words.
+                assert _engine_message(str(exc)) == TOO_DEEP, (expr, exc)
+                followed = False
+            try:
+                read(tokenize(expr))
+                assert followed, (deeper, times)
+                taken.append(times)
+            except Unreadable as exc:
+                assert exc.message == TOO_DEEP and not followed, (deeper, times)
+            expr = deeper.format(expr)
+        assert taken == list(range(41 if most is None else most + 1)), deeper
 
 
 def test_the_reader_gives_calls_maps_and_names_after_a_dot() -> None:

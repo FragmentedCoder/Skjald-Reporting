@@ -704,10 +704,22 @@ export class Engine {
   #compile(expr: string) {
     const { tokens, shape } = inspect(expr, this.#declared);
     this.#literals(tokens, shape);
-    const asked = shape.calls.some((call) => call.name === "has") && !tokens.some((t) => t.kind === "ident" && t.text === "in");
+    const source = this.#rewritten(expr, tokens, shape);
+    const has = shape.calls.some((call) => call.name === "has");
+    if (has) {
+      // has() is written out as a comparison in brackets, which can be a step or two
+      // deeper than what was written, so what the engine gets is read too.
+      try {
+        read(source, tokenize(source));
+      } catch (error) {
+        if (error instanceof Unreadable) throw new ExpressionError(error.kind, error.message);
+        throw error;
+      }
+    }
+    const asked = has && !tokens.some((t) => t.kind === "ident" && t.text === "in");
     let parsed;
     try {
-      parsed = this.#env.parse(this.#rewritten(expr, tokens, shape));
+      parsed = this.#env.parse(source);
     } catch (error) {
       throw new ExpressionError("compile", engineMessage(error, asked));
     }
