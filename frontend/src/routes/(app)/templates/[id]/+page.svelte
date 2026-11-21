@@ -18,7 +18,7 @@
   import { FIELD_GROUPS, FIELD_TYPES, fieldType, typeCode } from "#lib/templates/fields.js";
   import { catalogue } from "#lib/templates/catalogue.js";
   import { declarations } from "#lib/templates/names.js";
-  import type { Problem, Question, Step, TemplateContent } from "#lib/templates/types.js";
+  import { blocksOf, type Problem, type Question, type Step, type TemplateContent } from "#lib/templates/types.js";
 
   // The Questions tab: the technician's form, step by step. Field types are dragged
   // in from the palette, or clicked to add after what's selected; questions are
@@ -198,7 +198,13 @@
     }
   }
 
-  const printedBy = (q: Question) => usage(content, q).blocks.length > 0;
+  // The questions a block prints, found in one walk of the layout for the whole list
+  // (asking for each question's usage in turn read every block and every expression
+  // once per question, which took seconds with some hundreds of questions).
+  const printed = $derived(new Set(blocksOf(content.layout).flatMap((b) => [
+    ...("question" in b && b.question ? [b.question] : []),
+    ...(b.kind === "signatures" ? b.signers.flatMap((signer) => (signer.question ? [signer.question] : [])) : []),
+  ])));
   const total = $derived(content.form.reduce((n, s) => n + s.questions.length, 0));
   const lastQuestion = (stepIndex: number, index: number) =>
     stepIndex === content.form.length - 1 && index === content.form[stepIndex].questions.length - 1;
@@ -256,7 +262,7 @@
                     </span>
                     <span class="chips">
                       {#if flagged}<span class="flag small">{flagged} problem{flagged === 1 ? "" : "s"}</span>{/if}
-                      <Where form={q.type !== "calculated" || Boolean(q.settings.show_in_form)} pdf={printedBy(q)} />
+                      <Where form={q.type !== "calculated" || Boolean(q.settings.show_in_form)} pdf={printed.has(q.id)} />
                     </span>
                   </span>
                 </button>
