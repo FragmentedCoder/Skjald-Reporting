@@ -17,9 +17,11 @@ from typing import Any
 import pytest
 
 from app.cel import Engine, ExpressionError, Table
+from app.cel.checked import calls
 from app.cel.engine import LOCALES, parse_type, validate
 from app.cel.lexer import LexError, tokenize
-from app.cel.library import ALLOWED, BANNED, SIGNATURES
+from app.cel.library import ALLOWED, BANNED, ENGINE, SIGNATURES
+from app.cel.reader import Unreadable, read, unquote
 
 SHARED = Path(__file__).resolve().parents[2] / "shared" / "cel"
 CASES = json.loads((SHARED / "cases.json").read_text())
@@ -109,6 +111,86 @@ def test_skjald_functions_follow_the_shared_list() -> None:
     assert declared == SIGNATURES
 
 
+def test_engine_functions_follow_the_shared_list() -> None:
+    declared = {o["id"]: o["signature"] for f in FUNCTIONS["functions"]
+                for o in f["overloads"] if o["where"] != "skjald"}
+    assert declared == ENGINE
+
+
+def test_the_engine_calls_its_overloads_what_the_shared_list_does() -> None:
+    # One call of each overload the engine brings: the checked tree must name it by
+    # the ID in the shared list, or the server would refuse what the list allows.
+    engine = Engine({"answers.t": "string", "answers.tags": "list<string>", "answers.n": "int",
+                     "answers.m": "map<string, string>"})
+    written = {
+        "string_replace_string_string": "answers.t.replace(\"a\", \"b\")",
+        "string_size": "answers.t.size()", "list_size": "answers.tags.size()",
+        "map_size": "answers.m.size()", "size_string": "size(answers.t)",
+        "size_list": "size(answers.tags)", "size_map": "size(answers.m)",
+        "contains_string": "answers.t.contains(\"a\")",
+        "starts_with_string": "answers.t.startsWith(\"a\")",
+        "ends_with_string": "answers.t.endsWith(\"a\")",
+        "string_upper_ascii": "answers.t.upperAscii()",
+        "string_lower_ascii": "answers.t.lowerAscii()", "string_trim": "answers.t.trim()",
+        "string_split_string": "answers.t.split(\",\")",
+        "list_join_string": "answers.tags.join(\",\")",
+        "string_index_of_string": "answers.t.indexOf(\"a\")",
+        "string_to_timestamp": "timestamp(answers.t)", "int64_to_timestamp": "timestamp(answers.n)",
+        "string_to_duration": "duration(answers.t)",
+    }
+    assert set(written) == {i for i in ENGINE if not i.endswith("_macro")}
+    for overload, expr in written.items():
+        found = calls(engine._compile(expr)[0].serialize())
+        assert [(c.overloads, c.types[0]) for c in found][0][0] == (overload,), expr
+
+
+def test_the_checked_tree_is_read() -> None:
+    engine = Engine({"answers.rows": "list<map<string, dyn>>", "answers.when": "timestamp",
+                     "answers.ok": "bool"})
+    found = calls(engine._env.compile(
+        "answers.ok ? string(answers.rows[0].n) : answers.when.getFullYear() > 2000 ? \"a\" : \"b\""
+    ).serialize())
+    assert [(c.function, c.types) for c in found] == [
+        ("_?_:_", ("bool", "string", "string")),
+        ("string", ("dyn",)),
+        ("_[_]", ("list<map<string, dyn>>", "int")),
+        ("_?_:_", ("bool", "string", "string")),
+        ("_>_", ("int", "int")),
+        ("getFullYear", ("timestamp",)),
+    ]
+    assert "int64_to_string" in found[1].overloads and len(found[1].overloads) > 1
+
+
+def test_the_depth_limit_is_the_engines_own() -> None:
+    # Skjald refuses what Google's parser can't follow, in its own words. If the
+    # engine's limit moves, the one in app/cel/reader.py should move with it.
+    engine = Engine({"answers.n": "int"})
+    engine._env.compile(" + ".join(["answers.n"] * 31))
+    engine._env.compile("(" * 32 + "answers.n" + ")" * 32)
+    for too_deep in (" + ".join(["answers.n"] * 32), "(" * 33 + "answers.n" + ")" * 33):
+        with pytest.raises(RuntimeError, match="recursion"):
+            engine._env.compile(too_deep)
+
+
+def test_the_reader_gives_calls_maps_and_names_after_a_dot() -> None:
+    tokens = tokenize(
+        "has(item.ip) && sum([1, 2]) > answers.rows.map(r, {\"a\": r.n, 2: 0}).size()")
+    shape = read(tokens)
+    assert [(c.name, c.member, len(c.args)) for c in shape.calls] == [
+        ("has", False, 1), ("sum", False, 1), ("map", True, 2), ("size", True, 0)]
+    assert [[tokens[start].text for start, _ in keys] for keys in shape.maps] == [["\"a\"", "2"]]
+    assert shape.calls[0].args[0] in shape.selects
+    assert unquote("\"a\\x41\\u00e6\\n\"") == "aAæ\n" and unquote("r'\\d'") == "\\d"
+    assert unquote("\"\\q\"") is None and unquote("r'a\\'") is None
+    for broken, message in (("1 +", "The expression stops before it's finished."),
+                            ("(1 2)", "Unexpected '2' at position 4."),
+                            ("a ? b ? 1 : 2 : 3", "An IF inside the first result of another IF "
+                                                  "needs brackets around it (position 7).")):
+        with pytest.raises(Unreadable) as caught:
+            read(tokenize(broken))
+        assert caught.value.message == message
+
+
 def test_locales_follow_the_shared_list() -> None:
     assert FUNCTIONS["locales"] == LOCALES
 
@@ -161,7 +243,12 @@ def test_engine_errors_are_said_plainly() -> None:
     assert caught.value.message == ">= doesn't work with text and a decimal number."
     with pytest.raises(ExpressionError) as caught:
         engine.evaluate("re_match(\"a\", \"a(?=b)\")", {})
-    assert caught.value.message == "invalid perl operator: (?="
+    assert caught.value.message == (
+        "The pattern in re_match() isn't a regular expression Skjald can use (RE2 syntax).")
+    with pytest.raises(ExpressionError) as caught:
+        engine.evaluate("re_match(\"a\", answers.title)", {"answers": {"title": "a(?=b)"}})
+    assert (caught.value.kind, caught.value.message) == (
+        "runtime", "The pattern isn't a regular expression Skjald can use (RE2 syntax).")
 
 
 def test_missing_values_are_empty() -> None:

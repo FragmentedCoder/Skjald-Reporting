@@ -1,5 +1,5 @@
 {
-  "about": "Every function a template expression may call, for both engines: cel-expr-python on the server and cel-js in the browser. 'where' says who provides an overload: 'skjald' (Skjald implements it on both sides), 'engine' (both engines have it built in) or 'browser' (the server's engine has it, Skjald adds it in the browser). The validator refuses any other function. Each side has a test holding its own declarations to this file, and the examples run on both engines with the cases in cases.json.",
+  "about": "Every function a template expression may call, for both engines: cel-expr-python on the server and cel-js in the browser. 'where' says who provides an overload: 'skjald' (Skjald implements it on both sides), 'engine' (both engines have it built in) or 'browser' (the server's engine has it, Skjald adds it in the browser, where cel-js has none or one that behaves differently). An 'engine' or 'browser' overload's ID is the server's engine's own name for it. The validator refuses any other function, a function written with the wrong number of values, and any overload of an engine's that isn't listed here (string() of a date, replace() with a count). Each side has a test holding its own declarations to this file, and the examples run on both engines with the cases in cases.json.",
   "banned": {
     "matches": "matches() isn't allowed in templates: use re_match(), which uses the same safe regular expressions on the server and in the browser."
   },
@@ -36,7 +36,7 @@
     {
       "name": "re_replace",
       "group": "Text",
-      "summary": "Replaces every match of the regular expression (RE2 syntax). In the replacement, $1 or ${name} is a captured group and $$ is a dollar sign.",
+      "summary": "Replaces every match of the regular expression (RE2 syntax). In the replacement, $1 or ${name} is a captured group, $0 the whole match and $$ a dollar sign; write ${1}0 for group 1 followed by a 0. A group the pattern doesn't have is an error.",
       "overloads": [{"id": "re_replace_string_string_string", "signature": "re_replace(string, string, string): string", "where": "skjald"}],
       "examples": [
         {"expr": "re_replace(\"pw=Hunter2 user=a.berg\", \"pw=\\\\S+\", \"pw=****\")", "result": "pw=**** user=a.berg"},
@@ -57,7 +57,10 @@
       "overloads": [
         {"id": "string_size", "signature": "string.size(): int", "where": "engine"},
         {"id": "list_size", "signature": "list<dyn>.size(): int", "where": "engine"},
-        {"id": "size_string", "signature": "size(string): int", "where": "engine"}
+        {"id": "map_size", "signature": "map<dyn, dyn>.size(): int", "where": "engine"},
+        {"id": "size_string", "signature": "size(string): int", "where": "engine"},
+        {"id": "size_list", "signature": "size(list<dyn>): int", "where": "engine"},
+        {"id": "size_map", "signature": "size(map<dyn, dyn>): int", "where": "engine"}
       ],
       "examples": [{"expr": "\"Æblegrød\".size()", "result": 8}]
     },
@@ -65,49 +68,49 @@
       "name": "contains",
       "group": "Text",
       "summary": "Whether the text contains other text.",
-      "overloads": [{"id": "string_contains", "signature": "string.contains(string): bool", "where": "engine"}],
+      "overloads": [{"id": "contains_string", "signature": "string.contains(string): bool", "where": "engine"}],
       "examples": [{"expr": "\"2001:db8::5\".contains(\":\")", "result": true}]
     },
     {
       "name": "startsWith",
       "group": "Text",
       "summary": "Whether the text starts with other text.",
-      "overloads": [{"id": "string_starts_with", "signature": "string.startsWith(string): bool", "where": "engine"}],
+      "overloads": [{"id": "starts_with_string", "signature": "string.startsWith(string): bool", "where": "engine"}],
       "examples": [{"expr": "\"203.0.113.77\".startsWith(\"203.\")", "result": true}]
     },
     {
       "name": "endsWith",
       "group": "Text",
       "summary": "Whether the text ends with other text.",
-      "overloads": [{"id": "string_ends_with", "signature": "string.endsWith(string): bool", "where": "engine"}],
+      "overloads": [{"id": "ends_with_string", "signature": "string.endsWith(string): bool", "where": "engine"}],
       "examples": [{"expr": "\"fjordvik.example\".endsWith(\".example\")", "result": true}]
     },
     {
       "name": "upperAscii",
       "group": "Text",
       "summary": "The text in capitals (the letters A to Z only).",
-      "overloads": [{"id": "string_upper_ascii", "signature": "string.upperAscii(): string", "where": "engine"}],
+      "overloads": [{"id": "string_upper_ascii", "signature": "string.upperAscii(): string", "where": "browser"}],
       "examples": [{"expr": "\"critical\".upperAscii()", "result": "CRITICAL"}]
     },
     {
       "name": "lowerAscii",
       "group": "Text",
       "summary": "The text in small letters (the letters A to Z only).",
-      "overloads": [{"id": "string_lower_ascii", "signature": "string.lowerAscii(): string", "where": "engine"}],
+      "overloads": [{"id": "string_lower_ascii", "signature": "string.lowerAscii(): string", "where": "browser"}],
       "examples": [{"expr": "\"HIGH\".lowerAscii()", "result": "high"}]
     },
     {
       "name": "trim",
       "group": "Text",
-      "summary": "The text without spaces at either end.",
-      "overloads": [{"id": "string_trim", "signature": "string.trim(): string", "where": "engine"}],
+      "summary": "The text without spaces, tabs or line breaks at either end.",
+      "overloads": [{"id": "string_trim", "signature": "string.trim(): string", "where": "browser"}],
       "examples": [{"expr": "\"  SN-4471  \".trim()", "result": "SN-4471"}]
     },
     {
       "name": "split",
       "group": "Text",
-      "summary": "The pieces of the text between each separator.",
-      "overloads": [{"id": "string_split_string", "signature": "string.split(string): list<string>", "where": "engine"}],
+      "summary": "The pieces of the text between each separator; with \"\" as the separator, its characters.",
+      "overloads": [{"id": "string_split_string", "signature": "string.split(string): list<string>", "where": "browser"}],
       "examples": [{"expr": "\"a,b,c\".split(\",\").size()", "result": 3}]
     },
     {
@@ -120,45 +123,48 @@
     {
       "name": "substring",
       "group": "Text",
-      "summary": "Part of the text, from one position up to (not including) another, counting from 0.",
-      "overloads": [{"id": "string_substring_int_int", "signature": "string.substring(int, int): string", "where": "engine"}],
+      "summary": "Part of the text, from one position up to (not including) another, counting characters from 0 (an emoji is one).",
+      "overloads": [{"id": "substring_int_int", "signature": "string.substring(int, int): string", "where": "skjald"}],
       "examples": [{"expr": "\"INC-2026-0142\".substring(0, 3)", "result": "INC"}]
     },
     {
       "name": "indexOf",
       "group": "Text",
-      "summary": "Where other text first appears in the text, counting from 0, or -1 when it doesn't.",
-      "overloads": [{"id": "string_index_of_string", "signature": "string.indexOf(string): int", "where": "engine"}],
+      "summary": "Where other text first appears in the text, counting characters from 0, or -1 when it doesn't.",
+      "overloads": [{"id": "string_index_of_string", "signature": "string.indexOf(string): int", "where": "browser"}],
       "examples": [{"expr": "\"INC-2026-0142\".indexOf(\"-\")", "result": 3}]
     },
     {
       "name": "int",
       "group": "Numbers",
-      "summary": "A whole number from text or a decimal (decimals are cut, not rounded).",
+      "summary": "A whole number from text or a decimal (decimals are cut, not rounded). The text holds digits only, with or without a sign: anything else is an error.",
       "overloads": [
-        {"id": "int_string", "signature": "int(string): int", "where": "engine"},
-        {"id": "int_double", "signature": "int(double): int", "where": "engine"}
+        {"id": "int_string", "signature": "int(string): int", "where": "skjald"},
+        {"id": "int_double", "signature": "int(double): int", "where": "skjald"},
+        {"id": "int_int", "signature": "int(int): int", "where": "skjald"}
       ],
       "examples": [{"expr": "int(\"42\") + int(7.9)", "result": 49}]
     },
     {
       "name": "double",
       "group": "Numbers",
-      "summary": "A decimal number from text or a whole number.",
+      "summary": "A decimal number from text or a whole number. The text is written with a point, such as 7.5 or 1e3: anything else is an error.",
       "overloads": [
-        {"id": "double_string", "signature": "double(string): double", "where": "engine"},
-        {"id": "double_int", "signature": "double(int): double", "where": "engine"}
+        {"id": "double_string", "signature": "double(string): double", "where": "skjald"},
+        {"id": "double_int", "signature": "double(int): double", "where": "skjald"},
+        {"id": "double_double", "signature": "double(double): double", "where": "skjald"}
       ],
       "examples": [{"expr": "double(3) / 2.0", "result": 1.5}]
     },
     {
       "name": "string",
       "group": "Text",
-      "summary": "A value as text.",
+      "summary": "A number or yes or no as text: a number as it's written, without grouping (1234567.5); true or false. For a date use format_date(), for a number in the report's language format_number().",
       "overloads": [
-        {"id": "string_int", "signature": "string(int): string", "where": "engine"},
-        {"id": "string_double", "signature": "string(double): string", "where": "engine"},
-        {"id": "string_bool", "signature": "string(bool): string", "where": "engine"}
+        {"id": "string_int", "signature": "string(int): string", "where": "skjald"},
+        {"id": "string_double", "signature": "string(double): string", "where": "skjald"},
+        {"id": "string_bool", "signature": "string(bool): string", "where": "skjald"},
+        {"id": "string_string", "signature": "string(string): string", "where": "skjald"}
       ],
       "examples": [{"expr": "string(1842) + \" attempts\"", "result": "1842 attempts"}]
     },
@@ -182,7 +188,7 @@
     {
       "name": "has",
       "group": "Lists",
-      "summary": "Whether a row of a repeating group has a value for a column.",
+      "summary": "Whether a row of a repeating group has a value for a column, as in has(item.ip); or whether an answer is filled in, as in has(answers.title): it isn't when it's blank, 0, No or an empty list.",
       "overloads": [{"id": "has_macro", "signature": "has(dyn): bool", "where": "engine"}],
       "examples": [{"expr": "[{\"ip\": \"198.51.100.23\"}].exists(r, has(r.ip))", "result": true}]
     },
@@ -234,15 +240,18 @@
     {
       "name": "timestamp",
       "group": "Dates",
-      "summary": "A point in time from text in RFC 3339 form, such as 2026-10-21T03:20:00Z. For a local date and time, use date().",
-      "overloads": [{"id": "timestamp_string", "signature": "timestamp(string): timestamp", "where": "engine"}],
+      "summary": "A point in time from text in RFC 3339 form, such as 2026-10-21T03:20:00Z, or from a number of seconds since 1 January 1970. For a local date and time, use date().",
+      "overloads": [
+        {"id": "string_to_timestamp", "signature": "timestamp(string): timestamp", "where": "engine"},
+        {"id": "int64_to_timestamp", "signature": "timestamp(int): timestamp", "where": "engine"}
+      ],
       "examples": [{"expr": "timestamp(\"2026-10-21T01:14:00Z\") < timestamp(\"2026-10-24T02:00:00Z\")", "result": true}]
     },
     {
       "name": "duration",
       "group": "Dates",
       "summary": "A length of time, such as \"72h\" or \"90m\", to add to or subtract from a point in time.",
-      "overloads": [{"id": "duration_string", "signature": "duration(string): duration", "where": "engine"}],
+      "overloads": [{"id": "string_to_duration", "signature": "duration(string): duration", "where": "engine"}],
       "examples": [{"expr": "timestamp(\"2026-10-21T01:14:00Z\") + duration(\"72h\") == timestamp(\"2026-10-24T01:14:00Z\")", "result": true}]
     },
     {
