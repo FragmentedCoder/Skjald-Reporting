@@ -10,10 +10,12 @@
   const settings = $derived((draft.content as TemplateContent).settings);
   const prefixOk = $derived(/^[A-Z]{2,6}$/.test(settings.prefix));
 
-  function toggle<K extends "delivery" | "styles">(key: K, value: Settings[K][number], on: boolean) {
+  // One of each must stay: the last box ticked can't be unticked, and shows so.
+  function toggle<K extends "delivery" | "styles">(key: K, value: Settings[K][number], box: HTMLInputElement) {
     const list = settings[key] as string[];
-    const next = on ? [...new Set([...list, value])] : list.filter((v) => v !== value);
+    const next = box.checked ? [...new Set([...list, value])] : list.filter((v) => v !== value);
     if (next.length) (settings[key] as string[]) = next;
+    else box.checked = true;
   }
 
   const year = new Date().getFullYear();
@@ -29,7 +31,11 @@
     <div class="field narrow">
       <label for="prefix">Report number prefix</label>
       <input id="prefix" class="input mono" value={settings.prefix} maxlength="6" aria-invalid={prefixOk ? undefined : "true"}
-        oninput={(e) => (settings.prefix = e.currentTarget.value.toUpperCase().replace(/[^A-Z]/g, ""))} />
+        oninput={(e) => {
+          // What's kept is what's shown: letters only, as capitals.
+          settings.prefix = e.currentTarget.value.toUpperCase().replace(/[^A-Z]/g, "");
+          e.currentTarget.value = settings.prefix;
+        }} />
       <span class="hint" class:error={!prefixOk}>
         {prefixOk ? `Reports are numbered ${settings.prefix}-${year}-0001, ${settings.prefix}-${year}-0002 and so on. Templates with the same prefix share the count.` : "Two to six capital letters, such as INC."}
       </span>
@@ -69,9 +75,9 @@
     <h2 class="section-title">Delivery <Where builder /></h2>
     <fieldset class="choices">
       <legend>The technician may deliver reports as</legend>
-      <label class="check"><input type="checkbox" checked={settings.delivery.includes("download")} onchange={(e) => toggle("delivery", "download", e.currentTarget.checked)} /> A download</label>
-      <label class="check"><input type="checkbox" checked={settings.delivery.includes("email")} onchange={(e) => toggle("delivery", "email", e.currentTarget.checked)} /> An email attachment</label>
-      <label class="check"><input type="checkbox" checked={settings.delivery.includes("protected_pdf")} onchange={(e) => toggle("delivery", "protected_pdf", e.currentTarget.checked)} /> A password-protected PDF</label>
+      <label class="check"><input type="checkbox" checked={settings.delivery.includes("download")} onchange={(e) => toggle("delivery", "download", e.currentTarget)} /> A download</label>
+      <label class="check"><input type="checkbox" checked={settings.delivery.includes("email")} onchange={(e) => toggle("delivery", "email", e.currentTarget)} /> An email attachment</label>
+      <label class="check"><input type="checkbox" checked={settings.delivery.includes("protected_pdf")} onchange={(e) => toggle("delivery", "protected_pdf", e.currentTarget)} /> A password-protected PDF</label>
       <label class="check muted"><input type="checkbox" disabled /> A secure link with an access code <span class="small">(release 1.1)</span></label>
     </fieldset>
   </section>
@@ -80,8 +86,8 @@
     <h2 class="section-title">Look <Where pdf /></h2>
     <fieldset class="choices">
       <legend>Styles reports may use</legend>
-      <label class="check"><input type="checkbox" checked={settings.styles.includes("company")} onchange={(e) => toggle("styles", "company", e.currentTarget.checked)} /> The company brand</label>
-      <label class="check"><input type="checkbox" checked={settings.styles.includes("customer")} onchange={(e) => toggle("styles", "customer", e.currentTarget.checked)} /> The customer's own style, where it has one</label>
+      <label class="check"><input type="checkbox" checked={settings.styles.includes("company")} onchange={(e) => toggle("styles", "company", e.currentTarget)} /> The company brand</label>
+      <label class="check"><input type="checkbox" checked={settings.styles.includes("customer")} onchange={(e) => toggle("styles", "customer", e.currentTarget)} /> The customer's own style, where it has one</label>
     </fieldset>
     <fieldset class="choices">
       <legend>On the pages</legend>
