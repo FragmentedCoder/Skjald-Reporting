@@ -243,14 +243,24 @@ def _re_replace(text: str, pattern: str, replacement: str) -> str:
                               for part in parts), text))
 
 
+SUM_NUMBERS = "sum() adds numbers up, and this list holds something that isn't one."
 TOO_LARGE = "The result is too large for a whole number."
 
 
 def _sum(items: list[Any]) -> int | float:
-    total: int | float = sum(items)
-    if all(isinstance(x, int) and not isinstance(x, bool) for x in items):
-        return int(total)
-    return float(total)
+    """The total; an item that's nothing (a blank cell) adds nothing."""
+    numbers = [x for x in items if x is not None]
+    if any(isinstance(x, bool) or not isinstance(x, int | float) for x in numbers):
+        raise ValueError(SUM_NUMBERS)
+    if all(isinstance(x, int) for x in numbers):
+        whole = sum(numbers)
+        if not -MAX_INT - 1 <= whole <= MAX_INT:
+            raise ValueError(TOO_LARGE)
+        return int(whole)
+    total = 0.0
+    for x in numbers:
+        total += float(x)
+    return total
 
 
 def _int_from_text(text: str) -> int:

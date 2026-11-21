@@ -151,11 +151,19 @@ function reReplace(text: string, pattern: string, replacement: string): string {
 }
 
 const MAX_INT = 2n ** 63n - 1n;
+const SUM_NUMBERS = "sum() adds numbers up, and this list holds something that isn't one.";
 const TOO_LARGE = "The result is too large for a whole number.";
 
+/** The total; an item that's nothing (a blank cell) adds nothing. */
 function sum(items: unknown[]): bigint | number {
-  if (items.every((x) => typeof x === "bigint")) return (items as bigint[]).reduce((a, b) => a + b, 0n);
-  return items.reduce<number>((a, b) => a + Number(b), 0);
+  const numbers = items.filter((x) => x !== null && x !== undefined);
+  if (numbers.some((x) => typeof x !== "bigint" && typeof x !== "number")) throw new Error(SUM_NUMBERS);
+  if (numbers.every((x) => typeof x === "bigint")) {
+    const whole = (numbers as bigint[]).reduce((a, b) => a + b, 0n);
+    if (whole > MAX_INT || whole < -MAX_INT - 1n) throw new Error(TOO_LARGE);
+    return whole;
+  }
+  return numbers.reduce<number>((a, b) => a + Number(b), 0);
 }
 
 function intFromText(text: string): bigint {

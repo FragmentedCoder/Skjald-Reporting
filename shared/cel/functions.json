@@ -181,7 +181,7 @@
     {
       "name": "sum",
       "group": "Lists",
-      "summary": "The total of a list of numbers: a whole number if every item is one, otherwise a decimal.",
+      "summary": "The total of a list of numbers: a whole number if every item is one, otherwise a decimal. A blank cell adds nothing; anything else that isn't a number is an error.",
       "overloads": [{"id": "sum_list", "signature": "sum(list<dyn>): dyn", "where": "skjald"}],
       "examples": [{"expr": "sum([1204, 611, 27])", "result": 1842}]
     },
