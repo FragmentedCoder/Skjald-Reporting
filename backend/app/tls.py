@@ -175,11 +175,23 @@ def check_certificate(chain_pem: str, key_pem: str, address_host: str,
 
 
 def _write(path: Path, content: str, mode: int = 0o644) -> None:
-    """Whole or not at all: Caddy may be reading."""
+    """Whole or not at all: Caddy may be reading. The temporary file is made with
+    the mode the file ends with, so a key or the DNS credentials are never
+    readable more widely on the way."""
     tmp = path.with_name(f".{path.name}.tmp")
-    tmp.write_text(content)
-    tmp.chmod(mode)
-    os.replace(tmp, path)
+    # One left by a write that was cut short goes first: the content needs a new
+    # file, which nobody has open and which has this mode from the start.
+    tmp.unlink(missing_ok=True)
+    descriptor = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
+    try:
+        with open(descriptor, "w") as file:
+            # The umask may have taken bits away; the mode is the same under any.
+            os.fchmod(descriptor, mode)
+            file.write(content)
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def _dns_block(tls: TlsSettings, secrets: dict[str, object]) -> str:
