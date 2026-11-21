@@ -165,9 +165,9 @@ def test_the_depth_limit_is_the_engines_own() -> None:
     # Skjald refuses what Google's parser can't follow, in its own words. If the
     # engine's limit moves, the one in app/cel/reader.py should move with it.
     engine = Engine({"answers.n": "int"})
-    engine._env.compile(" + ".join(["answers.n"] * 31))
+    engine._env.compile(" + ".join(["answers.n"] * 32))
     engine._env.compile("(" * 32 + "answers.n" + ")" * 32)
-    for too_deep in (" + ".join(["answers.n"] * 32), "(" * 33 + "answers.n" + ")" * 33):
+    for too_deep in (" + ".join(["answers.n"] * 33), "(" * 33 + "answers.n" + ")" * 33):
         with pytest.raises(RuntimeError, match="recursion"):
             engine._env.compile(too_deep)
 
