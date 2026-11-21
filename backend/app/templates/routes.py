@@ -34,9 +34,12 @@ from app.templates.assets import AssetRejected, clean_asset
 from app.templates.changes import Changes, changes
 from app.templates.checks import Problem, check
 from app.templates.content import (
+    MAX_BLOCK_DEPTH,
     MAX_CONTENT_BYTES,
     SCHEMA_VERSION,
     TemplateContent,
+    TooLarge,
+    check_size,
     starter_content,
 )
 from app.templates.models import Template, TemplateAsset, TemplateVersion
@@ -175,17 +178,38 @@ def sha256(text: str) -> str:
 
 def parse_content(raw: dict[str, Any]) -> TemplateContent:
     """The content as submitted, checked for structure; 422 with where it went wrong."""
-    if len(json.dumps(raw, separators=(",", ":"))) > MAX_CONTENT_BYTES:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT,
-                            "The template is larger than 2 MB.")
+    too_large = HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT,
+                              "The template is larger than 2 MB.")
     try:
-        return TemplateContent.model_validate(raw)
+        if len(json.dumps(raw, separators=(",", ":"))) > MAX_CONTENT_BYTES:
+            raise too_large
+        content = TemplateContent.model_validate(raw)
+        check_size(content)
+    except TooLarge as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from None
     except ValidationError as exc:
         first = exc.errors()[0]
+        if first["type"] == "recursion_loop":
+            raise _too_deep() from None
         where = ".".join(str(part) for part in first["loc"])
         message = re.sub(r"^Value error, ", "", first["msg"])
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT,
                             f"The template isn't valid at {where}: {message}") from None
+    except RecursionError:
+        # Nested far past the limit: said the same way, before anything is stored
+        # that couldn't be read again.
+        raise _too_deep() from None
+    # The stored document has the defaults written out, so it's the one measured.
+    if len(canonical(content).encode()) > MAX_CONTENT_BYTES:
+        raise too_large
+    return content
+
+
+def _too_deep() -> HTTPException:
+    return HTTPException(
+        status.HTTP_422_UNPROCESSABLE_CONTENT,
+        f"Blocks can sit inside each other up to {MAX_BLOCK_DEPTH} levels deep; "
+        "this template goes deeper.")
 
 
 def _names(db: Session, user_ids: set[int | None]) -> dict[int, str]:

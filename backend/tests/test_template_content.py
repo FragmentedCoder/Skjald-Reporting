@@ -15,7 +15,16 @@ from pydantic import ValidationError
 
 from app.templates.changes import changes
 from app.templates.checks import check
-from app.templates.content import TemplateContent, starter_content
+from app.templates.content import (
+    MAX_BLOCK_DEPTH,
+    MAX_BLOCKS,
+    MAX_CONTENT_BYTES,
+    MAX_QUESTIONS,
+    Section,
+    Step,
+    TemplateContent,
+    starter_content,
+)
 from app.templates.names import CONTEXT, declarations
 from app.templates.secrets import printed
 from app.templates.text import RichTextError, check_doc, doc_text, interpolations
@@ -202,3 +211,20 @@ SECRETS = json.loads((SHARED / "secrets.json").read_text())
 def test_secrets_print_partly(case: dict[str, str]) -> None:
     assert printed(case["secret"]) == case["printed"]
     assert printed(case["secret"], "omit") == ""
+
+
+def test_the_size_limits_are_the_ones_the_builder_checks() -> None:
+    """shared/templates/limits.json holds the server and the builder to the same numbers."""
+    limits = json.loads((SHARED / "limits.json").read_text())
+    assert limits["questions"] == MAX_QUESTIONS
+    assert limits["blocks"] == MAX_BLOCKS
+    assert limits["block_depth"] == MAX_BLOCK_DEPTH
+    assert limits["bytes"] == MAX_CONTENT_BYTES
+
+    def longest(model: Any, field: str) -> int:
+        return next(m.max_length for m in model.model_fields[field].metadata
+                    if getattr(m, "max_length", None) is not None)
+
+    assert limits["in_one_list"] == longest(Section, "blocks") == longest(Step, "questions")
+    assert limits["steps"] == longest(TemplateContent, "form")
+
