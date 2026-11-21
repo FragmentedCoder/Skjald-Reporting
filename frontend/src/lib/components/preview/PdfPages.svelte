@@ -377,7 +377,7 @@
     {/if}
   {:else if b.kind === "columns"}
     <div class="columns">
-      {#each b.columns as column, i (i)}<div class="column">{#each column as inner (inner.id)}{@render item(inner, null)}{/each}</div>{/each}
+      {#each b.columns as column, i (i)}<div class="column">{#each column as inner (inner.id)}{@render item(inner, placed?.inside?.[inner.id] ?? null)}{/each}</div>{/each}
     </div>
   {/if}
 {/snippet}
