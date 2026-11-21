@@ -18,6 +18,8 @@
   import { FIELD_GROUPS, FIELD_TYPES, fieldType, typeCode } from "#lib/templates/fields.js";
   import { catalogue } from "#lib/templates/catalogue.js";
   import { declarations } from "#lib/templates/names.js";
+  import { noRoomForQuestion, noRoomForStep } from "#lib/templates/limits.js";
+  import { toast } from "#lib/toast.svelte.js";
   import { blocksOf, type Problem, type Question, type Step, type TemplateContent } from "#lib/templates/types.js";
 
   // The Questions tab: the technician's form, step by step. Field types are dragged
@@ -60,10 +62,18 @@
     panel?.querySelector<HTMLElement>("input, textarea")?.focus();
   }
 
+  // Whether there's no room for another question in this step, saying so if there isn't.
+  function full(step: Step): boolean {
+    const why = noRoomForQuestion(content, step);
+    if (why) toast(why, "info", { key: "template-full" });
+    return why !== null;
+  }
+
   function add(kind: string) {
     if (draft.readonly) return;
-    const question = newQuestion(kind, content);
     const step = where?.step ?? content.form[content.form.length - 1];
+    if (full(step)) return;
+    const question = newQuestion(kind, content);
     const at = where?.question ? where.index + 1 : step.questions.length;
     step.questions.splice(at, 0, question);
     select("question", question.id);
@@ -71,6 +81,11 @@
   }
 
   function addStep() {
+    const why = noRoomForStep(content);
+    if (why) {
+      toast(why, "info", { key: "template-full" });
+      return;
+    }
     const step = newStep();
     content.form.push(step);
     select("step", step.id);
@@ -104,7 +119,9 @@
     const { [step.id]: _done, ...rest } = dragging;
     dragging = rest;
     hooks.again();
-    step.questions = event.detail.items.map((item) => {
+    // A new question dropped where there's no room for it isn't added.
+    const fits = !event.detail.items.some((item) => "palette" in item) || !full(step);
+    step.questions = event.detail.items.filter((item) => fits || !("palette" in item)).map((item) => {
       if ("palette" in item) {
         added = newQuestion(item.kind, content);
         return added;

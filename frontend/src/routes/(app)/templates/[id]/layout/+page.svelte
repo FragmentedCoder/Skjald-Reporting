@@ -21,6 +21,7 @@
   import { LivePreview } from "#lib/templates/live.svelte.js";
   import { declarations, ITEM } from "#lib/templates/names.js";
   import { shapeOf } from "#lib/templates/rules.js";
+  import { MAX_IN_ONE_LIST, noRoomForBlock } from "#lib/templates/limits.js";
   import { listsIn, questionsOf, type Block, type BlockKind, type Problem, type TemplateContent } from "#lib/templates/types.js";
   import { toast } from "#lib/toast.svelte.js";
 
@@ -124,10 +125,18 @@
       const beside = (kind === "section" ? path.findLast((p) => p.block.kind === "section") : undefined) ?? path[0];
       if (beside) [target, at] = [beside.list, beside.index + 1];
     }
+    if (full(target)) return;
     const block = newBlock(kind as BlockKind, target !== content.layout);
     target.splice(at, 0, block);
     select(block.id);
     void focusPanel();
+  }
+
+  // Whether there's no room for another block in this list, saying so if there isn't.
+  function full(list: Block[]): boolean {
+    const why = noRoomForBlock(content, list);
+    if (why) toast(why, "info", { key: "template-full" });
+    return why !== null;
   }
 
   // A block dropped on the pages: moved there, or new from the palette. It goes where
@@ -136,6 +145,7 @@
     if (draft.readonly) return;
     const moving = "move" in dropped ? locate(content.layout, dropped.move) : null;
     if ("move" in dropped && !moving) return;
+    if (!moving && full([])) return;
     const anchorId = at && ("after" in at ? at.after : "first" in at ? at.first : at.before);
     if (moving && anchorId && pathTo([moving.block], anchorId)) return;
     moving?.list.splice(moving.index, 1);
@@ -144,6 +154,12 @@
     if (at && anchor) {
       if ("first" in at && anchor.block.kind === "section") [list, index] = [anchor.block.blocks, 0];
       else [list, index] = [anchor.list, anchor.index + ("before" in at ? 0 : 1)];
+    }
+    if (list.length >= MAX_IN_ONE_LIST) {
+      // Full where it was dropped: a moved block goes back where it was.
+      moving?.list.splice(moving.index, 0, moving.block);
+      full(list);
+      return;
     }
     const block = moving ? moving.block : newBlock((dropped as { add: string }).add as BlockKind, list !== content.layout);
     list.splice(index, 0, block);
@@ -247,7 +263,8 @@
   <section class="canvas" aria-labelledby="layout-title">
     {#if view === "blocks"}
       <BlockList bind:blocks={content.layout} label="Blocks in the PDF" empty="Drag a block here, or click one in the palette."
-        selected={selectedId} {hidden} problems={(id) => draft.problemsFor(id).length} readonly={draft.readonly} onselect={select} />
+        selected={selectedId} {hidden} problems={(id) => draft.problemsFor(id).length} readonly={draft.readonly} onselect={select}
+        room={(list) => !full(list)} />
     {:else if live.paged}
       {#if looks.problem}<p class="alert alert-warning small">{looks.problem}</p>{/if}
       {#if live.problem}<p class="alert alert-warning small">{live.problem}</p>{/if}
