@@ -315,9 +315,13 @@ install.sh   the installer (the one-line install's; deploy/install.sh links to i
 | Phase 0 | Repository, CI and signed builds; design tokens; spikes for the expression language (CEL chosen), PDF/A with several signatures, SQLCipher and the drag-and-drop builder |
 | Phase 1 | Installer and setup wizard, local sign-in with MFA, roles and assignments, admin panel, customers and projects, keys, audit log, backups |
 | Phase 2 | Template builder: tabs, field types, block settings, rules in CEL, shared library, styles and page designer, "Try it" preview, versions, template files |
-| Phase 3 | Reports end to end: editor with checkout, uploads, review, rendering, signing, checking signed reports, delivery, archive, retention, three built-in templates |
+| Phase 3 | Reports end to end: editor with checkout, uploads, large data files kept with a report and shown in it as an extract, review, rendering, signing, checking signed reports, delivery, archive, retention, three built-in templates |
+| Phase 4 | Polish and security review, with other people and other systems testing: security flaws and vulnerabilities, how user input is handled, smaller design changes in the frontend, performance and optimisation; features around the system, such as automatic updates and more customisation; importing customers, sites and contacts from CSV or XLSX |
+| Phase 5 | Project alignment: what was built is held against what the project set out to do, and what doesn't match is settled |
 | 1.0 | Release gate: one-command install, ASVS Level 2 test plan passes, restore test green, all built-in templates sign end to end |
 | 1.1 | Bifrost secure links |
 | 1.2 | Active Directory and Entra ID sign-in, API tokens with IP allowlists, webhooks |
 | 1.3 | Importers and vulnerability data feeds, more built-in templates |
 | 1.4 | HSM support, syslog / SIEM forwarding, custom fonts |
+
+Phases are ordered, not dated: each starts when the one before it works. Two things the requirements gave to 1.0 changed place when Phase 2 closed. There is no separate way to take photos with a phone: a picture is uploaded like any other file. And importing customers, sites and contacts from a spreadsheet waits for Phase 4.
