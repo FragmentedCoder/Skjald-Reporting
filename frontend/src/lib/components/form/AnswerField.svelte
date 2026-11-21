@@ -105,7 +105,8 @@
       {#each (c.settings?.options ?? []) as Option[] as o (o.value)}<option value={o.value}>{o.label}</option>{/each}
     </select>
   {:else if c.type === "datetime"}
-    <input class="input" type="datetime-local" aria-label={c.label} value={toInput(c.current, false)} oninput={(e) => c.set(fromInput(e.currentTarget.value))} />
+    {@const day = c.settings?.mode === "date"}
+    <input class="input" type={day ? "date" : "datetime-local"} aria-label={c.label} value={toInput(c.current, day)} oninput={(e) => c.set(fromInput(e.currentTarget.value))} />
   {:else}
     <input class="input" aria-label={c.label} value={String(c.current ?? "")} oninput={(e) => c.set(e.currentTarget.value)} />
   {/if}
@@ -185,7 +186,7 @@
           {@const fixed = question.type === "table" ? ((s.rows ?? []) as { key: string; label: string }[]) : null}
           <div class="grid-wrap">
             <table class="grid">
-              <thead><tr>{#if fixed}<th></th>{/if}{#each columns as c (c.key)}<th>{c.label}</th>{/each}{#if !fixed}<th><span class="visually-hidden">Remove</span></th>{/if}</tr></thead>
+              <thead><tr>{#if fixed}<th></th>{/if}{#each columns as c (c.key)}<th>{c.label}{c.type === "number" && c.settings?.unit ? ` (${c.settings.unit})` : ""}</th>{/each}{#if !fixed}<th><span class="visually-hidden">Remove</span></th>{/if}</tr></thead>
               <tbody>
                 {#each fixed ?? rows as row, r (r)}
                   <tr>

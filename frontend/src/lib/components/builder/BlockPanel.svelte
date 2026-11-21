@@ -93,6 +93,13 @@
     else uploadError = "The image couldn't be added.";
   }
 
+  // Which of a list's columns a table prints, and in what order: nothing kept when
+  // it's all of them in the list's own order, so a column added later is printed too.
+  function setColumns(all: string[], next: string[]) {
+    if (block.kind !== "table") return;
+    block.columns = next.length === all.length && next.every((key, i) => key === all[i]) ? null : next;
+  }
+
   const contrastNote = $derived.by(() => {
     if (block.kind !== "callout" || block.tone !== "custom" || !block.colour) return null;
     const { ink, ratio } = inkFor(block.colour);
@@ -191,16 +198,25 @@
     </div>
     {#if block.question}
       {@const all = columnsOf(block.question)}
+      {@const keys = all.map((c) => c.key)}
+      {@const shown = (block.columns ?? keys).filter((k) => keys.includes(k))}
+      <!-- The columns as they print, left to right, then the ones left out. -->
+      {@const listed = [...shown.flatMap((k) => all.filter((c) => c.key === k)), ...all.filter((c) => !shown.includes(c.key))]}
       <fieldset class="plain">
-        <legend>Columns printed</legend>
-        {#each all as column (column.key)}
-          <label class="check"><input type="checkbox" checked={!block.columns || block.columns.includes(column.key)}
-            onchange={(e) => {
-              if (block.kind !== "table") return;
-              const shown = block.columns ?? all.map((c) => c.key);
-              const next = e.currentTarget.checked ? all.map((c) => c.key).filter((k) => shown.includes(k) || k === column.key) : shown.filter((k) => k !== column.key);
-              block.columns = next.length === all.length ? null : next;
-            }} /> {column.label}</label>
+        <legend>Columns printed, in this order</legend>
+        {#each listed as column, i (column.key)}
+          <div class="column-line">
+            <label class="check"><input type="checkbox" checked={shown.includes(column.key)}
+              onchange={(e) => setColumns(keys, e.currentTarget.checked ? [...shown, column.key] : shown.filter((k) => k !== column.key))} /> {column.label}</label>
+            {#if shown.includes(column.key) && shown.length > 1}
+              <span class="order">
+                <button class="mini" type="button" aria-label="Move {column.label} earlier" title="Earlier" disabled={i === 0}
+                  onclick={() => setColumns(keys, shown.map((k, n) => (n === i - 1 ? shown[i] : n === i ? shown[i - 1] : k)))}><ArrowUp size={14} aria-hidden="true" /></button>
+                <button class="mini" type="button" aria-label="Move {column.label} later" title="Later" disabled={i === shown.length - 1}
+                  onclick={() => setColumns(keys, shown.map((k, n) => (n === i + 1 ? shown[i] : n === i ? shown[i + 1] : k)))}><ArrowDown size={14} aria-hidden="true" /></button>
+              </span>
+            {/if}
+          </div>
         {/each}
         {#if problem("columns")}<p class="small error">{problem("columns")}</p>{/if}
       </fieldset>
@@ -448,6 +464,15 @@
     font-weight: 600;
   }
   .head-actions {
+    display: flex;
+  }
+  .column-line {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+  .order {
     display: flex;
   }
   .mini {

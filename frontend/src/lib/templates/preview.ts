@@ -399,11 +399,12 @@ class Worker {
     if (column.type === "dropdown") return (s.options as { value: string; label: string }[]).find((o) => o.value === value)?.label ?? String(value);
     if (column.type === "yes_no") return value ? String(s.yes_label) : String(s.no_label);
     if (column.type === "number" && typeof value === "number") {
-      return s.whole ? formatNumber(BigInt(Math.trunc(value)), 0, locale.decimal, locale.group) : formatNumber(value, Number(s.decimals ?? 1), locale.decimal, locale.group);
+      const text = s.whole ? formatNumber(BigInt(Math.trunc(value)), 0, locale.decimal, locale.group) : formatNumber(value, Number(s.decimals ?? 1), locale.decimal, locale.group);
+      return s.unit ? `${text} ${s.unit}` : text;
     }
     if (column.type === "datetime") {
       const date = new Date(String(value));
-      return Number.isNaN(date.getTime()) ? "" : formatDate(date, "d MMM yyyy, HH:mm", this.zone, locale);
+      return Number.isNaN(date.getTime()) ? "" : formatDate(date, s.mode === "date" ? "d MMM yyyy" : "d MMM yyyy, HH:mm", this.zone, locale);
     }
     return String(value);
   }

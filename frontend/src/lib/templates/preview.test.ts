@@ -350,6 +350,24 @@ describe("the rows of a repeating group, as rules read them", () => {
   });
 });
 
+describe("a group's columns print as they're set", () => {
+  it("prints a number column with its decimals and unit, and a date column without a time when it asks for a date", () => {
+    const c = content();
+    const first = c.form[0].questions[0];
+    c.form[0].questions.push({ ...first, id: "q_disks", key: "disks", type: "repeating", label: "Disks", required: false, settings: { min_rows: 0, max_rows: 100, columns: [
+      { key: "size", label: "Size", type: "number", required: false, settings: { whole: false, decimals: 2, unit: "GB" } },
+      { key: "wiped", label: "Wiped", type: "datetime", required: false, settings: { mode: "date" } },
+      { key: "checked", label: "Checked", type: "datetime", required: false, settings: { mode: "datetime" } },
+    ] } });
+    c.layout.push({ id: "b_disks", kind: "table", visible_when: null, question: "q_disks", caption: "", columns: ["wiped", "size", "checked"], empty_text: "", row_numbers: false });
+    const answers = { ...c.sample.answers, q_disks: [{ size: 931.5, wiped: "2026-10-20T22:00:00.000Z", checked: "2026-10-21T08:30:00.000Z" }] };
+    expect(find(preview({ ...input(c, answers), timezone: "Europe/Copenhagen" }).blocks, "b_disks")).toMatchObject({
+      // In the order the table block asks for, not the group's own.
+      grid: { headers: ["Wiped", "Size", "Checked"], rows: [["21 Oct 2026", "931.50 GB", "21 Oct 2026, 10:30"]] },
+    });
+  });
+});
+
 describe("the severity summary", () => {
   it("counts a row by what its dropdown shows as well as by the value it keeps", () => {
     const c = content();

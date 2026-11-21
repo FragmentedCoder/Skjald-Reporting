@@ -8,6 +8,7 @@
   import { COLUMN_TYPES, FIELD_TYPES } from "#lib/templates/fields.js";
   import KeptInput from "./KeptInput.svelte";
   import OptionsEditor from "./OptionsEditor.svelte";
+  import WholeInput from "./WholeInput.svelte";
 
   // The columns of a repeating group or a table. Each column has a variable name, as
   // a question has, which rules read from a row: row.ip, item.attempts.
@@ -71,6 +72,27 @@
           <label class="check small"><input type="checkbox" bind:checked={() => Boolean(column.settings.whole), (v) => (column.settings.whole = v)} /> Whole numbers</label>
         {/if}
       </div>
+      <!-- How the column's cells are asked for and printed, as a question of its kind sets them. -->
+      {#if column.type === "number"}
+        <div class="line details">
+          {#if !column.settings.whole}
+            <label class="small key">Decimals shown
+              <WholeInput label="Column {index + 1} decimals shown" narrow min={0} max={6}
+                bind:value={() => (column.settings.decimals as number | undefined) ?? 1, (v) => (column.settings.decimals = v ?? 1)} /></label>
+          {/if}
+          <label class="small key">Unit <input class="input" aria-label="Column {index + 1} unit" maxlength="20" placeholder="GB"
+            value={String(column.settings.unit ?? "")} oninput={(e) => (column.settings.unit = e.currentTarget.value)} /></label>
+        </div>
+      {:else if column.type === "datetime"}
+        <div class="line details">
+          <label class="small key">Asks for
+            <select class="input" aria-label="Column {index + 1} asks for" value={String(column.settings.mode ?? "datetime")}
+              onchange={(e) => (column.settings.mode = e.currentTarget.value)}>
+              <option value="datetime">A date and a time</option>
+              <option value="date">A date</option>
+            </select></label>
+        </div>
+      {/if}
       {#if column.type === "dropdown"}
         <OptionsEditor bind:options={() => column.settings.options as Option[], (v) => (column.settings.options = v)} id="{id}-col-{index}" />
       {/if}
