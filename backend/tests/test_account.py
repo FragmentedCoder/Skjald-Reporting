@@ -173,8 +173,9 @@ def test_business_details_can_be_filled_in_and_cleared(astrid, session) -> None:
     filled = browser.patch("/api/account", headers=csrf, json={
         "first_name": "Astrid", "middle_name": "Marie", "last_name": "Fjeld",
         "job_title": "Senior technician", "department": "Field service",
-        "phone": "+45 12 34 56 78",
+        "company": "Fjeldsted Sikkerhed ApS", "phone": "+45 12 34 56 78",
     }).json()
+    assert filled["company"] == "Fjeldsted Sikkerhed ApS"
     assert (filled["first_name"], filled["last_name"], filled["phone"]) == (
         "Astrid", "Fjeld", "+45 12 34 56 78"
     )

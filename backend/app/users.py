@@ -41,6 +41,9 @@ class User(Base):
     last_name: Mapped[str | None] = mapped_column(String(100))
     job_title: Mapped[str | None] = mapped_column(String(150))
     department: Mapped[str | None] = mapped_column(String(150))
+    # Their own company, for consultants and subcontractors; templates read it as
+    # author.company and reviewer.company, the company's name when it's empty.
+    company: Mapped[str | None] = mapped_column(String(200))
     phone: Mapped[str | None] = mapped_column(String(50))
     # None for accounts that sign in through a directory (release 1.2), never locally.
     password_hash: Mapped[str | None] = mapped_column(String(255))

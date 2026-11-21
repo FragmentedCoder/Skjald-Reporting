@@ -23,7 +23,8 @@ test("a custom field is defined, filled in on a customer, and read by templates"
   // A designer defines it.
   const designer = await signedIn(browser, "e2e-fielder");
   const violations = watchForCspViolations(designer.page);
-  await menu(designer.page, "Custom fields").click();
+  await menu(designer.page, "Database").click();
+  await designer.page.getByRole("navigation", { name: "Database" }).getByRole("link", { name: "Custom fields" }).click();
   await designer.page.getByRole("button", { name: "Add a field", exact: true }).click();
   const dialog = designer.page.getByRole("dialog", { name: "Add a field" });
   await dialog.getByLabel("Label").fill("Support agreement");
@@ -57,8 +58,8 @@ test("a custom field is defined, filled in on a customer, and read by templates"
   await designer.page.getByRole("button", { name: "New template" }).click();
   await designer.page.getByRole("dialog").getByLabel("Name", { exact: true }).fill("Service visit");
   await designer.page.getByRole("dialog").getByRole("button", { name: "Create" }).click();
-  await designer.page.getByRole("link", { name: "Data" }).click();
-  await expect(designer.page.getByRole("row", { name: /customer\.custom\.support_agreement Support agreement text "Gold"/ })).toBeVisible();
+  await designer.page.getByRole("link", { name: "Data", exact: true }).click();
+  await expect(designer.page.getByRole("row", { name: /customer\.custom\.support_agreement .*Support agreement text "Gold"/ })).toBeVisible();
   await designer.page.getByRole("textbox", { name: "Expression" }).fill('customer.custom.support_agreement == "Gold"');
   await expect(designer.page.getByRole("status")).toHaveText("true, which is yes or no");
   await shot(designer.page, "2-data");

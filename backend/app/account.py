@@ -47,7 +47,7 @@ router = APIRouter()
 
 PROFILE_FIELDS = (
     "display_name", "first_name", "middle_name", "last_name", "job_title", "department",
-    "email", "phone",
+    "company", "email", "phone",
 )
 
 
@@ -70,6 +70,7 @@ class Profile(BaseModel):
     last_name: str | None
     job_title: str | None
     department: str | None
+    company: str | None
     email: str | None
     phone: str | None
 
@@ -81,6 +82,7 @@ class ProfileUpdate(BaseModel):
     last_name: str | None = Field(default=None, max_length=100)
     job_title: str | None = Field(default=None, max_length=150)
     department: str | None = Field(default=None, max_length=150)
+    company: str | None = Field(default=None, max_length=200)
     email: str | None = Field(default=None, max_length=254, pattern=r"^([^@\s]+@[^@\s]+)?$")
     phone: str | None = Field(default=None, max_length=50, pattern=r"^[0-9+()\-. ]*$")
 

@@ -84,6 +84,11 @@ export function libraryValues(entries: LibraryEntry[]): { values: Record<string,
 }
 
 /** How templates name an entry: vars.x, text.x or lookup("x", …). */
+/** What each library name is, for the name lists: its description, else its key. */
+export function libraryLabels(entries: LibraryEntry[]): Record<string, string> {
+  return Object.fromEntries(entries.filter((e) => e.kind !== "table").map((e) => [entryName(e), e.description || e.key]));
+}
+
 export function entryName(entry: { kind: LibraryKind; key: string }): string {
   return entry.kind === "variable" ? `vars.${entry.key}` : entry.kind === "snippet" ? `text.${entry.key}` : `lookup("${entry.key}", key)`;
 }

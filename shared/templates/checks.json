@@ -1471,7 +1471,7 @@
         {
           "element": "b_sign1",
           "field": "signers.1.label",
-          "message": "author on its own isn't a value: use one name inside it, such as author.department."
+          "message": "author on its own isn't a value: use one name inside it, such as author.company."
         },
         {
           "element": "b_head2",
