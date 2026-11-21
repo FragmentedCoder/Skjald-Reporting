@@ -4,7 +4,7 @@
 // answers; it runs in the expression worker, which stops it if it takes too long.
 // Phase 3's renderer does the same work on the server for the real PDF.
 
-import { Engine, ExpressionError, isSpan, plain, type EngineOptions } from "#lib/cel/engine.js";
+import { Engine, ExpressionError, human, isSpan, plain, toCel, type EngineOptions } from "#lib/cel/engine.js";
 import { formatDate, formatDuration, isMidnight, startOfDay } from "#lib/cel/dates.js";
 import { LOCALES, type Table as LookupTable } from "#lib/cel/library.js";
 import { formatNumber } from "#lib/cel/numbers.js";
@@ -153,7 +153,7 @@ export function startValue(question: Question, value: unknown, zone: string): un
   const settings = settingsOf(question.type, question.settings);
   if (value === null || value === undefined || value === "") return null;
   if (question.type === "datetime") {
-    if (!(value instanceof Date) || Number.isNaN(value.getTime())) return null;
+    if (!(value instanceof Date) || noDate(value)) return null;
     const moment = settings.mode === "date" ? startOfDay(value, zone) : new Date(Math.floor(value.getTime() / 60_000) * 60_000);
     return moment.toISOString();
   }
@@ -191,10 +191,20 @@ function calculationOrder(questions: Question[], engine: Engine): Question[] {
 
 // Printing
 
+/**
+ * Whether a date is no date: one that can't be (out of range), or the one a date
+ * question not answered yet reaches expressions as (the first moment of 1970, since an
+ * expression's date can't be empty). Neither is printed or taken as a start value.
+ */
+export function noDate(value: Date): boolean {
+  return Number.isNaN(value.getTime()) || value.getTime() === 0;
+}
+
 /** A value as text in {{ }} prints it, in the report's language. */
 export function printValue(value: unknown, language: string, zone: string): string {
   const locale = LOCALES[language] ?? LOCALES.en;
   if (value === null || value === undefined) return "";
+  if (value instanceof Date && noDate(value)) return "";
   if (typeof value === "boolean") return language === "da" ? (value ? "Ja" : "Nej") : value ? "Yes" : "No";
   if (typeof value === "number") return Number.isInteger(value) ? String(value) : String(value).replace(".", locale.decimal);
   if (typeof value === "bigint") return value.toString();
@@ -249,6 +259,22 @@ class Worker {
     }
   }
 
+  /** What {{ expr }} prints: its value as text, or ⚠ when it fails or gives what can't be printed. */
+  print(scope: Scope, element: Id, expr: string): string {
+    const value = this.run(scope, element, expr);
+    if (value === undefined) return "⚠";
+    if (value instanceof Date && Number.isNaN(value.getTime())) {
+      this.errors.push({ element, message: "This gives a date outside the years a report can print." });
+      return "⚠";
+    }
+    try {
+      return printValue(plain(value), this.language, this.zone);
+    } catch (error) {
+      this.errors.push({ element, message: error instanceof Error ? error.message : String(error) });
+      return "⚠";
+    }
+  }
+
   shows(scope: Scope, element: Id, rule: string | null | undefined): boolean {
     if (!rule?.trim()) return true;
     const result = this.run(scope, element, rule);
@@ -260,10 +286,7 @@ class Worker {
     let last = 0;
     for (const found of interpolations(text)) {
       out += text.slice(last, found.start);
-      if (found.closed && found.expr) {
-        const value = this.run(scope, element, found.expr);
-        out += value === undefined ? "⚠" : printValue(plain(value), this.language, this.zone);
-      }
+      if (found.closed && found.expr) out += this.print(scope, element, found.expr);
       last = found.end;
     }
     return out + text.slice(last);
@@ -273,8 +296,7 @@ class Worker {
     if (!doc) return null;
     const visit = (node: RichNode): RichNode[] => {
       if (node.type === "variable") {
-        const value = this.run(scope, element, String(node.attrs?.expr ?? ""));
-        const text = value === undefined ? "⚠" : printValue(plain(value), this.language, this.zone);
+        const text = this.print(scope, element, String(node.attrs?.expr ?? ""));
         return text ? [{ type: "text", text }] : [];
       }
       if (node.type === "text") {
@@ -437,7 +459,14 @@ class Worker {
         const q = b.question ? this.byId.get(b.question) : undefined;
         const raw = q ? this.input.answers[q.id] : undefined;
         const rows = Array.isArray(raw) ? (raw as Record<string, unknown>[]) : [];
-        const counts = b.levels.map((level) => ({ level, count: rows.filter((r) => String(r[b.column ?? ""] ?? "").toLowerCase() === level.toLowerCase()).length }));
+        // A level is named as the column shows it ("Høj"); a dropdown keeps a value of
+        // its own for each choice ("hoej"), so a row counts by either.
+        const column = q ? (settingsOf(q.type, q.settings).columns as { key: string; type: string; settings?: Record<string, unknown> }[] | undefined)?.find((c) => c.key === b.column) : undefined;
+        const shown = (row: Record<string, unknown>) => {
+          const value = row[b.column ?? ""];
+          return [String(value ?? ""), column ? this.cell(column, value) : ""].map((text) => text.trim().toLowerCase());
+        };
+        const counts = b.levels.map((level) => ({ level, count: rows.filter((r) => shown(r).includes(level.trim().toLowerCase())).length }));
         return [{ kind: "severity_summary", id, caption: this.text(scope, id, b.caption), counts }];
       }
       case "sources": {
@@ -502,27 +531,45 @@ export function preview(input: PreviewInput): PreviewModel {
   for (const q of questions) if (q.key && q.type !== "calculated") answers[q.key] = answerValue(q, input.answers[q.id]);
   const values: Record<string, unknown> = { ...input.context, ...(input.library?.values ?? {}), answers };
   const errors: PreviewModel["errors"] = [];
-  // A question not answered yet starts as its rule says, in the form's order (one cleared
-  // on purpose is kept as null, and stays empty).
+  // Calculated values, each kept as the kind of value it's declared to give. One that
+  // gives another kind (a whole number that works out as 0.75) is its own question's
+  // problem and stays empty, rather than failing every expression that reads the answers.
+  const calculate = (report: boolean) => {
+    for (const q of calculationOrder(questions, engine)) {
+      const name = `answers.${q.key}`;
+      const spec = engine.declarations.get(name);
+      try {
+        const value = engine.evaluateRaw(q.value ?? "", values);
+        try {
+          answers[q.key as string] = spec ? toCel(value, spec, name) : value;
+        } catch {
+          answers[q.key as string] = null;
+          if (report) errors.push({ element: q.id, message: `This should give ${human(spec?.name ?? "")}, but with these answers it gives ${printValue(plain(value), content.settings.language, input.timezone ?? "Europe/Copenhagen") || "something else"}.` });
+        }
+      } catch (error) {
+        if (report) errors.push({ element: q.id, message: error instanceof ExpressionError ? error.message : String(error) });
+      }
+    }
+  };
+  // What a question starts as may read a calculated value, and a calculated value what
+  // a question starts as: the calculated values are worked out, then the start values
+  // (in the form's order), then the calculated values again.
+  const starting = questions.filter((q) => q.key && q.type !== "calculated" && q.default?.trim() && input.answers[q.id] === undefined);
+  if (starting.length) calculate(false);
+  // A question not answered yet starts as its rule says (one cleared on purpose is kept
+  // as null, and stays empty).
   const defaults: PreviewModel["defaults"] = {};
-  for (const q of questions) {
-    if (!q.key || q.type === "calculated" || !q.default?.trim() || input.answers[q.id] !== undefined) continue;
+  for (const q of starting) {
     try {
-      const start = startValue(q, plain(engine.evaluateRaw(q.default, values)), input.timezone ?? "Europe/Copenhagen");
+      const start = startValue(q, plain(engine.evaluateRaw(q.default as string, values)), input.timezone ?? "Europe/Copenhagen");
       if (start === null) continue;
       defaults[q.id] = start;
-      answers[q.key] = answerValue(q, start);
+      answers[q.key as string] = answerValue(q, start);
     } catch (error) {
       errors.push({ element: q.id, message: error instanceof ExpressionError ? error.message : String(error) });
     }
   }
-  for (const q of calculationOrder(questions, engine)) {
-    try {
-      answers[q.key as string] = engine.evaluateRaw(q.value ?? "", values);
-    } catch (error) {
-      errors.push({ element: q.id, message: error instanceof ExpressionError ? error.message : String(error) });
-    }
-  }
+  calculate(true);
   // Blocks that print an answer as it's kept (an Answer block, a table) read what a
   // question starts as too, as text and rules do.
   const worker = new Worker({ ...input, answers: { ...input.answers, ...defaults } }, { engine, values }, itemEngine);

@@ -251,6 +251,75 @@ describe("what questions start as", () => {
   });
 });
 
+describe("a date that isn't answered", () => {
+  const q = (c: TemplateContent, id: string, key: string, type: string, more: Record<string, unknown> = {}) =>
+    ({ ...c.form[0].questions[0], id, key, type, label: key, required: false, settings: type === "datetime" ? { mode: "datetime" } : {}, ...more });
+
+  it("prints as nothing, not as the first day of 1970", () => {
+    const c = content();
+    c.layout.push({ id: "b_when", kind: "heading", visible_when: null, text: "Detected: {{answers.detected}}." });
+    const answers = { ...c.sample.answers, q_detected: undefined };
+    const model = preview({ ...input(c, answers), timezone: "Europe/Copenhagen" });
+    expect(find(model.blocks, "b_when")).toMatchObject({ text: "Detected: ." });
+  });
+
+  it("starts nothing: a date question that starts as another one not answered stays empty", () => {
+    const c = content();
+    c.form[0].questions.push(q(c, "q_until", "until", "datetime", { default: "answers.detected" }));
+    const model = preview({ ...input(c, { ...c.sample.answers, q_detected: undefined }), timezone: "Europe/Copenhagen" });
+    expect(model.defaults).toEqual({});
+  });
+
+  it("lets a question start as a calculated value, and a calculated value read what a question starts as", () => {
+    const c = content();
+    c.form[0].questions.push(
+      q(c, "q_until", "until", "datetime", { default: "answers.deadline" }),
+      q(c, "q_note1", "note", "text", { default: "answers.severity" }),
+      { ...q(c, "q_shout", "shout", "calculated", { value: 'answers.note + "!"' }), settings: { result: "text", show_in_form: false } },
+    );
+    const model = preview({ ...input(c), timezone: "Europe/Copenhagen" });
+    expect(model.errors).toEqual([]);
+    expect(model.defaults).toEqual({ q_until: "2026-10-24T01:14:00.000Z", q_note1: "Critical" });
+    expect(model.values.shout).toBe("Critical!");
+  });
+});
+
+describe("one value that can't be used", () => {
+  it("marks a date outside what can be printed where it's printed, and prints the rest", () => {
+    const c = content();
+    c.layout.push({ id: "b_far", kind: "heading", visible_when: null, text: "{{ add_hours(answers.detected, 9000000000) }} and on" });
+    const model = preview({ ...input(c), timezone: "Europe/Copenhagen" });
+    expect(find(model.blocks, "b_far")).toMatchObject({ text: "⚠ and on" });
+    expect(model.errors.map((e) => e.element)).toEqual(["b_far"]);
+    expect(find(model.blocks, "b_cover")).toMatchObject({ title: "Security incident report" });
+  });
+
+  it("is the calculated question's own problem when it gives another kind of value than it says", () => {
+    const c = content();
+    const first = c.form[0].questions[0];
+    c.form[0].questions.push({ ...first, id: "q_ratio", key: "ratio", type: "calculated", label: "Ratio", required: false,
+      value: "answers.cvss / 2.0", settings: { result: "whole", show_in_form: false } });
+    const model = preview({ ...input(c), timezone: "Europe/Copenhagen" });
+    // Every other expression still works: only the calculated value is reported.
+    expect(model.errors).toEqual([{ element: "q_ratio", message: "This should give a whole number, but with these answers it gives 4.55." }]);
+    expect(model.values.ratio).toBeNull();
+    expect(model.values.severity).toBe("Critical");
+  });
+});
+
+describe("the severity summary", () => {
+  it("counts a row by what its dropdown shows as well as by the value it keeps", () => {
+    const c = content();
+    const first = c.form[0].questions[0];
+    const options = [{ value: "kritisk", label: "Kritisk" }, { value: "hoej", label: "Høj" }, { value: "lav", label: "Lav" }];
+    c.form[0].questions.push({ ...first, id: "q_finds", key: "finds", type: "repeating", label: "Findings", required: false,
+      settings: { columns: [{ key: "title", label: "Title", type: "text", required: false, settings: {} }, { key: "sev", label: "Severity", type: "dropdown", required: false, settings: { options } }], min_rows: 0, max_rows: 100 } });
+    c.layout.push({ id: "b_sev", kind: "severity_summary", visible_when: null, question: "q_finds", column: "sev", levels: ["Kritisk", "Høj", "lav"], caption: "" });
+    const answers = { ...c.sample.answers, q_finds: [{ title: "a", sev: "hoej" }, { title: "b", sev: "hoej" }, { title: "c", sev: "kritisk" }, { title: "d", sev: "lav" }, { title: "e", sev: null }] };
+    expect(find(preview(input(c, answers)).blocks, "b_sev")).toMatchObject({ counts: [{ level: "Kritisk", count: 1 }, { level: "Høj", count: 2 }, { level: "lav", count: 1 }] });
+  });
+});
+
 describe("printValue", () => {
   const engine = new Engine({ "project.start_date": "timestamp", "project.end_date": "timestamp" }, {});
   const values = { project: { start_date: "2026-11-01T00:00:00+01:00", end_date: "2026-11-20T00:00:00+01:00" } };
