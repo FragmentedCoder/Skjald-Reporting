@@ -11,11 +11,12 @@
   import ColourField from "#lib/components/styles/ColourField.svelte";
   import ElementPanel from "#lib/components/styles/ElementPanel.svelte";
   import PageDesigner from "#lib/components/styles/PageDesigner.svelte";
-  import { customFieldsApi, customNames, sampleCustom, type CustomField } from "#lib/customFields.js";
+  import { customFieldsApi, type CustomField } from "#lib/customFields.js";
   import type { CustomerDetail } from "#lib/customers.js";
   import { dateTime } from "#lib/format.js";
+  import { libraryApi, type LibraryEntry } from "#lib/library.js";
   import { backgroundApi, stylesApi, whenConverted, type Style, type StyleSummary } from "#lib/reportStyles/api.js";
-  import { lookOf, pageTexts, type CustomerArt } from "#lib/reportStyles/look.js";
+  import { lookOf, type CustomerArt } from "#lib/reportStyles/look.js";
   import { imageOf } from "#lib/reportStyles/preview.svelte.js";
   import {
     COLOUR_KEYS,
@@ -36,10 +37,8 @@
     type PageName,
     type StyleContent,
   } from "#lib/reportStyles/resolve.js";
-  import { sampleTemplate } from "#lib/shared.js";
+  import { sampleReport } from "#lib/reportStyles/sample.js";
   import { LivePreview } from "#lib/templates/live.svelte.js";
-  import { sampleContext } from "#lib/templates/preview.js";
-  import type { TemplateContent } from "#lib/templates/types.js";
   import { toast } from "#lib/toast.svelte.js";
 
   // One style: its colours and type, margins, page designs and artwork, beside the sample
@@ -61,6 +60,7 @@
   let customerArt = $state<CustomerArt | null>(null);
   let showBackground = $state(true);
   let customFields = $state<CustomField[]>([]);
+  let library = $state<LibraryEntry[]>([]);
 
   const snapshotOf = () => JSON.stringify({ name, basedOn, content: $state.snapshot(content) });
   const changed = $derived(style !== null && JSON.stringify({ name, basedOn, content }) !== saved);
@@ -84,7 +84,7 @@
       use(await stylesApi.get(id));
       error = null;
       companyStyles = (await stylesApi.list()).filter((s) => s.customer_id === null);
-      customFields = await customFieldsApi.list().catch(() => []);
+      [library, customFields] = await Promise.all([libraryApi.list().catch(() => []), customFieldsApi.list().catch(() => [])]);
       if (style?.customer_id) await loadCustomer(style.customer_id);
     } catch (e) {
       if (!sessionGone(e)) error = e instanceof ApiError ? e.message : "The style could not be loaded.";
@@ -267,11 +267,7 @@
   const live = new LivePreview();
   onDestroy(() => live.close());
   $effect(() => {
-    const sample = sampleTemplate as unknown as TemplateContent;
-    const fields = $state.snapshot(customFields) as CustomField[];
-    live.update({ content: sample, answers: sample.sample.answers, assets: {}, timezone: branding.current.time_zone,
-      context: sampleContext({ customer: sampleCustom(fields, "customer"), project: sampleCustom(fields, "project") }),
-      library: { names: customNames(fields), values: {}, tables: {} }, pageTexts: pageTexts(resolved) });
+    live.update(sampleReport(resolved, $state.snapshot(library) as LibraryEntry[], $state.snapshot(customFields) as CustomField[], branding.current.time_zone));
   });
   const look = $derived(lookOf(resolved, { image, customerArt: showBackground ? customerArt : null, logos, madeWith: branding.current.made_with_skjald, texts: live.model?.pageTexts }));
   const art = $derived(pageName === "other" ? look.art.other : look.art.first);
