@@ -2,10 +2,12 @@
 
 /**
  * Whether a key press asks to remove what's selected: Delete, or Backspace (the Mac's
- * delete key), on its own, and not while typing in a field or with a dialog open.
+ * delete key), on its own, and not while typing in a field or with a dialog open. A
+ * key held down removes one thing, not what gets selected after it as well.
  */
 export function removesSelection(event: KeyboardEvent): boolean {
   if (event.key !== "Delete" && event.key !== "Backspace") return false;
+  if (event.repeat) return false;
   if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || event.defaultPrevented) return false;
   const target = event.target instanceof Element ? event.target : null;
   return !target?.closest("input, textarea, select, [contenteditable='true'], [contenteditable=''], dialog, [role='dialog']");

@@ -119,10 +119,21 @@
     expression = "";
   }
 
+  let linkProblem = $state<string | null>(null);
+
+  // A web address or an email address, as people write them: "skjald.example/guide" and
+  // "sofie@skjald.example" get the https:// or mailto: a link needs. Anything else that
+  // isn't one of those kinds of link is said so, not dropped.
   function setLink() {
-    const href = address.trim();
+    let href = address.trim();
+    if (href && !/^[a-z][a-z0-9+.-]*:/i.test(href)) href = /^[^\s/@]+@[^\s/@]+\.[^\s/@]+$/.test(href) ? `mailto:${href}` : `https://${href}`;
     if (!href) editor?.chain().focus().unsetLink().run();
-    else if (/^(https?:\/\/|mailto:)/.test(href)) editor?.chain().focus().extendMarkRange("link").setLink({ href }).run();
+    else if (/^(https?:\/\/|mailto:)\S+$/i.test(href)) editor?.chain().focus().extendMarkRange("link").setLink({ href }).run();
+    else {
+      linkProblem = "A link is a web address (https://…) or an email address.";
+      return;
+    }
+    linkProblem = null;
     linking = false;
   }
 
@@ -150,9 +161,11 @@
   </div>
   {#if linking}
     <form class="popover" onsubmit={(e) => { e.preventDefault(); setLink(); }}>
-      <input class="input" aria-label="Link address" placeholder="https://" bind:value={address} />
+      <input class="input" aria-label="Link address" placeholder="https://" bind:value={address} aria-invalid={linkProblem ? "true" : undefined}
+        oninput={() => (linkProblem = null)} />
       <button class="button button-secondary" type="submit">{address.trim() ? "Set link" : "Remove link"}</button>
     </form>
+    {#if linkProblem}<p class="small error" role="status">{linkProblem}</p>{/if}
   {/if}
   {#if naming}
     <div class="popover">
