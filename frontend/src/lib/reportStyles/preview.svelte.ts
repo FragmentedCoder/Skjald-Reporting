@@ -7,12 +7,16 @@ import { stylesApi, type Style, type StyleSummary } from "./api";
 import { lookOf, pageTexts, type PageLook } from "./look";
 import { resolve, type ResolvedStyle } from "./resolve";
 
-/** Where a style's picture loads from: its own, or the company style it stacks on. */
-export function imageOf(style: Style | null): (sha: string) => string | null {
+/**
+ * Where a style's picture loads from: its own, or the company style it stacks on. In
+ * the style editor that's the one chosen under "Stacks on" (`base`), which isn't the
+ * one the style was saved with until it's saved again.
+ */
+export function imageOf(style: Style | null, base: number | null | undefined = style?.based_on): (sha: string) => string | null {
   return (sha) => {
     if (!style) return null;
     if (style.assets.some((a) => a.sha256 === sha)) return stylesApi.assetUrl(style.id, sha);
-    return style.based_on ? stylesApi.assetUrl(style.based_on, sha) : null;
+    return base ? stylesApi.assetUrl(base, sha) : null;
   };
 }
 

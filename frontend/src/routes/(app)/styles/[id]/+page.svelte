@@ -67,7 +67,8 @@
   const lower = $derived(resolve(below));
   const resolved = $derived(resolve([...below, content]));
   const weak = $derived(contrastProblems(resolved));
-  const image = $derived(imageOf(style));
+  // Pictures the style doesn't have itself come from the style chosen under "Stacks on".
+  const image = $derived(imageOf(style, basedOn));
   // The style's images to place on a page: its artwork for whole pages isn't among them.
   const pictures = $derived((style?.assets ?? []).filter((a) => !isArtwork(a)));
   const logos = $derived({ company: branding.current.logo_url, customer: customerLogo });
@@ -111,10 +112,20 @@
     }
   }
 
-  // Choosing another company style to stack on shows its look at once.
-  async function stackOn(value: string) {
-    basedOn = value ? Number(value) : null;
-    below = basedOn === null ? [] : [(await stylesApi.get(basedOn)).content];
+  // Choosing another company style to stack on shows its look at once: the look and
+  // where its pictures load from change together, once the style has arrived.
+  async function stackOn(select: HTMLSelectElement) {
+    const value = select.value;
+    const chosen = value ? Number(value) : null;
+    try {
+      const under = chosen === null ? [] : [(await stylesApi.get(chosen)).content];
+      if (select.value !== value) return; // another was chosen meanwhile
+      basedOn = chosen;
+      below = under;
+    } catch (e) {
+      select.value = basedOn === null ? "" : String(basedOn);
+      if (!sessionGone(e)) toast(e instanceof ApiError ? e.message : "That style couldn't be loaded.", "critical");
+    }
   }
 
   async function save() {
@@ -304,7 +315,7 @@
           {#if style.customer_id}
             <div class="field">
               <label for="style-base">Stacks on</label>
-              <select id="style-base" class="input" value={basedOn === null ? "" : String(basedOn)} onchange={(e) => void stackOn(e.currentTarget.value)}>
+              <select id="style-base" class="input" value={basedOn === null ? "" : String(basedOn)} onchange={(e) => void stackOn(e.currentTarget)}>
                 <option value="">The Skjald default</option>
                 {#each companyStyles as s (s.id)}<option value={String(s.id)}>{s.name}</option>{/each}
               </select>
