@@ -1,7 +1,7 @@
 // Suggesting names while text is typed: after an unclosed "{{", the names that match
 // what follows it, for text fields and the rich text editor alike.
 
-import type { NameEntry } from "./catalogue";
+import { rowNames, type NameEntry } from "./catalogue";
 
 /** The name being typed at the caret: where its "{{" starts, and what's typed after it. */
 export function typedName(before: string): { start: number; query: string } | null {
@@ -9,9 +9,9 @@ export function typedName(before: string): { start: number; query: string } | nu
   return match ? { start: match.index, query: match[1] ?? "" } : null;
 }
 
-/** Names that print a value: not whole tables or other structures. */
+/** Names that print a value: not whole tables or other structures, but what their rows hold. */
 export function printable(entries: NameEntry[]): NameEntry[] {
-  return entries.filter((e) => e.shape !== "rows" && e.shape !== "other");
+  return entries.flatMap((e) => (e.shape === "rows" ? rowNames(e) : e.shape === "other" ? [] : [e]));
 }
 
 /** The names matching what's typed: names starting with it first, then names and labels holding it. */

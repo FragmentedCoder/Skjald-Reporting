@@ -1552,6 +1552,329 @@
           "message": "vars.unknown isn't a name this template has."
         }
       ]
+    },
+    {
+      "name": "Switch blocks",
+      "content": {
+        "schema": 1,
+        "settings": {
+          "prefix": "REP",
+          "language": "en",
+          "signing": "technician",
+          "review": "optional",
+          "delivery": [
+            "download"
+          ],
+          "styles": [
+            "company",
+            "customer"
+          ],
+          "customer_background": true
+        },
+        "form": [
+          {
+            "id": "s_main1",
+            "title": "Step",
+            "help": "",
+            "visible_when": null,
+            "questions": [
+              {
+                "id": "q_found",
+                "key": "found",
+                "type": "dropdown",
+                "label": "Where it was found",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "options": [
+                    {
+                      "value": "firewall",
+                      "label": "Firewall logs"
+                    },
+                    {
+                      "value": "system",
+                      "label": "System logs"
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "q_count",
+                "key": "count",
+                "type": "number",
+                "label": "How many",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "whole": true,
+                  "min": null,
+                  "max": null,
+                  "decimals": 0,
+                  "unit": ""
+                }
+              },
+              {
+                "id": "q_seen",
+                "key": "seen",
+                "type": "yes_no",
+                "label": "Seen",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "yes_label": "Yes",
+                  "no_label": "No"
+                }
+              },
+              {
+                "id": "q_rows",
+                "key": "rows",
+                "type": "repeating",
+                "label": "Rows",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "columns": [
+                    {
+                      "key": "ip",
+                      "label": "IP",
+                      "type": "ip",
+                      "required": false,
+                      "settings": {
+                        "versions": "any",
+                        "cidr": "no"
+                      }
+                    }
+                  ],
+                  "min_rows": 0,
+                  "max_rows": 100
+                }
+              }
+            ]
+          }
+        ],
+        "layout": [
+          {
+            "id": "b_switch1",
+            "visible_when": null,
+            "kind": "switch",
+            "value": "answers.found",
+            "cases": [
+              {
+                "match": "firewall",
+                "blocks": [
+                  {
+                    "id": "b_text1",
+                    "visible_when": null,
+                    "kind": "text",
+                    "content": {
+                      "type": "doc",
+                      "content": [
+                        {
+                          "type": "paragraph",
+                          "content": [
+                            {
+                              "type": "text",
+                              "text": "In the firewall's logs, {{answers.nope}}"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "match": 3,
+                "blocks": []
+              },
+              {
+                "match": "firewall",
+                "blocks": []
+              }
+            ],
+            "otherwise": [
+              {
+                "id": "b_head1",
+                "visible_when": null,
+                "kind": "heading",
+                "text": "Not disclosed"
+              }
+            ]
+          },
+          {
+            "id": "b_switch2",
+            "visible_when": null,
+            "kind": "switch",
+            "value": "answers.seen",
+            "cases": [],
+            "otherwise": []
+          },
+          {
+            "id": "b_switch3",
+            "visible_when": null,
+            "kind": "switch",
+            "value": null,
+            "cases": [
+              {
+                "match": "x",
+                "blocks": []
+              }
+            ],
+            "otherwise": []
+          },
+          {
+            "id": "b_switch4",
+            "visible_when": null,
+            "kind": "switch",
+            "value": "answers.count",
+            "cases": [
+              {
+                "match": 2,
+                "blocks": []
+              },
+              {
+                "match": "2",
+                "blocks": []
+              }
+            ],
+            "otherwise": []
+          },
+          {
+            "id": "b_sect1",
+            "visible_when": null,
+            "kind": "section",
+            "title": "Per row",
+            "intro": null,
+            "new_page": true,
+            "numbered": true,
+            "landscape": false,
+            "repeat_for": "answers.rows",
+            "blocks": [
+              {
+                "id": "b_switch5",
+                "visible_when": null,
+                "kind": "switch",
+                "value": "item.ip",
+                "cases": [
+                  {
+                    "match": "10.0.0.1",
+                    "blocks": [
+                      {
+                        "id": "b_text2",
+                        "visible_when": null,
+                        "kind": "text",
+                        "content": {
+                          "type": "doc",
+                          "content": [
+                            {
+                              "type": "paragraph",
+                              "content": [
+                                {
+                                  "type": "text",
+                                  "text": "{{item.ip}} is the gateway"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "otherwise": []
+              }
+            ]
+          },
+          {
+            "id": "b_switch6",
+            "visible_when": null,
+            "kind": "switch",
+            "value": "item.ip",
+            "cases": [
+              {
+                "match": "10.0.0.1",
+                "blocks": []
+              }
+            ],
+            "otherwise": []
+          }
+        ],
+        "sample": {
+          "answers": {}
+        }
+      },
+      "answers": {
+        "answers.count": "int",
+        "answers.found": "string",
+        "answers.rows": "list<map<string, dyn>>",
+        "answers.seen": "bool"
+      },
+      "problems": [
+        {
+          "element": "b_switch1",
+          "field": "cases.1.match",
+          "message": "This case needs text, as what picks it is text."
+        },
+        {
+          "element": "b_switch1",
+          "field": "cases.2.match",
+          "message": "Another case already picks “firewall”: only the first one is printed."
+        },
+        {
+          "element": "b_text1",
+          "field": "content",
+          "message": "answers.nope isn't a name this template has."
+        },
+        {
+          "element": "b_switch2",
+          "field": "value",
+          "message": "A switch picks by text or a whole number, but this gives yes or no."
+        },
+        {
+          "element": "b_switch2",
+          "field": "cases",
+          "message": "Add a case: without one, the switch always prints its otherwise."
+        },
+        {
+          "element": "b_switch3",
+          "field": "value",
+          "message": "Choose what picks the case."
+        },
+        {
+          "element": "b_switch4",
+          "field": "cases.1.match",
+          "message": "This case needs a whole number, as what picks it is one."
+        },
+        {
+          "element": "b_switch6",
+          "field": "value",
+          "message": "item is only there inside a section repeated for each item."
+        }
+      ]
     }
   ]
 }

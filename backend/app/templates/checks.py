@@ -33,6 +33,7 @@ from app.templates.content import (
     SeveritySummary,
     Signatures,
     Sources,
+    Switch,
     Table,
     TemplateContent,
     TextBlock,
@@ -249,6 +250,38 @@ class _Checker:
         if key not in [c["key"] for c in q.settings["columns"]]:
             self.add(element, field_, f"“{q.label}” has no column {key}.")
 
+    def switched(self, b: Switch, *, item: bool) -> None:
+        """What picks a switch's case gives text or a whole number, and each case's
+        value is one of those, picked by no other case."""
+        got: str | None = None
+        if b.value is None or not b.value.strip():
+            self.add(b.id, "value", "Choose what picks the case.")
+        else:
+            engine = self.item_engine if item else self.engine
+            try:
+                got = engine.check(b.value)
+            except ExpressionError as error:
+                self.add(b.id, "value", self.message(error, item))
+        if got is not None and got not in ("string", "int", "dyn"):
+            self.add(b.id, "value",
+                     f"A switch picks by text or a whole number, but this gives {human(got)}.")
+        if not b.cases:
+            self.add(b.id, "cases",
+                     "Add a case: without one, the switch always prints its otherwise.")
+        seen: list[str | int] = []
+        for i, case in enumerate(b.cases):
+            if got == "string" and not isinstance(case.match, str):
+                self.add(b.id, f"cases.{i}.match",
+                         "This case needs text, as what picks it is text.")
+            elif got == "int" and not isinstance(case.match, int):
+                self.add(b.id, f"cases.{i}.match",
+                         "This case needs a whole number, as what picks it is one.")
+            elif case.match in seen:
+                self.add(b.id, f"cases.{i}.match",
+                         f"Another case already picks “{case.match}”: only the first one is "
+                         "printed.")
+            seen.append(case.match)
+
     def block(self, b: Block, *, item: bool) -> None:
         self.id(b.id)
         # A repeated section's own rule, title and intro are worked out for each item;
@@ -332,6 +365,13 @@ class _Checker:
             for column in b.columns:
                 for child in column:
                     self.block(child, item=item)
+        elif isinstance(b, Switch):
+            self.switched(b, item=item)
+            for case in b.cases:
+                for child in case.blocks:
+                    self.block(child, item=item)
+            for child in b.otherwise:
+                self.block(child, item=item)
 
 
 def check(

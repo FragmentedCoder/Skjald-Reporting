@@ -1,6 +1,7 @@
 <script lang="ts">
   import Copy from "@lucide/svelte/icons/copy";
   import Search from "@lucide/svelte/icons/search";
+  import TypeCode from "#lib/components/builder/TypeCode.svelte";
   import { searchNames, type NameGroup, type NameRow } from "#lib/templates/nameGroups.js";
   import { toast } from "#lib/toast.svelte.js";
 
@@ -52,7 +53,7 @@
             {#each group.rows as row (row.name)}
               <li>
                 <button type="button" class="row" onclick={() => (onpick ?? copy)(row)} title="Insert {`{{${row.name}}}`}">
-                  <span class="line"><span class="mono name">{row.name}</span><span class="kind small">{row.kind}</span></span>
+                  <span class="line"><span class="mono name">{#if row.field}<TypeCode type={row.field} /> {/if}{row.name}</span><span class="kind small">{row.kind}</span></span>
                   <span class="small what">{row.what}</span>
                   <span class="small muted mono example" class:made-up={row.live === false}>{row.example}</span>
                 </button>
@@ -67,6 +68,7 @@
                 {#each group.rows as row (row.name)}
                   <tr>
                     <td class="name-cell">
+                      {#if row.field}<TypeCode type={row.field} />{/if}
                       <span class="mono name">{row.name}</span>
                       <button type="button" class="copy" onclick={() => (onpick ?? copy)(row)} aria-label="Copy {`{{${row.name}}}`}" title="Copy {`{{${row.name}}}`}">
                         <Copy size={14} aria-hidden="true" />

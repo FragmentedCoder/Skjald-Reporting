@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { NameEntry } from "#lib/templates/catalogue.js";
+  import TypeCode from "./TypeCode.svelte";
 
   // The names matching what's typed after "{{", under the field typed in. The field
   // keeps the focus: the arrow keys move through these, Enter or Tab picks one. A
@@ -55,7 +56,7 @@
     <!-- The keyboard works in the field (a combobox), so an option only needs the click. -->
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <li id="{id}-{i}" role="option" aria-selected={i === active} class:active={i === active} onclick={() => onpick(entry)}>
-      <span class="label">{entry.label}</span>
+      <span class="label">{#if entry.field}<TypeCode type={entry.field} /> {/if}{entry.label}</span>
       <span class="name">{entry.name}</span>
     </li>
   {/each}

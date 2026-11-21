@@ -1,7 +1,7 @@
 <script lang="ts">
   import Plus from "@lucide/svelte/icons/plus";
   import X from "@lucide/svelte/icons/x";
-  import type { Choice, NameEntry } from "#lib/templates/catalogue.js";
+  import { entryChoice, type Choice, type NameEntry } from "#lib/templates/catalogue.js";
   import { OPS, type Condition, type Group, type Shape, type ValueRule } from "#lib/templates/rules.js";
   import ConditionEditor from "./ConditionEditor.svelte";
   import LiteralInput from "./LiteralInput.svelte";
@@ -76,7 +76,7 @@
     <div class="then">
       <span class="keyword">Look at</span>
       <select class="input" aria-label="{label}: the answer it depends on" bind:value={rule.name}>
-        {#each switchable as e (e.name)}<option value={e.name}>{e.label}</option>{/each}
+        {#each switchable as e (e.name)}<option value={e.name}>{entryChoice(e)}</option>{/each}
       </select>
     </div>
     {#each rule.cases as c, index (index)}

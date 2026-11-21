@@ -10,12 +10,14 @@ can be saved half-finished but not published.
 - form: the technician's steps, each with its questions. A question has a fixed ID
   (answers follow it from version to version) and a variable name, its key, which
   expressions read as answers.<key> and which can be renamed.
-- layout: the PDF's blocks, a tree: sections hold blocks, columns hold blocks.
+- layout: the PDF's blocks, a tree: sections hold blocks, columns hold blocks, and a
+  switch holds blocks for each of its cases and for when none matches.
   Blocks name questions by ID, so renaming a question changes no block.
 - sample: answers for "Try it", by question ID; builder only.
 
 Rules are expressions stored on what they act on (visible_when, required_when,
-valid_when, a calculated value, a callout's tone, a section's repeat_for).
+valid_when, a calculated value, a callout's tone, a section's repeat_for, what
+picks a switch's case).
 """
 
 from __future__ import annotations
@@ -27,6 +29,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    StrictInt,
     StringConstraints,
     field_validator,
     model_validator,
@@ -248,14 +251,31 @@ class PageBreak(BlockBase):
     kind: Literal["page_break"]
 
 
+class Case(Strict):
+    # The value that picks it: text, or a whole number (never true or false).
+    match: Annotated[str, StringConstraints(max_length=500)] | StrictInt
+    blocks: list[Block] = Field(default_factory=list, max_length=300)
+
+
+class Switch(BlockBase):
+    """Prints the blocks of the first case whose value is what value gives, else otherwise."""
+
+    kind: Literal["switch"]
+    value: Expr | None = None
+    cases: list[Case] = Field(default_factory=list, max_length=50)
+    otherwise: list[Block] = Field(default_factory=list, max_length=300)
+
+
 Block = Annotated[
     Cover | Contents | Section | Heading | TextBlock | Answer | Table | Image | Gallery
-    | Callout | SeveritySummary | Sources | Signatures | Columns | PageBreak,
+    | Callout | SeveritySummary | Sources | Signatures | Columns | PageBreak | Switch,
     Field(discriminator="kind"),
 ]
 
 Section.model_rebuild()
 Columns.model_rebuild()
+Case.model_rebuild()
+Switch.model_rebuild()
 
 
 class Sample(Strict):

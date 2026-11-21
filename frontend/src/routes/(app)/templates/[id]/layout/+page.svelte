@@ -21,7 +21,7 @@
   import { LivePreview } from "#lib/templates/live.svelte.js";
   import { declarations, ITEM } from "#lib/templates/names.js";
   import { shapeOf } from "#lib/templates/rules.js";
-  import { questionsOf, type Block, type BlockKind, type Problem, type TemplateContent } from "#lib/templates/types.js";
+  import { listsIn, questionsOf, type Block, type BlockKind, type Problem, type TemplateContent } from "#lib/templates/types.js";
   import { toast } from "#lib/toast.svelte.js";
 
   // The Layout tab: the PDF, built from blocks. The outline shows them in the order
@@ -53,9 +53,8 @@
   function locate(blocks: Block[], id: string, repeat: string | null = null): Found | null {
     for (const [index, block] of blocks.entries()) {
       if (block.id === id) return { block, list: blocks, index, repeat };
-      const inner = block.kind === "section" ? [block.blocks] : block.kind === "columns" ? block.columns : [];
       const nextRepeat = block.kind === "section" && block.repeat_for ? block.repeat_for : repeat;
-      for (const list of inner) {
+      for (const list of listsIn(block)) {
         const found = locate(list, id, nextRepeat);
         if (found) return found;
       }
@@ -98,8 +97,7 @@
   function pathTo(blocks: Block[], id: string): { block: Block; list: Block[]; index: number }[] | null {
     for (const [index, block] of blocks.entries()) {
       if (block.id === id) return [{ block, list: blocks, index }];
-      const inner = block.kind === "section" ? [block.blocks] : block.kind === "columns" ? block.columns : [];
-      for (const list of inner) {
+      for (const list of listsIn(block)) {
         const below = pathTo(list, id);
         if (below) return [{ block, list: blocks, index }, ...below];
       }
@@ -107,14 +105,18 @@
     return null;
   }
 
-  // A clicked block goes after what's selected, or into a selected section. A clicked
-  // section goes after the section the selection is in, beside it rather than into it,
-  // so it starts a new page like that one (a subsection is made by dragging); a cover
-  // goes first in the PDF, and contents after the part of the PDF that's selected.
+  // A clicked block goes after what's selected, into a selected section, or into a
+  // selected switch's first empty case (else its otherwise, if empty), so cases fill
+  // without dragging. A clicked section goes after the section the selection is in,
+  // beside it rather than into it, so it starts a new page like that one (a subsection
+  // is made by dragging); a cover goes first in the PDF, and contents after the part
+  // of the PDF that's selected.
   function add(kind: string) {
     if (draft.readonly) return;
     let target = found?.block.kind === "section" ? found.block.blocks : found?.list ?? content.layout;
     let at = found && found.block.kind !== "section" ? found.index + 1 : target.length;
+    const empty = found?.block.kind === "switch" ? listsIn(found.block).find((list) => !list.length) : undefined;
+    if (empty) [target, at] = [empty, 0];
     const path = selectedId ? (pathTo(content.layout, selectedId) ?? []) : [];
     if (kind === "cover") {
       [target, at] = [content.layout, 0];
@@ -160,7 +162,7 @@
   let confirming = $state(false);
   function remove() {
     if (!found) return;
-    const holds = found.block.kind === "section" ? found.block.blocks.length : found.block.kind === "columns" ? found.block.columns.flat().length : 0;
+    const holds = listsIn(found.block).flat().length;
     if (holds) confirming = true;
     else removeNow();
   }

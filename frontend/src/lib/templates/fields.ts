@@ -59,6 +59,44 @@ export const FIELD_TYPES: Record<string, FieldType> = {
   heading: field("Heading", "Splits a step into parts", "Structure", none, () => ({}), false),
 };
 
+/**
+ * Each field type's two-letter shorthand, shown beside questions and their names so
+ * two with similar labels or names are told apart at a glance, and offered as the
+ * start of a variable name (yn_attacker_ip beside tb_attacker_ip).
+ */
+export const TYPE_CODES: Record<string, string> = {
+  text: "ST",
+  rich_text: "LT",
+  dropdown: "DD",
+  multi_select: "MS",
+  yes_no: "YN",
+  number: "NU",
+  datetime: "DT",
+  cvss: "CV",
+  calculated: "CA",
+  ip: "IP",
+  hostname: "HN",
+  mac: "MA",
+  serial: "SN",
+  email: "EM",
+  phone: "PN",
+  secret: "SE",
+  photo: "PH",
+  file: "FI",
+  barcode: "BC",
+  signature: "SG",
+  repeating: "RG",
+  table: "TB",
+  heading: "HD",
+};
+
+export const typeCode = (type: string): string => TYPE_CODES[type] ?? TYPE_CODES.text;
+
+/** A question as lists to choose from show it: shorthand, label and variable name. */
+export function questionChoice(q: { type: string; label: string; key: string | null }): string {
+  return `${typeCode(q.type)} · ${q.label}${q.key ? ` (${q.key})` : ""}`;
+}
+
 export const FIELD_GROUPS: FieldGroup[] = ["Text", "Choices", "Numbers and dates", "Technical", "Files and signing", "Structure"];
 
 /** The types a repeating group's or table's column can have. */

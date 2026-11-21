@@ -95,6 +95,28 @@ describe("answers change what's printed", () => {
     expect(repeated.map((b) => b.kind === "section" && b.blocks.length)).toEqual([1, 1, 0]);
   });
 
+  it("prints the first case of a switch with the value, else its otherwise", () => {
+    const heading = (id: string, text: string) => ({ id, kind: "heading" as const, visible_when: null, text });
+    const c = content();
+    c.layout.push({ id: "b_switch", kind: "switch", visible_when: null, value: "answers.severity", cases: [
+      { match: "High", blocks: [heading("b_high", "High")] },
+      { match: "Critical", blocks: [heading("b_crit", "Act now"), heading("b_crit2", "{{answers.severity}}")] },
+      { match: "Critical", blocks: [heading("b_again", "Never")] },
+    ], otherwise: [heading("b_other", "Nothing to add")] });
+    const printed = (model: ReturnType<typeof preview>) => ["b_high", "b_crit", "b_crit2", "b_again", "b_other"].filter((id) => find(model.blocks, id));
+
+    const critical = preview(input(c));
+    expect(critical.errors).toEqual([]);
+    expect(printed(critical)).toEqual(["b_crit", "b_crit2"]);
+    expect(find(critical.blocks, "b_crit2")).toMatchObject({ text: "Critical" });
+    expect(critical.hidden).toContainEqual({ id: "b_high", reason: "The answers give “Critical”" });
+    expect(critical.hidden).toContainEqual({ id: "b_other", reason: "The answers give “Critical”" });
+
+    const low = preview(input(c, { ...c.sample.answers, q_cvss: 2 }));
+    expect(low.values.severity).toBe("Low");
+    expect(printed(low)).toEqual(["b_other"]);
+  });
+
   it("says which expressions failed, and carries on", () => {
     const c = content();
     c.layout.push({ id: "b_broken", kind: "heading", visible_when: null, text: "{{ date(\"not a date\") }} and on" });

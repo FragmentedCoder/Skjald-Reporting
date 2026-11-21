@@ -35,7 +35,13 @@
   const LISTS: Record<string, string> = { options: "Option", columns: "Column", facts: "Fact", items: "Source", signers: "Signer" };
 
   function blocksOf(blocks: Block[]): Block[] {
-    return blocks.flatMap((b) => [b, ...("blocks" in b ? blocksOf(b.blocks) : []), ...("columns" in b && Array.isArray(b.columns) ? b.columns.flatMap((c) => (Array.isArray(c) ? blocksOf(c as Block[]) : [])) : [])]);
+    return blocks.flatMap((b) => [
+      b,
+      ...("blocks" in b ? blocksOf(b.blocks) : []),
+      ...("columns" in b && Array.isArray(b.columns) ? b.columns.flatMap((c) => (Array.isArray(c) ? blocksOf(c as Block[]) : [])) : []),
+      ...("cases" in b ? b.cases.flatMap((c) => blocksOf(c.blocks ?? [])) : []),
+      ...("otherwise" in b ? blocksOf(b.otherwise ?? []) : []),
+    ]);
   }
 
   // What each element is, by ID: a step, a question or a block.

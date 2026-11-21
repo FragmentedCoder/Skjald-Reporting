@@ -46,7 +46,7 @@
         <!-- svelte-dnd-action won't start a drag on an element with a value, as a button has, so this span takes the press. -->
         <span class="entry-in">
           <span class="icon" aria-hidden="true"><item.icon size={16} aria-hidden="true" /></span>
-          <span class="text"><span class="name">{item.label}</span><span class="hint">{item.hint}</span></span>
+          <span class="text"><span class="name">{item.label}{#if item.code}<span class="code" aria-hidden="true">{item.code}</span>{/if}</span><span class="hint">{item.hint}</span></span>
         </span>
       </button>
     </li>
@@ -54,6 +54,17 @@
 </ul>
 
 <style>
+  /* A field type's shorthand, as TypeCode draws it. */
+  .code {
+    margin-left: var(--space-1);
+    padding: 0 3px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+  }
   .entries {
     display: grid;
     gap: 2px;

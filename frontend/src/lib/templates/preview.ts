@@ -388,7 +388,22 @@ class Worker {
         return [{ kind: "columns", id, columns: b.columns.map((column) => this.blocks(scope, column, item)) }];
       case "page_break":
         return [{ kind: "page_break", id }];
+      case "switch":
+        return this.blocks(scope, this.picked(scope, b), item);
     }
+  }
+
+  /** The blocks of the switch's case for these answers; the others say why they're left out. */
+  picked(scope: Scope, b: Extract<Block, { kind: "switch" }>): Block[] {
+    const value = b.value?.trim() ? plain(this.run(scope, b.id, b.value)) : undefined;
+    const given = value === null || value === "" ? "nothing" : `“${String(value)}”`;
+    const at = b.cases.findIndex((c) => c.match === value);
+    const chosen = value === undefined ? null : at < 0 ? b.otherwise : b.cases[at].blocks;
+    const reason = value === undefined ? "What picks the case can't be worked out" : `The answers give ${given}`;
+    for (const list of [...b.cases.map((c) => c.blocks), b.otherwise]) {
+      if (list !== chosen) for (const inner of list) this.hidden.push({ id: inner.id, reason });
+    }
+    return chosen ?? [];
   }
 
   section(scope: Scope, b: Extract<Block, { kind: "section" }>, id: Id, item: boolean): Shown[] {

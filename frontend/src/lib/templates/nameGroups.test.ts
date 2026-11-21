@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
+import incident from "../../../../shared/templates/incident.json";
 import type { LibraryEntry } from "#lib/library.js";
-import { catalogue } from "./catalogue";
+import { catalogue, rowNames } from "./catalogue";
+import { check } from "./checks";
 import { nameGroups, searchNames, shown, valueOf } from "./nameGroups";
 import { sampleContext } from "./preview";
+import { printable } from "./suggest";
+import type { TemplateContent } from "./types";
 
 const table: LibraryEntry = {
   id: 1, kind: "table", key: "cvss", description: "Severity for each CVSS rating", value: { key_label: "Rating", columns: ["Severity"], rows: { "9.0": ["Critical"] } },
@@ -42,5 +46,44 @@ describe("shown and valueOf", () => {
     expect(shown(valueOf({ customer: { name: "Fjordvik" } }, "customer.name"))).toBe('"Fjordvik"');
     expect(shown(valueOf({}, "customer.name"))).toBe("—");
     expect(shown(3)).toBe("3");
+  });
+});
+
+describe("names read from rows", () => {
+  const content = structuredClone(incident) as unknown as TemplateContent;
+  const entries = catalogue(content);
+  const attackers = entries.find((e) => e.name === "answers.attackers");
+
+  it("offers how many rows, the first row's columns and a text column from every row", () => {
+    expect(rowNames(attackers!).map((e) => [e.name, e.label])).toEqual([
+      ["size(answers.attackers)", "Attacking addresses: how many rows"],
+      ["answers.attackers[0].ip", "Attacking addresses: Address, first row"],
+      ["answers.attackers[0].attempts", "Attacking addresses: Sign-in attempts, first row"],
+      ["answers.attackers[0].status", "Attacking addresses: Status, first row"],
+      ['answers.attackers.map(row, row.ip).join(", ")', "Attacking addresses: Address, every row"],
+      ['answers.attackers.map(row, row.status).join(", ")', "Attacking addresses: Status, every row"],
+    ]);
+    // Text suggests them in place of the list, which can't be printed whole.
+    const names = printable(entries).map((e) => e.name);
+    expect(names).toContain("answers.attackers[0].ip");
+    expect(names).not.toContain("answers.attackers");
+  });
+
+  it("gives names a text block can print", () => {
+    const text = rowNames(attackers!).map((e) => `{{${e.name}}}`).join(" ");
+    content.layout.push({ id: "b_rows1", kind: "heading", visible_when: null, text });
+    expect(check(content)).toEqual([]);
+  });
+
+  it("shows examples from the list's own", () => {
+    const values = { answers: { attackers: [{ ip: "198.51.100.23", attempts: 1204, status: "blocked" }, { ip: "203.0.113.77", attempts: 611, status: "" }] } };
+    const rows = nameGroups(entries, values).find((g) => g.title === "Answers")?.rows ?? [];
+    const example = (name: string) => rows.find((r) => r.name === name)?.example;
+    expect(example("answers.attackers")).toBe("2 rows");
+    expect(example("size(answers.attackers)")).toBe("2");
+    expect(example("answers.attackers[0].attempts")).toBe("1204");
+    expect(example('answers.attackers.map(row, row.ip).join(", ")')).toBe('"198.51.100.23, 203.0.113.77"');
+    expect(example('answers.attackers.map(row, row.status).join(", ")')).toBe('"blocked"');
+    expect(rows.find((r) => r.name === "answers.attackers[0].ip")).toMatchObject({ field: "repeating", kind: "text" });
   });
 });
