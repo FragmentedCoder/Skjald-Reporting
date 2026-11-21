@@ -162,7 +162,7 @@
     {#if live.paged}
       <PdfPages paged={live.paged} look={looks.look(live.model?.pageTexts, content.settings.made_with_skjald ?? true)} language={content.settings.language} reportNumber={String(draft.sampleContext.report.number)}
         classification={String(draft.sampleContext.project.classification)} />
-    {:else}
+    {:else if !live.problem}
       <p class="muted">Working out the pages…</p>
     {/if}
   </section>

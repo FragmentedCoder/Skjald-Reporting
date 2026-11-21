@@ -57,6 +57,22 @@ describe("the expression client", () => {
     expect(workers[0].sent.map((r) => r.setup?.key ?? null)).toEqual(["1", null]);
   });
 
+  it("reads an answer that was waiting when the time ran out, and gives a batch its own limit", async () => {
+    // An answer a little late stands for one that came in time but waited behind the
+    // page's own work: it's read, not thrown away with the worker.
+    const late = (ms: number) => () => {
+      const worker = new FakeWorker(() => true);
+      worker.postMessage = (request) => {
+        setTimeout(() => worker.onmessage?.({ data: new JobRunner().handle(request) } as MessageEvent<Response>), ms);
+      };
+      return worker;
+    };
+    const jobs = [{ kind: "check" as const, expr: "answers.cvss" }];
+    expect(await new CelClient(late(30), 20).run(SETUP, {}, jobs)).toEqual([{ ok: true, value: "double" }]);
+    expect(await new CelClient(late(150), 20).run(SETUP, {}, jobs)).toEqual([{ ok: false, kind: "runtime", message: TOO_LONG }]);
+    expect(await new CelClient(late(150), 20).run(SETUP, {}, jobs, 500)).toEqual([{ ok: true, value: "double" }]);
+  });
+
   it("stops a batch that takes too long and starts a fresh worker", async () => {
     const workers: FakeWorker[] = [];
     const client = new CelClient(() => {

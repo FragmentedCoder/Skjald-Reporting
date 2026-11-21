@@ -257,6 +257,9 @@
       <PdfPages paged={live.paged} look={looks.look(live.model?.pageTexts, content.settings.made_with_skjald ?? true)} language={content.settings.language} reportNumber={String(draft.sampleContext.report.number)}
         classification={String(draft.sampleContext.project.classification)} selected={selectedId} onselect={select}
         onplace={draft.readonly ? undefined : place} />
+    {:else if live.problem}
+      <!-- No pages at all, and the reason: never left saying it's still working them out. -->
+      <p class="alert alert-warning small">{live.problem}</p>
     {:else}
       <p class="muted">Working out the pages…</p>
     {/if}
