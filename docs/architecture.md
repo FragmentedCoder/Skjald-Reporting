@@ -1,6 +1,6 @@
 # Skjald architecture
 
-This document describes how Skjald is designed. It is the reference for contributors and is updated as the design changes. Phases 0 and 1 are done and Phase 2 is in progress; see the roadmap at the end.
+This document describes how Skjald is designed. It is the reference for contributors and is updated as the design changes. Phases 0, 1 and 2 are done and Phase 3 is next; see the roadmap at the end.
 
 ## Principles
 
