@@ -8,7 +8,7 @@
 // same answers.
 
 import { Environment } from "@marcbachmann/cel-js";
-import { calls, declaredPrefix, LexError, paths, references, tokenize, type Token } from "./lexer";
+import { calls, characters, declaredPrefix, LexError, paths, references, tokenize, type Token } from "./lexer";
 import { ALLOWED, BANNED, browserOverloads, celJsType, implementations, LOCALES, type Table } from "./library";
 
 export const MAX_LENGTH = 2000;
@@ -143,7 +143,8 @@ export function typeText(spec: TypeSpec): string {
 
 /** Skjald's own checks, the same on both sides; the engine's type check follows. */
 export function validate(expr: string, declared: ReadonlySet<string>): Token[] {
-  if (expr.length > MAX_LENGTH) {
+  // Counted in characters, as the server counts: an emoji is one, not two.
+  if (expr.length > MAX_LENGTH && characters(expr) > MAX_LENGTH) {
     throw new ExpressionError("invalid", `Expressions are limited to ${MAX_LENGTH.toLocaleString("en")} characters.`);
   }
   let tokens: Token[];

@@ -25,8 +25,23 @@ _HEX = _DIGITS | frozenset("abcdefABCDEF")
 _SPACE = frozenset(" \t\n\r\f")
 
 
+# Characters a message can't show: controls, spaces of every kind, marks with no
+# width and halves of a pair. They're named by code point instead (U+00A0).
+_UNSEEN = ((0x00, 0x20), (0x7F, 0xA0), (0xAD, 0xAD), (0x1680, 0x1680), (0x2000, 0x200F),
+           (0x2028, 0x202F), (0x205F, 0x206F), (0x3000, 0x3000), (0xD800, 0xDFFF),
+           (0xFE00, 0xFE0F), (0xFEFF, 0xFEFF))
+
+
 class LexError(ValueError):
     """The expression can't be split into tokens; the message is fit to show."""
+
+
+def shown(c: str) -> str:
+    """A character as a message names it: in quotes, or by code point if it can't be seen."""
+    code = ord(c)
+    if any(low <= code <= high for low, high in _UNSEEN):
+        return f"U+{code:04X}"
+    return f"'{c}'"
 
 
 @dataclass(frozen=True)
@@ -68,7 +83,7 @@ def tokenize(expr: str) -> list[Token]:
             tokens.append(Token("punct", c, i, i + 1))
             i += 1
         else:
-            raise LexError(f"Unexpected character {c!r} at position {i + 1}.")
+            raise LexError(f"Unexpected character {shown(c)} at position {i + 1}.")
     return tokens
 
 
