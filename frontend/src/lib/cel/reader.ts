@@ -14,10 +14,11 @@
 // expression is a step: the whole expression is the first, and a function's value, an
 // item of a list or a map, what's between [ and ], an ELSE, a pair of brackets and what
 // a single ! or - stands before are each one more. So is each .name, function after a
-// dot, [ ], sum and comparison put on a value, on top of the deeper of the two it joins.
-// So 32 values can be added in a row, or 17 inside 15 lists; 32 pairs of brackets or 31
-// functions, lists or ELSE IFs can be inside each other, but !( only 15 times, being two
-// steps. ANDs and ORs in a row don't count, nor do !! and --, which Google's parser drops.
+// dot, [ ], calculation (+ - * / %) and comparison put on a value, on top of the deeper
+// of the two it joins. So 32 values can be added in a row, or 17 inside 15 lists; 32
+// pairs of brackets or 31 functions, lists or ELSE IFs can be inside each other, but !(
+// only 15 times, being two steps. ANDs and ORs in a row don't count, nor do !! and --,
+// which Google's parser drops.
 
 import { characters, type Token } from "./lexer";
 
@@ -130,8 +131,8 @@ class Reader {
   // between [ and ], an ELSE and what a single ! or - stands before are each one more.
   // The other is how many steps the value read goes itself, which is what each
   // reading gives back: nothing for a name or a value written out, one for each .name,
-  // function after a dot, [ ], sum and comparison on top of the deeper of what it
-  // joins. Brackets, a function before its brackets, a list and a map go as deep as
+  // function after a dot, [ ], calculation and comparison on top of the deeper of what
+  // it joins. Brackets, a function before its brackets, a list and a map go as deep as
   // what's in them; an IF as deep as its ELSE; ANDs and ORs don't count and start
   // again from nothing.
   inside = 0;
