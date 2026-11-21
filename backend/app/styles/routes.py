@@ -511,7 +511,9 @@ def set_customer_styles(customer_id: int, body: CustomerStylesIn, request: Reque
     customer, _ = visible_customer(db, request, record, customer_id, need="names")
     opened = Opened(db)
     ids = {s.id for s in _customer_choices(opened, customer.id)}
-    chosen = set(body.allowed) | ({body.default_style_id} if body.default_style_id else set())
+    chosen = set(body.allowed)
+    if body.default_style_id is not None:
+        chosen.add(body.default_style_id)
     if chosen - ids:
         raise HTTPException(status.HTTP_400_BAD_REQUEST,
                             "Choose among the company's styles and this customer's own.")
@@ -520,7 +522,7 @@ def set_customer_styles(customer_id: int, body: CustomerStylesIn, request: Reque
         row = CustomerStyles(customer_id=customer.id, allowed="[]")
         db.add(row)
     row.default_style_id = body.default_style_id
-    row.allowed = json.dumps(sorted(set(body.allowed) - {body.default_style_id or 0}))
+    row.allowed = json.dumps(sorted(set(body.allowed) - {body.default_style_id}))
     audit.append(db, "customer.report_style_changed", actor_id=record.user.id,
                  actor_name=record.user.username, target_type="customer",
                  target_id=str(customer.id), ip=client_ip(request),

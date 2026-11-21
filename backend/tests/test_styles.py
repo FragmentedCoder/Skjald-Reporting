@@ -365,6 +365,9 @@ def test_the_company_default_and_customers_choices(client, designer, person, cus
         "name": "Theirs", "customer_id": other["id"]}).json()
     assert client.put(url, headers=manager, json={"default_style_id": theirs["id"],
                                                   "allowed": []}).status_code == 400
+    # No style has ID 0: it's refused like any other that isn't a choice.
+    assert client.put(url, headers=manager, json={"default_style_id": 0,
+                                                  "allowed": []}).status_code == 400
     _, tech = person("tove", "technician")
     assert client.put(url, headers=tech, json={"default_style_id": None,
                                                "allowed": []}).status_code == 403

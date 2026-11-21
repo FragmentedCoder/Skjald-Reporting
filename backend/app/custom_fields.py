@@ -100,9 +100,15 @@ def _value(field: CustomField, raw: Any) -> Any:
                 raise ValueError(f"{label} needs a date.") from None
         return text
     if field.type == "number":
-        if isinstance(raw, bool) or not isinstance(raw, int | float) or not math.isfinite(raw):
+        if isinstance(raw, bool) or not isinstance(raw, int | float):
             raise ValueError(f"{label} takes a number.")
-        return float(raw)
+        try:
+            number = float(raw)
+        except OverflowError:  # a whole number of hundreds of digits
+            number = math.inf
+        if not math.isfinite(number):
+            raise ValueError(f"{label} takes a number.")
+        return number
     if not isinstance(raw, bool):
         raise ValueError(f"{label} is yes or no.")
     return raw

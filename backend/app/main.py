@@ -1,6 +1,10 @@
+import math
 from collections.abc import Awaitable, Callable
+from typing import Any
 
 from fastapi import FastAPI, Request, Response
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app import (
@@ -42,6 +46,32 @@ async def refuse_cross_site_writes(
     if request.method not in SAFE_METHODS and site in {"cross-site", "same-site"}:
         return JSONResponse({"detail": "Requests from other sites are not allowed."}, 403)
     return await call_next(request)
+
+
+def _writable(value: Any) -> Any:
+    """The value with each NaN and Infinity as text: JSON has neither."""
+    if isinstance(value, float) and not math.isfinite(value):
+        return str(value)
+    if isinstance(value, dict):
+        return {key: _writable(held) for key, held in value.items()}
+    if isinstance(value, list | tuple):
+        return [_writable(held) for held in value]
+    return value
+
+
+@app.exception_handler(RequestValidationError)
+async def refuse_invalid_request(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """FastAPI's own answer to a request that fails its checks, which repeats what was
+    sent. A NaN or an Infinity sent as a number can't be written as JSON, which made
+    that answer an HTTP 500: here they're repeated as text."""
+    return JSONResponse({"detail": _writable(jsonable_encoder(exc.errors()))}, 422)
+
+
+@app.exception_handler(OverflowError)
+async def refuse_huge_number(request: Request, exc: OverflowError) -> JSONResponse:
+    """A whole number beyond what the database holds (64 bits), as an ID in the address
+    or in what was sent: nothing has it, so the request is refused, not failed."""
+    return JSONResponse({"detail": "A number in the request is too large."}, 400)
 
 
 app.include_router(health.router, prefix="/api")

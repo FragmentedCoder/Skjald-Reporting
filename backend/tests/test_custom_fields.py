@@ -112,7 +112,8 @@ def test_values_are_checked_and_sealed_with_the_customer(client, admin, manager,
 
     url = f"{CUSTOMERS}/{customer['id']}"
     for wrong, message in (({"agreement": "Platinum"}, "options"), ({"hours": "many"}, "number"),
-                           ({"hours": True}, "number"), ({"renewal": "soon"}, "date"),
+                           ({"hours": True}, "number"), ({"hours": 10 ** 400}, "number"),
+                           ({"renewal": "soon"}, "date"),
                            ({"onsite": "yes"}, "yes or no"), ({"desk": "nobody"}, "email"),
                            ({"hotline": "call me"}, "phone"), ({"ticket": "X-1"}, "no custom")):
         refused = client.patch(url, headers=manager, json={"custom": wrong})
