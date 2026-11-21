@@ -276,13 +276,19 @@
     <fieldset class="unstyled" disabled={draft.readonly}>
       {#if where?.question}
         {@const q = where.question}
-        <QuestionPanel question={q} {content} {engine} {entries} problems={draft.problemsFor(q.id)}
-          first={where.stepIndex === 0 && where.index === 0} last={lastQuestion(where.stepIndex, where.index)}
-          onrename={(key) => rename(q, key)} onremove={() => removeQuestion(where.step, q)} onmove={moveQuestion} />
+        <!-- A panel of its own for each question and step, so nothing half-written in
+             one (a rule being typed, a choice being added) carries over to the next. -->
+        {#key q.id}
+          <QuestionPanel question={q} {content} {engine} {entries} problems={draft.problemsFor(q.id)}
+            first={where.stepIndex === 0 && where.index === 0} last={lastQuestion(where.stepIndex, where.index)}
+            onrename={(key) => rename(q, key)} onremove={() => removeQuestion(where.step, q)} onmove={moveQuestion} />
+        {/key}
       {:else if where}
-        <StepPanel step={where.step} number={where.stepIndex + 1} {engine} {entries} problems={draft.problemsFor(where.step.id)}
-          first={where.stepIndex === 0} last={where.stepIndex === content.form.length - 1} only={content.form.length === 1}
-          onremove={removeStep} onmove={moveStep} />
+        {#key where.step.id}
+          <StepPanel step={where.step} number={where.stepIndex + 1} {engine} {entries} problems={draft.problemsFor(where.step.id)}
+            first={where.stepIndex === 0} last={where.stepIndex === content.form.length - 1} only={content.form.length === 1}
+            onremove={removeStep} onmove={moveStep} />
+        {/key}
       {:else}
         <p class="small muted">Select a step or a question to change it.</p>
       {/if}

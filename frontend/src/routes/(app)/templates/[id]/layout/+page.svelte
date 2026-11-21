@@ -265,10 +265,14 @@
   <aside class="panel" aria-label="Settings of what's selected" bind:this={panel}>
     <fieldset class="unstyled" disabled={draft.readonly}>
       {#if found}
-        <BlockPanel block={found.block} {content} engine={repeat ? itemEngine : engine} entries={blockEntries}
-          problems={draft.problemsFor(found.block.id)} assets={draft.template?.assets ?? []}
-          first={found.index === 0} last={found.index === found.list.length - 1}
-          onupload={upload} onremove={remove} onmove={move} />
+        <!-- A panel of its own for each block: none takes over the last one's text
+             editor (and its undo steps), half-written rule or upload under way. -->
+        {#key found.block.id}
+          <BlockPanel block={found.block} {content} engine={repeat ? itemEngine : engine} entries={blockEntries}
+            problems={draft.problemsFor(found.block.id)} assets={draft.template?.assets ?? []}
+            first={found.index === 0} last={found.index === found.list.length - 1}
+            onupload={upload} onremove={remove} onmove={move} />
+        {/key}
       {:else}
         <p class="small muted">Select a block to change it.</p>
       {/if}
