@@ -19,7 +19,7 @@ Skjald is a self-hosted, template-driven report builder for IT, MSP and security
 A *skald* (Danish *skjald*) was the Norse poet who turned events into a lasting record. Skjald does the same for technical work.
 
 > [!NOTE]
-> **Status: Phase 3 of the road to 1.0.** The platform runs (install, setup wizard, sign-in with MFA, roles, customers and projects, encryption keys, the audit log and backups), and the template builder is finished: the technician's form, the PDF's layout, rules, styles and page designs, customer report backgrounds, custom fields and `.skjald` files, all tried with sample answers before a template is published. Reports themselves (filling one in, review, signing and delivery) are Phase 3, the last phase before 1.0, so Skjald can't make a report yet. Don't trust it with real customer data before 1.0. Watch the repository to hear about the first release.
+> **Status: Phase 3 of the road to 1.0.** The platform runs (install, setup wizard, sign-in with MFA, roles, customers and projects, encryption keys, the audit log and backups), and the template builder is finished: the technician's form, the PDF's layout, rules, styles and page designs, customer report backgrounds, custom fields and `.skjald` files, all tried with sample answers before a template is published. Reports themselves (filling one in, review, signing and delivery) are Phase 3, so Skjald can't make a report yet. After it come Phase 4, polish and a security review with outside testers, and Phase 5, a look at whether what was built is what the project set out to make; then 1.0. Don't trust it with real customer data before 1.0. Watch the repository to hear about the first release.
 
 ## What it will do
 
