@@ -1,3 +1,4 @@
+import os
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -162,3 +163,11 @@ def make_user(session):
         return user
 
     return make
+
+
+@pytest.fixture
+def set_umask():
+    """Set the umask for a test; it's put back afterwards."""
+    before = os.umask(0o022)
+    yield os.umask
+    os.umask(before)
