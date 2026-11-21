@@ -749,6 +749,119 @@
    },
    "value": "5CD",
    "message": "This doesn't match what the template asks for."
+  },
+  {
+   "type": "ip",
+   "settings": {},
+   "value": "198.51.100.23\n",
+   "message": "Enter an IP address, such as 198.51.100.23 or 2001:db8::5."
+  },
+  {
+   "type": "ip",
+   "settings": {},
+   "value": "2001:db8::5\n",
+   "message": "Enter an IP address, such as 198.51.100.23 or 2001:db8::5."
+  },
+  {
+   "type": "ip",
+   "settings": {
+    "cidr": "allowed"
+   },
+   "value": "198.51.100.0/24\n",
+   "message": "Enter an IP address, such as 198.51.100.23 or 2001:db8::5."
+  },
+  {
+   "type": "ip",
+   "settings": {},
+   "value": "1.2.3.4::",
+   "message": "Enter an IP address, such as 198.51.100.23 or 2001:db8::5."
+  },
+  {
+   "type": "ip",
+   "settings": {},
+   "value": "1.2.3.4::1",
+   "message": "Enter an IP address, such as 198.51.100.23 or 2001:db8::5."
+  },
+  {
+   "type": "ip",
+   "settings": {},
+   "value": "::198.51.100.23",
+   "message": null
+  },
+  {
+   "type": "ip",
+   "settings": {},
+   "value": "64:ff9b::198.51.100.23",
+   "message": null
+  },
+  {
+   "type": "hostname",
+   "settings": {},
+   "value": "srv-01\n",
+   "message": "Enter a host name, such as srv-01.fjordvik.example."
+  },
+  {
+   "type": "mac",
+   "settings": {},
+   "value": "00:1A:2B:3C:4D:5E\n",
+   "message": "Enter a MAC address: six pairs of hex digits, such as 00:1A:2B:3C:4D:5E."
+  },
+  {
+   "type": "mac",
+   "settings": {},
+   "value": "001A2B3C4D5E\n",
+   "message": "Enter a MAC address: six pairs of hex digits, such as 00:1A:2B:3C:4D:5E."
+  },
+  {
+   "type": "email",
+   "settings": {},
+   "value": "name@fjordvik.example\n",
+   "message": "Enter an email address, such as name@fjordvik.example."
+  },
+  {
+   "type": "phone",
+   "settings": {},
+   "value": "70203040\n",
+   "message": "Enter a phone number: digits, spaces and + ( ) - only."
+  },
+  {
+   "type": "number",
+   "settings": {},
+   "value": "abc",
+   "message": "Enter a number."
+  },
+  {
+   "type": "number",
+   "settings": {
+    "whole": true
+   },
+   "value": "7",
+   "message": "Enter a number."
+  },
+  {
+   "type": "number",
+   "settings": {
+    "min": 0,
+    "max": 10
+   },
+   "value": 0,
+   "message": null
+  },
+  {
+   "type": "text",
+   "settings": {
+    "pattern": "\\C"
+   },
+   "value": "abc",
+   "message": null
+  },
+  {
+   "type": "text",
+   "settings": {
+    "pattern": "(?P<n>a)(?P<n>b)"
+   },
+   "value": "xyz",
+   "message": null
   }
  ]
 }

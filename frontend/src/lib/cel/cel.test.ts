@@ -6,6 +6,7 @@ import cases from "../../../../shared/cel/cases.json";
 import { Engine, ExpressionError, parseType, typeText, validate } from "./engine";
 import { renameReference, tokenize, LexError } from "./lexer";
 import { browserOverloads, FUNCTIONS, implementations, LOCALES, type Table } from "./library";
+import { read, Unreadable, unquote } from "./reader";
 
 interface Case {
   id: string;
@@ -122,6 +123,18 @@ describe("the engine", () => {
     expect(engine.evaluate("answers.n", { answers: { n: 7 } })).toBe(7);
   });
 
+  it("validates a half-written expression, as the server does", () => {
+    const declared = new Set(["answers.cvss"]);
+    const engine = new Engine({ "answers.cvss": "double" });
+    for (const unfinished of ["answers.cvss >=", "date()", "answers.cvss ? 1 ? 2 : 3 : 4", "(answers.cvss"]) {
+      expect(validate(unfinished, declared).length).toBeGreaterThan(0);
+      expect(() => engine.check(unfinished)).toThrow(ExpressionError);
+    }
+    for (const refused of ['answers.cvss.matches("9")', "now()", "answers.nope >="]) {
+      expect(() => validate(refused, declared)).toThrow(ExpressionError);
+    }
+  });
+
   it("reads nested names and list functions' own names", () => {
     const declared = new Set(["answers.rows", "customer.custom.sla"]);
     expect(() => validate("answers.rows.map(r, r.n) + [customer.custom.sla]", declared)).not.toThrow();
@@ -145,6 +158,28 @@ describe("tokens", () => {
       .toBe("answers.hosts.exists(r, r.ip == answers.hosts[0].ip)");
     expect(renameReference("answers . cvss > 1.0", "answers.cvss", "answers.score")).toBe("answers.score > 1.0");
     expect(renameReference("x.answers.cvss", "answers.cvss", "answers.score")).toBe("x.answers.cvss");
+  });
+});
+
+describe("the reader", () => {
+  it("gives calls, maps and names after a dot, as the server's does", () => {
+    const expr = 'has(item.ip) && sum([1, 2]) > answers.rows.map(r, {"a": r.n, 2: 0}).size()';
+    const tokens = tokenize(expr);
+    const shape = read(expr, tokens);
+    expect(shape.calls.map((c) => [c.name, c.member, c.args.length])).toEqual([["has", false, 1], ["sum", false, 1], ["map", true, 2], ["size", true, 0]]);
+    expect(shape.maps.map((keys) => keys.map(([start]) => tokens[start].text))).toEqual([['"a"', "2"]]);
+    expect(shape.selects.has(shape.calls[0].args[0].join(":"))).toBe(true);
+    expect(unquote('"a\\x41\\u00e6\\n"')).toBe("aAæ\n");
+    expect(unquote("r'\\d'")).toBe("\\d");
+    expect(unquote('"\\q"')).toBeNull();
+    expect(unquote("r'a\\'")).toBeNull();
+    for (const [broken, message] of [
+      ["1 +", "The expression stops before it's finished."],
+      ["(1 2)", "Unexpected '2' at position 4."],
+      ["a ? b ? 1 : 2 : 3", "An IF inside the first result of another IF needs brackets around it (position 7)."],
+    ]) {
+      expect(() => read(broken, tokenize(broken))).toThrow(new Unreadable("compile", message));
+    }
   });
 });
 

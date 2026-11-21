@@ -4,7 +4,7 @@
 // answer isn't checked here: whether one is needed is the question's "required".
 
 import * as calculator from "ae-cvss-calculator";
-import { RE2JS } from "re2js";
+import { regex } from "#lib/cel/library.js";
 
 const V31_EXAMPLE = "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H";
 export const MESSAGES = {
@@ -19,6 +19,7 @@ export const MESSAGES = {
   phone: "Enter a phone number: digits, spaces and + ( ) - only.",
   cvss: `Enter a CVSS 3.1 or 4.0 vector, such as ${V31_EXAMPLE}.`,
   pattern: "This doesn't match what the template asks for.",
+  number: "Enter a number.",
 };
 
 const OCTET = /^(0|[1-9][0-9]{0,2})$/;
@@ -45,7 +46,9 @@ export function isIpv6(text: string): boolean {
   }
   let count = 0;
   for (const [index, group] of groups.entries()) {
-    if (index === groups.length - 1 && group.includes(".")) {
+    // An IPv4 address can only be the very end: not the end of what comes before a
+    // "::" that closes the address, as in 1.2.3.4::.
+    if (index === groups.length - 1 && group.includes(".") && !text.endsWith("::")) {
       if (!isIpv4(group)) return false;
       count += 2;
     } else if (HEX.test(group)) {
@@ -180,7 +183,8 @@ export function checkAnswer(type: string, settings: Record<string, unknown>, val
       return allowed.includes(version) ? null : `This template takes CVSS ${allowed[0]} vectors only.`;
     }
     case "number": {
-      const n = Number(value);
+      if (typeof value !== "number" || !Number.isFinite(value)) return MESSAGES.number;
+      const n = value;
       if (settings.whole && !Number.isInteger(n)) return "Enter a whole number.";
       const low = settings.min as number | null | undefined;
       const high = settings.max as number | null | undefined;
@@ -199,8 +203,9 @@ export function checkAnswer(type: string, settings: Record<string, unknown>, val
       if (pattern) {
         let matched: boolean;
         try {
-          matched = RE2JS.compile(pattern).matcher(text).find();
+          matched = regex(pattern).matcher(text).find();
         } catch {
+          // The checks ask for a pattern that works before publishing.
           return null;
         }
         if (!matched) return (settings.pattern_message as string) || MESSAGES.pattern;
