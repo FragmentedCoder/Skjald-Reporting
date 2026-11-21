@@ -137,9 +137,10 @@
   const count = $derived(draft.problems.length);
   const totalChanges = $derived(
     changes
-      ? changes.questions_added.length + changes.questions_removed.length + changes.questions_changed.length
-        + changes.blocks_added.length + changes.blocks_removed.length + changes.blocks_changed.length
-        + changes.settings_changed.length
+      ? changes.steps_added.length + changes.steps_removed.length + changes.steps_changed.length + changes.steps_moved.length
+        + changes.questions_added.length + changes.questions_removed.length + changes.questions_changed.length + changes.questions_moved.length
+        + changes.blocks_added.length + changes.blocks_removed.length + changes.blocks_changed.length + changes.blocks_moved.length
+        + changes.settings_changed.length + (changes.sample_changed ? 1 : 0)
       : 0,
   );
 </script>
@@ -265,13 +266,20 @@
         <div class="changes small">
           <p class="overline">Changes since version {draft.template?.latest_version}</p>
           <ul>
+            {#each changes.steps_added as step (step.id)}<li>Step added: {step.label}</li>{/each}
+            {#each changes.steps_removed as step (step.id)}<li>Step removed: {step.label}</li>{/each}
+            {#each changes.steps_changed as step (step.id)}<li>Step changed: {step.label}</li>{/each}
+            {#each changes.steps_moved as step (step.id)}<li>Step moved: {step.label}</li>{/each}
             {#each changes.questions_added as q (q.id)}<li>Question added: {q.label}</li>{/each}
             {#each changes.questions_removed as q (q.id)}<li>Question removed: {q.label}</li>{/each}
             {#each changes.questions_changed as q (q.id)}<li>Question changed: {q.label}</li>{/each}
+            {#each changes.questions_moved as q (q.id)}<li>Question moved: {q.label}</li>{/each}
             {#each changes.blocks_added as b (b.id)}<li>Block added: {b.label}</li>{/each}
             {#each changes.blocks_removed as b (b.id)}<li>Block removed: {b.label}</li>{/each}
             {#each changes.blocks_changed as b (b.id)}<li>Block changed: {b.label}</li>{/each}
+            {#each changes.blocks_moved as b (b.id)}<li>Block moved: {b.label}</li>{/each}
             {#if changes.settings_changed.length}<li>Settings changed: {changes.settings_changed.join(", ")}</li>{/if}
+            {#if changes.sample_changed}<li>Sample answers changed</li>{/if}
           </ul>
         </div>
       {:else}
