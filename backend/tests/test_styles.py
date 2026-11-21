@@ -338,6 +338,38 @@ def test_the_company_default_and_customers_choices(client, designer, person, cus
     assert session.get(CustomerStyles, customer["id"]) is not None
 
 
+def test_a_company_style_stays_while_customer_styles_stack_on_it(client, designer, customer,
+                                                                 session) -> None:
+    _, headers = designer
+    brand = client.post(STYLES, headers=headers, json={"name": "Nordlys brand"}).json()
+    look = client.post(STYLES, headers=headers, json={
+        "name": "Fjordvik look", "customer_id": customer["id"], "based_on": brand["id"]}).json()
+    refused = client.delete(f"{STYLES}/{brand['id']}", headers=headers)
+    assert refused.status_code == 409
+    assert refused.json()["detail"] == (
+        "Fjordvik look (Fjordvik Logistik A/S) stacks on this style. Choose another style for "
+        "it to stack on, then remove this one.")
+    # The customer style keeps its base's look, and can still be saved.
+    assert len(client.get(f"{STYLES}/{look['id']}", headers=headers).json()["below"]) == 1
+    look = save(client, headers, look).json()
+    assert look["based_on"] == brand["id"]
+
+    plain = client.post(STYLES, headers=headers, json={
+        "name": "Fjordvik plain", "customer_id": customer["id"], "based_on": brand["id"]}).json()
+    both = client.delete(f"{STYLES}/{brand['id']}", headers=headers)
+    assert both.status_code == 409
+    assert both.json()["detail"].startswith(
+        "2 customer styles stack on this style: Fjordvik look (Fjordvik Logistik A/S) and "
+        "Fjordvik plain (Fjordvik Logistik A/S). Choose another style for each")
+
+    # Stacked on something else, or removed themselves, they no longer hold it.
+    assert save(client, headers, look, based_on=None).status_code == 200
+    assert client.delete(f"{STYLES}/{plain['id']}", headers=headers).status_code == 204
+    assert client.delete(f"{STYLES}/{brand['id']}", headers=headers).status_code == 204
+    assert session.get(Style, brand["id"]).removed_at is not None
+    assert actions(session, "style.removed") == ["style.removed", "style.removed"]
+
+
 def test_branding_switches_off_made_with_skjald_and_sets_the_time_zone(client, admin) -> None:
     _, headers = admin
     shown = client.get("/api/branding").json()
