@@ -134,12 +134,16 @@ export function entryChoice(entry: NameEntry): string {
   return entry.field ? `${typeCode(entry.field)} · ${entry.label}` : entry.label;
 }
 
-/** The shapes of every name, row columns included (as row.<key>), for rules.ts. */
+/**
+ * The shapes of every name, for rules.ts. A list's columns are in it as
+ * "<list>>row.<key>", since two lists may each have a column of one key and different
+ * kinds; rules.ts reads a row's column by its own list (inRows).
+ */
 export function shapes(entries: NameEntry[]): Record<string, Shape> {
   const found: Record<string, Shape> = {};
   for (const entry of entries) {
     found[entry.name] = entry.shape;
-    for (const column of entry.columns ?? []) found[`row.${column.key}`] ??= column.shape;
+    for (const column of entry.columns ?? []) found[`${entry.name}>row.${column.key}`] = column.shape;
   }
   return found;
 }

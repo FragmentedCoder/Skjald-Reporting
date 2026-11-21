@@ -22,11 +22,17 @@ const TYPES: Record<string, string> = {
   "answers.detected": "timestamp",
   "answers.tags": "list<string>",
   "answers.rows": "list<map<string, dyn>>",
+  "answers.costs": "list<map<string, dyn>>",
 };
+// A list's columns by the list they're in (as catalogue.ts shapes() gives them): both
+// lists have a column "value", text in one and a number in the other.
 const SHAPES: Record<string, Shape> = {
   ...Object.fromEntries(Object.entries(TYPES).map(([n, t]) => [n, shapeOf(t)])),
-  "row.attempts": "whole",
-  "row.ip": "text",
+  "answers.rows>row.attempts": "whole",
+  "answers.rows>row.ip": "text",
+  "answers.rows>row.value": "text",
+  "answers.costs>row.value": "number",
+  "answers.costs>row.paid": "bool",
 };
 const engine = new Engine(TYPES);
 
@@ -55,6 +61,10 @@ const CONDITIONS: [Condition, string][] = [
   [c("answers.rows", "rows_at_least", { count: 3 }), "answers.rows.size() >= 3"],
   [c("answers.rows", "any_row", { row: c("row.attempts", "gt", { value: 1000 }) }), "answers.rows.exists(row, row.attempts > 1000)"],
   [c("answers.rows", "every_row", { row: c("row.ip", "filled") }), 'answers.rows.all(row, row.ip != "")'],
+  // A column is read as its own list has it, whatever another list's column of that name is.
+  [c("answers.costs", "any_row", { row: c("row.value", "ge", { value: 5 }) }), "answers.costs.exists(row, row.value >= 5.0)"],
+  [c("answers.rows", "any_row", { row: c("row.value", "eq", { value: "web" }) }), 'answers.rows.exists(row, row.value == "web")'],
+  [c("answers.costs", "every_row", { row: c("row.paid", "yes") }), "answers.costs.all(row, row.paid)"],
   [c("answers.rows", "rows_where_at_least", { count: 2, row: c("row.ip", "starts", { value: "10." }) }),
     'answers.rows.filter(row, row.ip.startsWith("10.")).size() >= 2'],
   [{ kind: "all", items: [c("answers.found", "yes"), c("answers.cvss", "ge", { value: 9 })] }, "answers.found && answers.cvss >= 9.0"],
@@ -79,7 +89,7 @@ describe("conditions", () => {
 
   it("reads back what it wrote, whatever the spacing", () => {
     expect(conditionFromCel("answers.found&&answers.cvss   >= 9.0", SHAPES)).toBeNull();
-    expect(conditionFromCel("answers.found &&\n  answers.cvss >= 9.0", SHAPES)).toEqual(CONDITIONS[22][0]);
+    expect(conditionFromCel("answers.found &&\n  answers.cvss >= 9.0", SHAPES)).toEqual(CONDITIONS.find(([, cel]) => cel === "answers.found && answers.cvss >= 9.0")?.[0]);
   });
 
   it.each([

@@ -162,6 +162,17 @@ export function literal(value: Literal | undefined, shape: Shape): string {
 const wrap = (text: string, condition: Condition) =>
   condition.kind === "compare" && condition.op !== "between" ? text : `(${text})`;
 
+/**
+ * The shapes as a condition on one list's rows reads them: the list's own columns as
+ * row.<key> (catalogue.ts keeps them as "<list>>row.<key>"), over everything else.
+ */
+function inRows(shapes: Record<string, Shape>, list: string): Record<string, Shape> {
+  const prefix = `${list}>`;
+  const own: Record<string, Shape> = {};
+  for (const [name, shape] of Object.entries(shapes)) if (name.startsWith(prefix)) own[name.slice(prefix.length)] = shape;
+  return { ...shapes, ...own };
+}
+
 export function conditionToCel(condition: Condition, shapes: Record<string, Shape>): string {
   switch (condition.kind) {
     case "all":
@@ -218,7 +229,8 @@ function compareToCel(c: Compare, shape: Shape, shapes: Record<string, Shape>): 
     case "every_row":
     case "rows_where_at_least": {
       const row = c.row ?? { kind: "compare", name: "row.value", op: "filled" };
-      const inner = compareToCel(row, shapes[row.name] ?? "text", shapes);
+      const rows = inRows(shapes, n);
+      const inner = compareToCel(row, rows[row.name] ?? "text", rows);
       if (c.op === "any_row") return `${n}.exists(row, ${inner})`;
       if (c.op === "every_row") return `${n}.all(row, ${inner})`;
       return `${n}.filter(row, ${inner}).size() >= ${Math.max(0, Math.trunc(c.count ?? 1))}`;
@@ -396,7 +408,7 @@ function rowCondition(node: Node, fn: string, shapes: Record<string, Shape>): Co
   const [called, receiver, args] = node.args as [string, unknown, unknown[]];
   if (called !== fn || args.length !== 2 || nameOf(args[0]) !== "row") return null;
   const name = nameOf(receiver);
-  const row = isNode(args[1]) ? compareFrom(args[1], shapes) : null;
+  const row = isNode(args[1]) ? compareFrom(args[1], name === null ? shapes : inRows(shapes, name)) : null;
   if (name === null || row === null || !row.name.startsWith("row.")) return null;
   return { kind: "compare", name, op: "any_row", row };
 }

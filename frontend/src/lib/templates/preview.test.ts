@@ -307,6 +307,49 @@ describe("one value that can't be used", () => {
   });
 });
 
+describe("the rows of a repeating group, as rules read them", () => {
+  const withLog = () => {
+    const c = content();
+    const first = c.form[0].questions[0];
+    const column = (key: string, type: string, settings: Record<string, unknown> = {}) => ({ key, label: key, type, required: false, settings });
+    c.form[0].questions.push(
+      { ...first, id: "q_log01", key: "log", type: "repeating", label: "Log", required: false, settings: { min_rows: 0, max_rows: 100,
+        columns: [column("what", "text"), column("hours", "number", { whole: false, decimals: 1 }), column("rate", "number", { whole: false, decimals: 2 }),
+          column("count", "number", { whole: true }), column("when", "datetime"), column("done", "yes_no")] } },
+      { ...first, id: "q_total", key: "total", type: "calculated", label: "Total", required: false,
+        value: "sum(answers.log.map(r, r.hours * r.rate))", settings: { result: "number", show_in_form: false } },
+    );
+    return c;
+  };
+  const rows = [
+    { what: "Triage", hours: 3, rate: 1.5, count: 2, when: "2026-10-21T10:00:00.000Z", done: true },
+    { what: "Report", hours: 2.5, rate: 2, count: 1, when: "2026-10-23T10:00:00.000Z", done: false },
+    // A row just added in the form: nothing filled in yet.
+    { what: null, hours: null, rate: null, count: null, when: null, done: null },
+  ];
+  const run = (c: TemplateContent) => preview({ ...input(c, { ...c.sample.answers, q_log01: rows }), timezone: "Europe/Copenhagen" });
+
+  it("gives each cell its column's kind: a whole number typed in a decimal column still multiplies", () => {
+    const model = run(withLog());
+    expect(model.errors).toEqual([]);
+    expect(model.values.total).toBe(9.5);
+  });
+
+  it("compares a date column with a date, and reads a blank cell as empty", () => {
+    const c = withLog();
+    c.layout.push(
+      { id: "b_early", kind: "heading", visible_when: 'answers.log.exists(row, row.when < date("2026-10-22"))', text: "{{size(answers.log.filter(r, r.count >= 1))}} counted, {{answers.log.filter(r, r.done).map(r, r.what).join(\", \")}} done" },
+      { id: "b_each", kind: "section", visible_when: null, title: "{{item.what}}: {{item.hours * 2.0}} / {{item.when}}", intro: null, new_page: false, numbered: false, landscape: false, repeat_for: "answers.log", blocks: [] },
+    );
+    const model = run(c);
+    expect(model.errors).toEqual([]);
+    expect(find(model.blocks, "b_early")).toMatchObject({ text: "2 counted, Triage done" });
+    // Inside a section repeated for each row the cells keep their kinds too.
+    expect(model.blocks.filter((b) => b.id.startsWith("b_each")).map((b) => (b as { title: string }).title))
+      .toEqual(["Triage: 6 / 21 October 2026, 12:00", "Report: 5 / 23 October 2026, 12:00", ": 0 / "]);
+  });
+});
+
 describe("the severity summary", () => {
   it("counts a row by what its dropdown shows as well as by the value it keeps", () => {
     const c = content();

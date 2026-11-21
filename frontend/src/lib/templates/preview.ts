@@ -4,7 +4,7 @@
 // answers; it runs in the expression worker, which stops it if it takes too long.
 // Phase 3's renderer does the same work on the server for the real PDF.
 
-import { Engine, ExpressionError, human, isSpan, plain, toCel, type EngineOptions } from "#lib/cel/engine.js";
+import { CelValue, Engine, ExpressionError, human, isSpan, plain, toCel, type EngineOptions } from "#lib/cel/engine.js";
 import { formatDate, formatDuration, isMidnight, startOfDay } from "#lib/cel/dates.js";
 import { LOCALES, type Table as LookupTable } from "#lib/cel/library.js";
 import { formatNumber } from "#lib/cel/numbers.js";
@@ -139,10 +139,41 @@ export function answerValue(question: Question, raw: unknown): unknown {
     case "number":
       if (typeof raw !== "number") return null;
       return settings.whole ? Math.trunc(raw) : raw;
+    case "repeating":
+    case "table": {
+      // Each cell as its column's kind of value, so rules over the rows work whatever
+      // was typed: 3 in a decimal column multiplies with 1.5, a date compares with a
+      // date, and a cell left blank is the empty value of its kind.
+      const columns = (settings.columns ?? []) as RowColumn[];
+      const rows = Array.isArray(raw) ? (raw as (Record<string, unknown> | null)[]) : [];
+      return new CelValue(rows.map((row) => Object.fromEntries(columns.map((c) => [c.key, cellValue(c, row?.[c.key])]))));
+    }
     default:
       return raw ?? null;
   }
 }
+
+type RowColumn = { key: string; type: string; settings?: Record<string, unknown> };
+
+/** One cell of a row as expressions read it, by its column's type; an empty one as that type's empty value. */
+function cellValue(column: RowColumn, raw: unknown): unknown {
+  switch (column.type) {
+    case "number":
+      if (column.settings?.whole) return typeof raw === "number" && Number.isFinite(raw) ? BigInt(Math.trunc(raw)) : 0n;
+      return typeof raw === "number" && Number.isFinite(raw) ? raw : 0;
+    case "yes_no":
+      return raw === true;
+    case "datetime": {
+      const moment = typeof raw === "string" && raw ? new Date(raw) : NO_DATE;
+      return Number.isNaN(moment.getTime()) ? NO_DATE : moment;
+    }
+    default:
+      return raw === null || raw === undefined ? "" : String(raw);
+  }
+}
+
+/** The date a date not filled in reaches expressions as (see noDate). */
+const NO_DATE = new Date(0);
 
 /**
  * What a question starts as, from what its rule gives, kept as its answers are: a date
@@ -405,7 +436,8 @@ class Worker {
       const items = Array.isArray(list) ? list : [];
       if (!items.length) this.hidden.push({ id: b.id, reason: "Repeated for each item, and there are none" });
       return items.flatMap((entry, i) => {
-        const inner: Scope = { engine: this.itemEngine, values: { ...scope.values, item: entry }, suffix: `${scope.suffix ?? ""}~${i}` };
+        // The item as the list gave it: its cells keep their kinds (see answerValue).
+        const inner: Scope = { engine: this.itemEngine, values: { ...scope.values, item: new CelValue(entry) }, suffix: `${scope.suffix ?? ""}~${i}` };
         return this.section(inner, b, `${b.id}${inner.suffix}`, true);
       });
     }

@@ -248,8 +248,20 @@ function dynamic(value: unknown): unknown {
   return value;
 }
 
+/**
+ * A value already as CEL holds it (whole numbers as bigint, decimal numbers as numbers,
+ * dates as Dates), which is passed to expressions as it is. Plain data can't say
+ * whether 3 is a whole number or a decimal one, and it's read as a whole one, as JSON's
+ * is on the server; so the cells of a repeating group's rows, whose kinds only their
+ * columns know, are given this way.
+ */
+export class CelValue {
+  constructor(readonly value: unknown) {}
+}
+
 /** A plain value (as JSON would carry it) converted to its declared type. */
 export function toCel(value: unknown, spec: TypeSpec, name: string): unknown {
+  if (value instanceof CelValue) return value.value;
   if (value === null || value === undefined) return empty(spec);
   const wrong = () => new ExpressionError("runtime", `${name} should be ${typeText(spec)}, not ${JSON.stringify(value)}.`);
   switch (spec.name) {
@@ -311,6 +323,7 @@ const isCelDuration = (value: unknown): value is CelDuration =>
   !!value && typeof value === "object" && typeof (value as CelDuration).addDuration === "function" && "nanos" in value;
 
 export function plain(value: unknown): unknown {
+  if (value instanceof CelValue) return plain(value.value);
   if (typeof value === "bigint") return Number(value);
   if (isCelDuration(value)) return { "@duration": Number(value.seconds) + value.nanos / 1e9 } satisfies Span;
   if (Array.isArray(value)) return value.map(plain);
