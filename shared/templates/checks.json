@@ -3360,6 +3360,228 @@
           "message": "Column 1's smallest value is larger than its largest."
         }
       ]
+    },
+    {
+      "name": "What a section repeats for",
+      "content": {
+        "schema": 1,
+        "settings": {
+          "prefix": "REP",
+          "language": "en",
+          "signing": "technician",
+          "review": "optional",
+          "delivery": [
+            "download"
+          ],
+          "styles": [
+            "company",
+            "customer"
+          ],
+          "customer_background": true,
+          "made_with_skjald": true
+        },
+        "form": [
+          {
+            "id": "s_main1",
+            "title": "Step",
+            "help": "",
+            "visible_when": null,
+            "questions": [
+              {
+                "id": "q_tags1",
+                "key": "tags",
+                "type": "multi_select",
+                "label": "Tags",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "options": [
+                    {
+                      "value": "a",
+                      "label": "A"
+                    }
+                  ],
+                  "min_selected": null,
+                  "max_selected": null
+                }
+              },
+              {
+                "id": "q_rows1",
+                "key": "rows",
+                "type": "repeating",
+                "label": "Rows",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "columns": [
+                    {
+                      "key": "ip",
+                      "label": "IP",
+                      "type": "ip",
+                      "required": false,
+                      "settings": {
+                        "versions": "any",
+                        "cidr": "no"
+                      }
+                    }
+                  ],
+                  "min_rows": 0,
+                  "max_rows": 100
+                }
+              },
+              {
+                "id": "q_count",
+                "key": "count",
+                "type": "number",
+                "label": "Count",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "whole": false,
+                  "min": null,
+                  "max": null,
+                  "decimals": 1,
+                  "unit": ""
+                }
+              }
+            ]
+          }
+        ],
+        "layout": [
+          {
+            "id": "b_sect1",
+            "visible_when": null,
+            "kind": "section",
+            "title": "Each tag: {{item.name}}",
+            "intro": null,
+            "new_page": true,
+            "numbered": true,
+            "landscape": false,
+            "repeat_for": "answers.tags",
+            "blocks": []
+          },
+          {
+            "id": "b_sect2",
+            "visible_when": null,
+            "kind": "section",
+            "title": "Each row with an address: {{item.ip}}",
+            "intro": null,
+            "new_page": true,
+            "numbered": true,
+            "landscape": false,
+            "repeat_for": "answers.rows.filter(r, has(r.ip))",
+            "blocks": []
+          },
+          {
+            "id": "b_sect3",
+            "visible_when": null,
+            "kind": "section",
+            "title": "Whatever map() gives",
+            "intro": null,
+            "new_page": true,
+            "numbered": true,
+            "landscape": false,
+            "repeat_for": "answers.rows.map(r, r.ip)",
+            "blocks": []
+          },
+          {
+            "id": "b_sect4",
+            "visible_when": null,
+            "kind": "section",
+            "title": "Numbers",
+            "intro": null,
+            "new_page": true,
+            "numbered": true,
+            "landscape": false,
+            "repeat_for": "[1, 2]",
+            "blocks": []
+          },
+          {
+            "id": "b_sect5",
+            "visible_when": null,
+            "kind": "section",
+            "title": "Not a list",
+            "intro": null,
+            "new_page": true,
+            "numbered": true,
+            "landscape": false,
+            "repeat_for": "answers.count",
+            "blocks": []
+          },
+          {
+            "id": "b_sect6",
+            "visible_when": null,
+            "kind": "section",
+            "title": "Left empty",
+            "intro": null,
+            "new_page": true,
+            "numbered": true,
+            "landscape": false,
+            "repeat_for": "  ",
+            "blocks": []
+          },
+          {
+            "id": "b_sect7",
+            "visible_when": null,
+            "kind": "section",
+            "title": "Rows written out",
+            "intro": null,
+            "new_page": true,
+            "numbered": true,
+            "landscape": false,
+            "repeat_for": "[{\"ip\": \"198.51.100.23\"}]",
+            "blocks": []
+          }
+        ],
+        "sample": {
+          "answers": {}
+        }
+      },
+      "answers": {
+        "answers.count": "double",
+        "answers.rows": "list<map<string, dyn>>",
+        "answers.tags": "list<string>"
+      },
+      "problems": [
+        {
+          "element": "b_sect1",
+          "field": "repeat_for",
+          "message": "A section repeats for the rows of a repeating group or table, but this list holds something else."
+        },
+        {
+          "element": "b_sect4",
+          "field": "repeat_for",
+          "message": "A section repeats for the rows of a repeating group or table, but this list holds something else."
+        },
+        {
+          "element": "b_sect5",
+          "field": "repeat_for",
+          "message": "This should give a list, but gives a decimal number."
+        },
+        {
+          "element": "b_sect6",
+          "field": "repeat_for",
+          "message": "Write the expression, or remove the rule."
+        }
+      ]
     }
   ]
 }

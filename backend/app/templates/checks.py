@@ -51,6 +51,8 @@ RESERVED = frozenset({
 })
 LISTS = ("repeating", "table")
 ITEM_OUTSIDE = "item is only there inside a section repeated for each item."
+NOT_ROWS = ("A section repeats for the rows of a repeating group or table, but this list "
+            "holds something else.")
 SIGNERS = {"technician": "The technician", "reviewer": "The reviewer",
            "company": "The company seal"}
 
@@ -60,12 +62,6 @@ class Problem:
     element: str
     field: str
     message: str
-
-
-def _fits(got: str, expected: str) -> bool:
-    if got == "dyn" or got == expected:
-        return True
-    return expected == "list" and got.startswith("list<")
 
 
 @dataclass
@@ -93,7 +89,8 @@ class _Checker:
 
     def expr(self, element: str, field_: str, expr: str | None, expected: str | None,
              *, item: bool = False) -> None:
-        """An expression that, when set, must work and give the expected type."""
+        """An expression that, when set, must work and give the expected type ("rows":
+        the rows of a repeating group or table)."""
         if expr is None:
             return
         if blank(expr):
@@ -105,7 +102,12 @@ class _Checker:
         except ExpressionError as error:
             self.add(element, field_, self.message(error, item))
             return
-        if expected is not None and not _fits(got, expected):
+        if expected == "rows":
+            # What a section repeats for: inside it each item is read as a row (item.ip).
+            if got not in ("dyn", "list<dyn>") and not got.startswith("list<map<string,"):
+                self.add(element, field_, NOT_ROWS if got.startswith("list") else
+                         f"This should give a list, but gives {human(got)}.")
+        elif expected is not None and got not in ("dyn", expected):
             self.add(element, field_,
                      f"This should give {human(expected)}, but gives {human(got)}.")
 
@@ -369,7 +371,7 @@ class _Checker:
                 self.add(b.id, "title", "Give the section a title.")
             self.text(b.id, "title", b.title, item=item)
             self.rich(b.id, "intro", b.intro, item=item)
-            self.expr(b.id, "repeat_for", b.repeat_for, "list", item=outer)
+            self.expr(b.id, "repeat_for", b.repeat_for, "rows", item=outer)
             for child in b.blocks:
                 self.block(child, item=item)
         elif isinstance(b, HeadingBlock):

@@ -18,10 +18,8 @@ export const RESERVED = new Set([
 ]);
 const LISTS = new Set(["repeating", "table"]);
 export const ITEM_OUTSIDE = "item is only there inside a section repeated for each item.";
+const NOT_ROWS = "A section repeats for the rows of a repeating group or table, but this list holds something else.";
 const SIGNERS = { technician: "The technician", reviewer: "The reviewer", company: "The company seal" };
-
-const fits = (got: string, expected: string) =>
-  got === "dyn" || got === expected || (expected === "list" && got.startsWith("list<"));
 
 type Columns = { key: string }[];
 type Column = { key: string; type: string; settings?: Record<string, unknown> };
@@ -71,7 +69,10 @@ class Checker {
     return !item && error.message === unknownName("item") ? ITEM_OUTSIDE : error.message;
   }
 
-  /** An expression that, when set, must work and give the expected type. */
+  /**
+   * An expression that, when set, must work and give the expected type ("rows": the
+   * rows of a repeating group or table).
+   */
   expr(element: string, field: string, expr: string | null | undefined, expected: string | null, item = false) {
     if (expr === null || expr === undefined) return;
     if (blank(expr)) {
@@ -86,7 +87,12 @@ class Checker {
       this.add(element, field, this.message(error, item));
       return;
     }
-    if (expected !== null && !fits(got, expected)) {
+    if (expected === "rows") {
+      // What a section repeats for: inside it each item is read as a row (item.ip).
+      if (got !== "dyn" && got !== "list<dyn>" && !got.startsWith("list<map<string,")) {
+        this.add(element, field, got.startsWith("list") ? NOT_ROWS : `This should give a list, but gives ${human(got)}.`);
+      }
+    } else if (expected !== null && got !== "dyn" && got !== expected) {
       this.add(element, field, `This should give ${human(expected)}, but gives ${human(got)}.`);
     }
   }
@@ -329,7 +335,7 @@ class Checker {
         if (blank(b.title)) this.add(b.id, "title", "Give the section a title.");
         this.text(b.id, "title", b.title, item);
         this.rich(b.id, "intro", b.intro ?? null, item);
-        this.expr(b.id, "repeat_for", b.repeat_for, "list", outer);
+        this.expr(b.id, "repeat_for", b.repeat_for, "rows", outer);
         for (const child of b.blocks) this.block(child, item);
         break;
       case "heading":
