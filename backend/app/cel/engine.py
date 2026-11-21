@@ -355,14 +355,6 @@ def _find(values: Mapping[str, Any], dotted: str) -> Any:
     return current
 
 
-def plain(value: Any) -> Any:
-    if isinstance(value, list | tuple):
-        return [plain(v) for v in value]
-    if isinstance(value, dict):
-        return {plain(k): plain(v) for k, v in value.items()}
-    return value
-
-
 class Engine:
     """Checks and evaluates expressions over one set of declared names."""
 
@@ -415,4 +407,5 @@ class Engine:
             raise ExpressionError("runtime", _engine_message(str(exc))) from None
         if result.type() == cel.Type.ERROR:
             raise ExpressionError("runtime", _engine_message(str(result.value())))
-        return plain(cast(Any, result.value()))
+        # The engine's own lists and maps hold wrappers; plain_value gives Python's.
+        return cast(Any, result.plain_value())

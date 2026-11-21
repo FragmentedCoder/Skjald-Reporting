@@ -129,6 +129,31 @@ def test_check_gives_the_type() -> None:
     assert engine.check("{\"a\": 1.5}") == "map<string, double>"
 
 
+def test_lists_and_maps_come_back_plain() -> None:
+    engine = Engine({"answers.tags": "list<string>", "answers.rows": "list<map<string, dyn>>",
+                     "answers.when": "timestamp"})
+    values = {"answers": {"tags": ["a", "b"], "when": "2026-10-21T01:14:00Z",
+                          "rows": [{"name": "srv-01", "ports": [22, 443], "up": True}]}}
+    when = datetime(2026, 10, 21, 1, 14, tzinfo=UTC)
+    for expr, expected in (
+        ("answers.tags.filter(t, t != \"a\")", ["b"]),
+        ("\"a,b\".split(\",\")", ["a", "b"]),
+        ("[1, 2.5, \"x\", true, null]", [1, 2.5, "x", True, None]),
+        ("answers.rows", values["answers"]["rows"]),
+        ("answers.rows[0]", values["answers"]["rows"][0]),
+        ("answers.rows.map(r, r.ports)", [[22, 443]]),
+        ("{\"when\": [answers.when], \"n\": {1: \"one\"}}", {"when": [when], "n": {1: "one"}}),
+    ):
+        found = engine.evaluate(expr, values)
+        assert found == expected, expr
+        # Nothing of the engine's own is left inside: it all goes through JSON.
+        assert json.loads(json.dumps(found, default=str)) == json.loads(
+            json.dumps(expected, default=str))
+    rows = engine.evaluate("answers.rows", values)
+    assert type(rows) is list and type(rows[0]) is dict and type(rows[0]["ports"]) is list
+    assert [type(port) for port in rows[0]["ports"]] == [int, int]
+
+
 def test_engine_errors_are_said_plainly() -> None:
     engine = Engine({"answers.title": "string"})
     with pytest.raises(ExpressionError) as caught:
