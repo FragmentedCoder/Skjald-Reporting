@@ -11,7 +11,7 @@ import math
 import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from functools import lru_cache
 from typing import Any
@@ -112,6 +112,7 @@ ENGINE: dict[str, str] = {
 ALIAS = "skjald_"
 ALIASED = frozenset({"int", "double", "string", "substring"})
 
+EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 MAX_INT = 2**63 - 1
 PATTERN = "The pattern isn't a regular expression Skjald can use (RE2 syntax)."
 
@@ -320,6 +321,12 @@ def _lookup(context: Context, table: str, key: str, column: str | None = None) -
 
 def implementations(context: Context) -> dict[str, Callable[..., Any]]:
     zone, locale = context.zone, context.locale
+
+    def format_date(moment: datetime, pattern: str) -> str:
+        # The pattern is read even for the empty date, so a wrong one is still said.
+        text = dates.format_date(moment, pattern, zone, dict(locale))
+        return "" if moment == EPOCH else text
+
     return {
         "xor_bool_bool": lambda a, b: a != b,
         "switch_string_string": lambda v, cases, default: cases.get(v, default),
@@ -348,11 +355,14 @@ def implementations(context: Context) -> dict[str, Callable[..., Any]]:
         "lookup_string_string_string": lambda table, key, column: _lookup(
             context, table, key, column),
         "date_string": lambda text: dates.parse_date(text, zone),
-        "add_hours_timestamp_int": lambda moment, hours: moment + timedelta(hours=hours),
-        "add_days_timestamp_int": lambda moment, days: dates.add_days(moment, days, zone),
+        # A date that isn't answered is the empty date, and stays it: no days or
+        # hours are added to it, and it's written as no text at all.
+        "add_hours_timestamp_int": lambda moment, hours: (
+            moment if moment == EPOCH else moment + timedelta(hours=hours)),
+        "add_days_timestamp_int": lambda moment, days: (
+            moment if moment == EPOCH else dates.add_days(moment, days, zone)),
         "hours_between_timestamp_timestamp": dates.hours_between,
         "days_between_timestamp_timestamp": lambda start, end: dates.days_between(
             start, end, zone),
-        "format_date_timestamp_string": lambda moment, pattern: dates.format_date(
-            moment, pattern, zone, dict(locale)),
+        "format_date_timestamp_string": format_date,
     }

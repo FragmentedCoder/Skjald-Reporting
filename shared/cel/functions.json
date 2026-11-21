@@ -264,14 +264,14 @@
     {
       "name": "add_hours",
       "group": "Dates",
-      "summary": "A point in time a number of hours later (or earlier, for a negative number).",
+      "summary": "A point in time a number of hours later (or earlier, for a negative number). A date that isn't answered stays unanswered.",
       "overloads": [{"id": "add_hours_timestamp_int", "signature": "add_hours(timestamp, int): timestamp", "where": "skjald"}],
       "examples": [{"expr": "format_date(add_hours(date(\"2026-10-21T14:30\"), 72), \"d MMM yyyy HH:mm\")", "result": "24 Oct 2026 14:30"}]
     },
     {
       "name": "add_days",
       "group": "Dates",
-      "summary": "The same time of day a number of calendar days later (or earlier), in the company's time zone.",
+      "summary": "The same time of day a number of calendar days later (or earlier), in the company's time zone. A date that isn't answered stays unanswered.",
       "overloads": [{"id": "add_days_timestamp_int", "signature": "add_days(timestamp, int): timestamp", "where": "skjald"}],
       "examples": [{"expr": "format_date(add_days(date(\"2026-10-21\"), 30), \"yyyy-MM-dd\")", "result": "2026-11-20"}]
     },
@@ -292,7 +292,7 @@
     {
       "name": "format_date",
       "group": "Dates",
-      "summary": "A point in time as text in the company's time zone and the report's language. yyyy year, MMMM month name, MMM short month name, MM month (01–12), M month, dd day (01–31), d day, EEEE weekday, HH hour (00–23), mm minutes, ss seconds; text in 'single quotes' is kept as written.",
+      "summary": "A point in time as text in the company's time zone and the report's language. yyyy year, MMMM month name, MMM short month name, MM month (01–12), M month, dd day (01–31), d day, EEEE weekday, HH hour (00–23), mm minutes, ss seconds; text in 'single quotes' is kept as written. A date that isn't answered gives no text.",
       "overloads": [{"id": "format_date_timestamp_string", "signature": "format_date(timestamp, string): string", "where": "skjald"}],
       "examples": [{"expr": "format_date(timestamp(\"2026-10-21T01:14:00Z\"), \"EEEE d MMMM yyyy 'at' HH:mm\")", "result": "Wednesday 21 October 2026 at 03:14"}]
     }

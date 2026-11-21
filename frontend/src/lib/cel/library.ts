@@ -272,11 +272,18 @@ export function implementations(context: Context): Record<string, (...args: neve
     lookup_string_string_string: (table: string, key: string, column: string) =>
       lookup(context, table, key, column),
     date_string: (text: string) => dateFrom(text, zone),
-    add_hours_timestamp_int: (moment: Date, hours: bigint) => new Date(moment.getTime() + Number(hours) * 3_600_000),
-    add_days_timestamp_int: (moment: Date, days: bigint) => addDays(moment, Number(days), zone),
+    // A date that isn't answered is the empty date, and stays it: no days or hours
+    // are added to it, and it's written as no text at all.
+    add_hours_timestamp_int: (moment: Date, hours: bigint) =>
+      moment.getTime() === 0 ? moment : new Date(moment.getTime() + Number(hours) * 3_600_000),
+    add_days_timestamp_int: (moment: Date, days: bigint) => (moment.getTime() === 0 ? moment : addDays(moment, Number(days), zone)),
     hours_between_timestamp_timestamp: hoursBetween,
     days_between_timestamp_timestamp: (start: Date, end: Date) => BigInt(daysBetween(start, end, zone)),
-    format_date_timestamp_string: (moment: Date, pattern: string) => formatDate(moment, pattern, zone, locale),
+    format_date_timestamp_string: (moment: Date, pattern: string) => {
+      // The pattern is read even for the empty date, so a wrong one is still said.
+      const text = formatDate(moment, pattern, zone, locale);
+      return moment.getTime() === 0 ? "" : text;
+    },
   };
 }
 
