@@ -4,8 +4,8 @@
 // to the same problems in the same words and order: steps and their questions, then
 // loops among calculated values, then the layout, depth first.
 
-import { RE2JS } from "re2js";
 import { Engine, ExpressionError, human, unknownName } from "#lib/cel/engine.js";
+import { regex } from "#lib/cel/library.js";
 import { fieldType, settingsOf } from "./fields";
 import { declarations, ITEM, questionNames } from "./names";
 import { blank, docExpressions, interpolations, trimmed } from "./text";
@@ -24,6 +24,17 @@ const fits = (got: string, expected: string) =>
   got === "dyn" || got === expected || (expected === "list" && got.startsWith("list<"));
 
 type Columns = { key: string }[];
+type Column = { key: string; type: string; settings?: Record<string, unknown> };
+
+/** Whether a pattern is one both sides can use. */
+function usable(pattern: string): boolean {
+  try {
+    regex(pattern);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export interface CheckOptions {
   library?: Record<string, string>;
@@ -153,12 +164,8 @@ class Checker {
     }
     if (LISTS.has(q.type)) labels(s.columns).forEach((label, i) => !label && this.add(q.id, "settings.columns", `Give column ${i + 1} a heading.`));
     if (q.type === "table") labels(s.rows).forEach((label, i) => !label && this.add(q.id, "settings.rows", `Give row ${i + 1} a heading.`));
-    if ((q.type === "text" || q.type === "serial") && s.pattern) {
-      try {
-        RE2JS.compile(String(s.pattern));
-      } catch {
-        this.add(q.id, "settings.pattern", "This pattern isn't a regular expression Skjald can use (RE2 syntax).");
-      }
+    if ((q.type === "text" || q.type === "serial") && s.pattern && !usable(String(s.pattern))) {
+      this.add(q.id, "settings.pattern", "This pattern isn't a regular expression Skjald can use (RE2 syntax).");
     }
     if (q.type === "number" && s.min !== null && s.max !== null && Number(s.min) > Number(s.max)) {
       this.add(q.id, "settings.min", "The smallest value is larger than the largest.");
@@ -179,6 +186,35 @@ class Checker {
     }
     if (q.type === "repeating" && Number(s.min_rows) > Number(s.max_rows)) {
       this.add(q.id, "settings.min_rows", "The fewest rows are more than the most.");
+    }
+    if (LISTS.has(q.type)) (s.columns as Column[]).forEach((column, i) => this.columnSettings(q, i + 1, column));
+  }
+
+  /**
+   * A column is a question in small: its name is read in expressions (r.ip), and its
+   * own settings are held to what a question's are.
+   */
+  columnSettings(q: Question, number: number, column: Column) {
+    const where = "settings.columns";
+    const s = settingsOf(column.type, column.settings ?? {});
+    if (RESERVED.has(column.key)) {
+      this.add(q.id, where, `${column.key} is a reserved word in expressions: choose another variable name for column ${number}.`);
+    }
+    if (column.type === "dropdown") {
+      ((s.options ?? []) as { label: string }[]).forEach((option, i) => {
+        if (blank(option.label)) this.add(q.id, where, `Write what choice ${i + 1} of column ${number} is shown as.`);
+      });
+    }
+    if (column.type === "yes_no") {
+      for (const [name, word] of [["yes_label", "Yes"], ["no_label", "No"]]) {
+        if (blank(String(s[name] ?? ""))) this.add(q.id, where, `Write what ${word} is shown as in column ${number}.`);
+      }
+    }
+    if ((column.type === "text" || column.type === "serial") && s.pattern && !usable(String(s.pattern))) {
+      this.add(q.id, where, `Column ${number}'s pattern isn't a regular expression Skjald can use (RE2 syntax).`);
+    }
+    if (column.type === "number" && s.min !== null && s.max !== null && Number(s.min) > Number(s.max)) {
+      this.add(q.id, where, `Column ${number}'s smallest value is larger than its largest.`);
     }
   }
 

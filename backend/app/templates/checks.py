@@ -15,10 +15,9 @@ from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-import re2
-
 from app.cel import Engine, ExpressionError
 from app.cel.engine import human, unknown_name
+from app.cel.library import regex
 from app.templates.content import (
     SIGNS,
     Answer,
@@ -193,12 +192,9 @@ class _Checker:
             for i, row in enumerate(s["rows"]):
                 if blank(row["label"]):
                     self.add(q.id, "settings.rows", f"Give row {i + 1} a heading.")
-        if q.type in ("text", "serial") and s.get("pattern"):
-            try:
-                re2.compile(s["pattern"])
-            except Exception:
-                self.add(q.id, "settings.pattern",
-                         "This pattern isn't a regular expression Skjald can use (RE2 syntax).")
+        if q.type in ("text", "serial") and s.get("pattern") and not self.pattern(s["pattern"]):
+            self.add(q.id, "settings.pattern",
+                     "This pattern isn't a regular expression Skjald can use (RE2 syntax).")
         if q.type == "number" and s["min"] is not None and s["max"] is not None:
             if s["min"] > s["max"]:
                 self.add(q.id, "settings.min", "The smallest value is larger than the largest.")
@@ -216,6 +212,44 @@ class _Checker:
                 self.add(q.id, "settings.rows", f"Two rows use the variable name {key}.")
         if q.type == "repeating" and s["min_rows"] > s["max_rows"]:
             self.add(q.id, "settings.min_rows", "The fewest rows are more than the most.")
+        if q.type in LISTS:
+            for i, column in enumerate(s["columns"]):
+                self.column_settings(q, i + 1, column)
+
+    @staticmethod
+    def pattern(pattern: str) -> bool:
+        """Whether a pattern is one both sides can use."""
+        try:
+            regex(pattern)
+        except ValueError:
+            return False
+        return True
+
+    def column_settings(self, q: Question, number: int, column: dict[str, Any]) -> None:
+        """A column is a question in small: its name is read in expressions (r.ip),
+        and its own settings are held to what a question's are."""
+        where = "settings.columns"
+        s = column["settings"]
+        if column["key"] in RESERVED:
+            self.add(q.id, where, f"{column['key']} is a reserved word in expressions: choose "
+                                  f"another variable name for column {number}.")
+        if column["type"] == "dropdown":
+            for i, option in enumerate(s["options"]):
+                if blank(option["label"]):
+                    self.add(q.id, where,
+                             f"Write what choice {i + 1} of column {number} is shown as.")
+        if column["type"] == "yes_no":
+            for name, word in (("yes_label", "Yes"), ("no_label", "No")):
+                if blank(s[name]):
+                    self.add(q.id, where, f"Write what {word} is shown as in column {number}.")
+        if column["type"] in ("text", "serial") and s.get("pattern") and not self.pattern(
+                s["pattern"]):
+            self.add(q.id, where, f"Column {number}'s pattern isn't a regular expression Skjald "
+                                  "can use (RE2 syntax).")
+        if column["type"] == "number" and s["min"] is not None and s["max"] is not None:
+            if s["min"] > s["max"]:
+                self.add(q.id, where,
+                         f"Column {number}'s smallest value is larger than its largest.")
 
     def loops(self) -> None:
         """Calculated values that depend on themselves, through others or directly."""
