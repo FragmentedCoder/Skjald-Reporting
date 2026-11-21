@@ -64,13 +64,23 @@ export interface Item {
 }
 
 export interface Changes {
+  steps_added: Item[];
+  steps_removed: Item[];
+  steps_changed: (Item & { parts: string[] })[];
+  steps_moved: Item[];
   questions_added: Item[];
   questions_removed: Item[];
   questions_changed: (Item & { parts: string[] })[];
+  /** To another step, or to another place among the questions of its step. */
+  questions_moved: Item[];
   blocks_added: Item[];
   blocks_removed: Item[];
   blocks_changed: (Item & { parts: string[] })[];
+  /** To another section, column or case, or to another place among the blocks it stands with. */
+  blocks_moved: Item[];
   settings_changed: string[];
+  /** The answers "Try it" starts from. */
+  sample_changed: boolean;
 }
 
 const base = (id: number) => `/templates/${id}`;
