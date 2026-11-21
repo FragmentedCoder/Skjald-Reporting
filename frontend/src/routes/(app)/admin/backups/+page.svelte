@@ -54,6 +54,22 @@
     } catch (e) {
       if (!sessionGone(e)) error = e instanceof ApiError ? e.message : "Not available.";
     }
+    watch();
+  }
+
+  // A run in the list that's still going wasn't necessarily started here: the schedule
+  // starts them, and so may someone else. While one is waiting or running, and none is
+  // being followed from here, the list is asked for again every two seconds, so it never
+  // goes on saying "Running" about a run that has finished. Only what's shown about the
+  // runs changes: the settings being edited are left as they are.
+  function watch() {
+    if (following.length || !status?.runs.some((run) => run.state === "running" || run.state === "queued")) return;
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      const found = await api<BackupStatus>("GET", "/admin/backups").catch(() => null);
+      if (found && !following.length) status = found;
+      watch();
+    }, 2000);
   }
 
   onMount(load);
