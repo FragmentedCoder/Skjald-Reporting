@@ -18,7 +18,9 @@
     label?: string;
   } = $props();
 
-  const switchable = $derived(entries.filter((e) => e.shape === "text" || e.shape === "whole"));
+  // SWITCH looks at a text answer for any result, and at a whole number for a text
+  // result (the cases the function has: shared/cel/functions.json).
+  const switchable = $derived(entries.filter((e) => e.shape === "text" || (e.shape === "whole" && result === "text")));
   const switched = $derived.by(() => {
     const current = rule;
     return current.kind === "switch" ? entries.find((e) => e.name === current.name) : undefined;

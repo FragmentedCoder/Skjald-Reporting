@@ -125,7 +125,7 @@ export const OPS: Record<Shape, { op: Op; label: string }[]> = {
   bool: [{ op: "yes", label: "is yes" }, { op: "no", label: "is no" }],
   date: [
     { op: "lt", label: "is before" }, { op: "le", label: "is on or before" }, { op: "gt", label: "is after" },
-    { op: "ge", label: "is on or after" },
+    { op: "ge", label: "is on or after" }, { op: "between", label: "is between" },
   ],
   texts: [
     { op: "includes", label: "includes" }, { op: "excludes", label: "doesn't include" },
@@ -173,25 +173,48 @@ function inRows(shapes: Record<string, Shape>, list: string): Record<string, Sha
   return { ...shapes, ...own };
 }
 
+/**
+ * A condition as it's written, which may be simpler than it was built: a group of one
+ * is that one, a group inside a group of its own kind joins it (a AND (b AND c) is a
+ * AND b AND c), and NOT on "is yes" is "is no". Each means the same, and is what reading
+ * the text back gives, so a rule built this way stays one the visual editor can open.
+ */
+function tidy(condition: Condition): Condition {
+  if (condition.kind === "compare") return condition;
+  if (condition.kind === "not") {
+    const item = tidy(condition.item);
+    if (item.kind === "not") return item.item;
+    if (item.kind === "compare" && (item.op === "yes" || item.op === "no")) return { ...item, op: item.op === "yes" ? "no" : "yes" };
+    return { kind: "not", item };
+  }
+  const items = condition.items.map(tidy).flatMap((item) =>
+    item.kind === condition.kind && item.kind !== "one" ? item.items : [item]);
+  return items.length === 1 ? items[0] : { kind: condition.kind, items };
+}
+
 export function conditionToCel(condition: Condition, shapes: Record<string, Shape>): string {
+  return written(tidy(condition), shapes);
+}
+
+function written(condition: Condition, shapes: Record<string, Shape>): string {
   switch (condition.kind) {
     case "all":
     case "any": {
       if (!condition.items.length) return condition.kind === "all" ? "true" : "false";
-      if (condition.items.length === 1) return conditionToCel(condition.items[0], shapes);
+      if (condition.items.length === 1) return written(condition.items[0], shapes);
       // A range needs no brackets among other ANDs: it's an AND itself.
       const bare = (item: Condition) => condition.kind === "all" && item.kind === "compare";
       return condition.items
-        .map((item) => (bare(item) ? conditionToCel(item, shapes) : wrap(conditionToCel(item, shapes), item)))
+        .map((item) => (bare(item) ? written(item, shapes) : wrap(written(item, shapes), item)))
         .join(condition.kind === "all" ? " && " : " || ");
     }
     case "one": {
-      const items = condition.items.map((item) => conditionToCel(item, shapes));
+      const items = condition.items.map((item) => written(item, shapes));
       if (items.length === 2) return `xor(${items[0]}, ${items[1]})`;
       return `[${items.join(", ")}].exists_one(x, x)`;
     }
     case "not":
-      return `!(${conditionToCel(condition.item, shapes)})`;
+      return `!(${written(condition.item, shapes)})`;
     case "compare":
       return compareToCel(condition, shapes[condition.name] ?? "text", shapes);
   }
@@ -253,7 +276,11 @@ export function valueToCel(rule: ValueRule, result: Shape, shapes: Record<string
     }
     case "switch": {
       const key = shapes[rule.name] === "whole" ? "whole" : "text";
-      const cases = rule.cases.map((c) => `${literal(c.match, key)}: ${literal(c.value, result)}`).join(", ");
+      // The first case of a value is the one that counts: a second one (two left
+      // blank, say) could never be picked, and a map can't hold a key twice.
+      const seen = new Set<string>();
+      const cases = rule.cases.map((c) => [literal(c.match, key), literal(c.value, result)])
+        .filter(([match]) => !seen.has(match) && seen.add(match)).map(([match, value]) => `${match}: ${value}`).join(", ");
       return `switch(${rule.name}, {${cases}}, ${literal(rule.otherwise, result)})`;
     }
   }

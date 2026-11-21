@@ -87,6 +87,29 @@ describe("conditions", () => {
     expect(conditionFromCel(cel, SHAPES)).toEqual(condition);
   });
 
+  it("writes a rule the simplest way that means the same, so it reads back", () => {
+    const yes = c("answers.found", "yes");
+    const high = c("answers.cvss", "ge", { value: 9 });
+    const titled = c("answers.title", "filled");
+    const simpler: [Condition, string, Condition][] = [
+      // NOT on "is yes" is "is no".
+      [{ kind: "not", item: yes }, "!answers.found", c("answers.found", "no")],
+      [{ kind: "not", item: { kind: "not", item: high } }, "answers.cvss >= 9.0", high],
+      // The group "Add a group" makes, while it holds one condition.
+      [{ kind: "all", items: [yes, { kind: "any", items: [high] }] }, "answers.found && answers.cvss >= 9.0", { kind: "all", items: [yes, high] }],
+      // A group inside a group of its own kind.
+      [{ kind: "any", items: [yes, { kind: "any", items: [high, titled] }] }, 'answers.found || answers.cvss >= 9.0 || answers.title != ""', { kind: "any", items: [yes, high, titled] }],
+    ];
+    for (const [built, cel, read] of simpler) {
+      expect(conditionToCel(built, SHAPES)).toBe(cel);
+      expect(conditionFromCel(cel, SHAPES)).toEqual(read);
+    }
+    // A date between two days, which the date list offers too.
+    const between = c("answers.detected", "between", { value: "2026-10-01", until: "2026-10-31" });
+    expect(conditionToCel(between, SHAPES)).toBe('answers.detected >= date("2026-10-01") && answers.detected <= date("2026-10-31")');
+    expect(conditionFromCel(conditionToCel(between, SHAPES), SHAPES)).toEqual(between);
+  });
+
   it("reads back what it wrote, whatever the spacing", () => {
     expect(conditionFromCel("answers.found&&answers.cvss   >= 9.0", SHAPES)).toBeNull();
     expect(conditionFromCel("answers.found &&\n  answers.cvss >= 9.0", SHAPES)).toEqual(CONDITIONS.find(([, cel]) => cel === "answers.found && answers.cvss >= 9.0")?.[0]);
@@ -135,6 +158,12 @@ describe("values", () => {
     expect(valueToCel({ kind: "name", name: "answers.status" }, "text", SHAPES)).toBe("answers.status");
     expect(valueFromCel("answers.status", "text", SHAPES)).toEqual({ kind: "name", name: "answers.status" });
     expect(valueFromCel("answers.nothing_here", "text", SHAPES)).toBeNull();
+  });
+
+  it("writes each SWITCH case once: the first of a value is the one that counts", () => {
+    const rule: ValueRule = { kind: "switch", name: "answers.status", cases: [{ match: "", value: "a" }, { match: "", value: "b" }, { match: "x", value: "c" }], otherwise: "d" };
+    expect(valueToCel(rule, "text", SHAPES)).toBe('switch(answers.status, {"": "a", "x": "c"}, "d")');
+    expect(engine.check(valueToCel(rule, "text", SHAPES))).toBe("string");
   });
 
   it("reads each IF's condition as a group, so a condition can be added to it", () => {

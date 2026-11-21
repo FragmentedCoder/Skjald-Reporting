@@ -90,13 +90,17 @@
 
   const open = $derived(kind === "condition" || !optional || value !== null || adding);
 
-  // What the visual form says, written back as text.
+  // What the visual form says, written back as text. "Always the same" date with no
+  // date picked yet is no rule yet, not date("").
   $effect(() => {
     if (mode !== "visual" || !open) return;
+    const unpicked = kind === "value" && rule.kind === "fixed" && result === "date" && !rule.value;
     const text = kind === "condition"
       ? (condition.items.length ? conditionToCel($state.snapshot(condition) as Group, shapes) : null)
-      : valueToCel($state.snapshot(rule) as ValueRule, result, shapes);
+      : unpicked ? null : valueToCel($state.snapshot(rule) as ValueRule, result, shapes);
     untrack(() => {
+      // An optional rule with nothing in it yet keeps its editor open.
+      if (unpicked) adding = true;
       if (text === value) return;
       written = text;
       value = text;
@@ -105,6 +109,8 @@
 
   const live = $derived.by((): string | null => {
     if (!value?.trim()) return null;
+    // A date field of the rule left empty: it passes the type check and fails when run.
+    if (/\bdate\(""\)/.test(value)) return "Pick the date: one is still empty.";
     try {
       const type = engine.check(value);
       if (expects && type !== "dyn" && type !== expects) return `This should give ${human(expects)}, but gives ${human(type)}.`;
