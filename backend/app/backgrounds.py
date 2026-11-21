@@ -161,6 +161,9 @@ def convert(db: Session, job: jobs.Job) -> dict[str, Any]:
         status, message = "ready", ""
     except BackgroundRejected as exc:
         pages, status, message = [], "failed", str(exc)
+    # Read it anew, not as this session remembers it (the worker's sessions keep what
+    # they've loaded across commits): another file may have replaced it meanwhile.
+    db.expire_all()
     row = db.get(CustomerBackground, customer_id)
     if row is None or row.uploaded_at != uploaded_at:
         return {"skipped": "replaced"}

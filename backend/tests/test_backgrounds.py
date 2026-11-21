@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 from sqlalchemy import select
+from sqlalchemy.orm import sessionmaker
 
 from app import backgrounds, jobs
 from app.audit import AuditEntry
@@ -126,6 +127,32 @@ def test_a_pdf_is_converted_by_the_renderer(client, admin, customer, session, mo
     session.commit()
     shown = client.get(f"{CUSTOMERS}/{customer['id']}/background", headers=headers).json()
     assert (shown["status"], shown["message"]) == ("failed", refusal)
+
+
+def test_a_background_replaced_while_converting_keeps_the_new_file(
+        client, admin, customer, session, monkeypatch) -> None:
+    _, headers = admin
+    upload(client, headers, customer["id"], minimal_pdf())
+    [job] = session.scalars(select(jobs.Job).where(jobs.Job.kind == "background.convert"))
+    session.commit()
+    old_page = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 595 842">'
+                '<rect width="1" height="1"/></svg>')
+    picture = (b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 210 297">'
+               b'<rect width="210" height="20"/></svg>')
+
+    def replaced_meanwhile(pdf: bytes) -> list[str]:
+        # While the first file converts, another replaces it (ready at once, as a picture).
+        assert upload(client, headers, customer["id"], picture).json()["status"] == "ready"
+        return [old_page]
+
+    monkeypatch.setattr(backgrounds, "render_pdf", replaced_meanwhile)
+    # As the worker's sessions are: what they've loaded stays loaded across commits.
+    worker = sessionmaker(bind=session.get_bind(), autoflush=False, expire_on_commit=False)
+    with worker() as db:
+        assert backgrounds.convert(db, db.get(jobs.Job, job.id)) == {"skipped": "replaced"}
+        db.commit()
+    page = client.get(f"{CUSTOMERS}/{customer['id']}/background/pages/1", headers=headers).content
+    assert b'width="210"' in page
 
 
 def test_the_worker_and_the_renderer_meet_in_their_folder(tmp_path: Path) -> None:
