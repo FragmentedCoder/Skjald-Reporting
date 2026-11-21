@@ -736,8 +736,15 @@ class Engine:
         tokens, shape = inspect(expr, self.declarations)
         self._literals(tokens, shape)
         source = self._rewritten(expr, tokens, shape)
-        asked = any(call.name == "has" for call in shape.calls) and not any(
-            token.kind == "ident" and token.text == "in" for token in tokens)
+        has = any(call.name == "has" for call in shape.calls)
+        if has:
+            # has() is written out as a comparison in brackets, which can be a step or
+            # two deeper than what was written, so what the engine gets is read too.
+            try:
+                read(tokenize(source))
+            except Unreadable as exc:
+                raise ExpressionError(exc.kind, exc.message) from None
+        asked = has and not any(token.kind == "ident" and token.text == "in" for token in tokens)
         try:
             compiled = self._env.compile(source)
         except RuntimeError as exc:
