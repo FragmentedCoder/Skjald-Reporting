@@ -378,14 +378,6 @@ def test_the_app_writes_the_dns_challenge_as_it_starts(tls_dir, engine, session,
 # Who can read what's written: the key and the DNS credentials, the app and Caddy alone
 
 
-@pytest.fixture
-def set_umask():
-    """Set the umask for a test; it's put back afterwards."""
-    before = os.umask(0o022)
-    yield os.umask
-    os.umask(before)
-
-
 def modes(folder: Path) -> dict[str, int]:
     """Every file in the folder (a temporary one left behind too) and its mode."""
     return {file.name: file.stat().st_mode & 0o777 for file in folder.iterdir()}

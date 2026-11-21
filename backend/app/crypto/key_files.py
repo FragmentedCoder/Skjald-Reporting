@@ -53,15 +53,23 @@ def _create_once(path: Path, data: bytes) -> None:
     each wrote its own key, the database would be created under one key and the
     other would be left on disk, and the database could never be opened again.
     A hard link either creates the file whole or fails, so the first one wins
-    and everyone reads the winner's key back.
+    and everyone reads the winner's key back. The temporary file is made readable
+    by its owner alone, so the key is never readable more widely on the way.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    tmp.write_bytes(data)
-    tmp.chmod(0o600)
+    # One left by a start that was cut short under the same process number goes
+    # first: the key needs a new file, which has this mode from the start.
+    tmp.unlink(missing_ok=True)
+    descriptor = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
-        os.link(tmp, path)
-    except FileExistsError:
-        pass
+        with open(descriptor, "wb") as file:
+            # The umask may have taken bits away; the mode is the same under any.
+            os.fchmod(descriptor, 0o600)
+            file.write(data)
+        try:
+            os.link(tmp, path)
+        except FileExistsError:
+            pass
     finally:
-        tmp.unlink()
+        tmp.unlink(missing_ok=True)
