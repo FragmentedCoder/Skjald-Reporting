@@ -2446,6 +2446,404 @@
           "message": "answers.done_by.nickname isn't a name this template has."
         }
       ]
+    },
+    {
+      "name": "Rules that could only fail when run: names with a dot before them, text written out, chains too long",
+      "content": {
+        "schema": 1,
+        "settings": {
+          "prefix": "REP",
+          "language": "en",
+          "signing": "technician",
+          "review": "optional",
+          "delivery": [
+            "download"
+          ],
+          "styles": [
+            "company",
+            "customer"
+          ],
+          "customer_background": true,
+          "made_with_skjald": true
+        },
+        "form": [
+          {
+            "id": "s_main1",
+            "title": "Step",
+            "help": "",
+            "visible_when": null,
+            "questions": [
+              {
+                "id": "q_host",
+                "key": "host",
+                "type": "text",
+                "label": "Host",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": "re_match(answers.host, \"(\")",
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "max_length": 500,
+                  "pattern": null,
+                  "pattern_message": "",
+                  "placeholder": ""
+                }
+              },
+              {
+                "id": "q_status",
+                "key": "status",
+                "type": "dropdown",
+                "label": "Status",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "options": [
+                    {
+                      "value": "open",
+                      "label": "Open"
+                    },
+                    {
+                      "value": "closed",
+                      "label": "Closed"
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "q_ticks",
+                "key": "ticks",
+                "type": "yes_no",
+                "label": "Ticks",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": null,
+                "settings": {
+                  "yes_label": "Yes",
+                  "no_label": "No"
+                }
+              },
+              {
+                "id": "q_loopa",
+                "key": "loop_a",
+                "type": "calculated",
+                "label": "Loop_a",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": ".answers.loop_b + 1.0",
+                "settings": {
+                  "result": "number",
+                  "show_in_form": true
+                }
+              },
+              {
+                "id": "q_loopb",
+                "key": "loop_b",
+                "type": "calculated",
+                "label": "Loop_b",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": ".answers.loop_a + 1.0",
+                "settings": {
+                  "result": "number",
+                  "show_in_form": true
+                }
+              },
+              {
+                "id": "q_label",
+                "key": "label",
+                "type": "calculated",
+                "label": "Label",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": "switch(answers.status, {\"\": \"None\", \"open\": \"Open\", \"\": \"Unknown\"}, \"Other\")",
+                "settings": {
+                  "result": "text",
+                  "show_in_form": true
+                }
+              },
+              {
+                "id": "q_mixed",
+                "key": "mixed",
+                "type": "calculated",
+                "label": "Mixed",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": "switch(answers.status, {\"open\": \"Open\", 1: \"One\"}, \"Other\")",
+                "settings": {
+                  "result": "text",
+                  "show_in_form": true
+                }
+              },
+              {
+                "id": "q_due01",
+                "key": "due",
+                "type": "calculated",
+                "label": "Due",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": "date(\"\")",
+                "settings": {
+                  "result": "date",
+                  "show_in_form": true
+                }
+              },
+              {
+                "id": "q_seen1",
+                "key": "seen",
+                "type": "calculated",
+                "label": "Seen",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": "answers.ticks ? date(\"21/10/2026\") : date(\"2026-10-21\")",
+                "settings": {
+                  "result": "date",
+                  "show_in_form": true
+                }
+              },
+              {
+                "id": "q_known",
+                "key": "known",
+                "type": "calculated",
+                "label": "Known",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": "has(answers.host) && !has(answers.status)",
+                "settings": {
+                  "result": "yes_no",
+                  "show_in_form": true
+                }
+              },
+              {
+                "id": "q_score",
+                "key": "score",
+                "type": "calculated",
+                "label": "Score",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": "(answers.ticks ? 1 : 0) + (answers.ticks ? 1 : 0) + (answers.ticks ? 1 : 0) + (answers.ticks ? 1 : 0) + (answers.ticks ? 1 : 0) + (answers.ticks ? 1 : 0) + (answers.ticks ? 1 : 0) + (answers.ticks ? 1 : 0) + (answers.ticks ? 1 : 0) + (answers.ticks ? 1 : 0) + (answers.ticks ? 1 : 0) + (answers.ticks ? 1 : 0) + (answers.ticks ? 1 : 0) + (answers.ticks ? 1 : 0) + (answers.ticks ? 1 : 0) + (answers.ticks ? 1 : 0) + (answers.ticks ? 1 : 0) + (answers.ticks ? 1 : 0) + (answers.ticks ? 1 : 0) + (answers.ticks ? 1 : 0) + (answers.ticks ? 1 : 0) + (answers.ticks ? 1 : 0) + (answers.ticks ? 1 : 0) + (answers.ticks ? 1 : 0) + (answers.ticks ? 1 : 0) + (answers.ticks ? 1 : 0) + (answers.ticks ? 1 : 0) + (answers.ticks ? 1 : 0) + (answers.ticks ? 1 : 0) + (answers.ticks ? 1 : 0) + (answers.ticks ? 1 : 0)",
+                "settings": {
+                  "result": "whole",
+                  "show_in_form": true
+                }
+              },
+              {
+                "id": "q_total",
+                "key": "total",
+                "type": "calculated",
+                "label": "Total",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": "sum([(answers.ticks ? 1 : 0), (answers.ticks ? 1 : 0), (answers.ticks ? 1 : 0), (answers.ticks ? 1 : 0), (answers.ticks ? 1 : 0), (answers.ticks ? 1 : 0), (answers.ticks ? 1 : 0), (answers.ticks ? 1 : 0), (answers.ticks ? 1 : 0), (answers.ticks ? 1 : 0), (answers.ticks ? 1 : 0), (answers.ticks ? 1 : 0), (answers.ticks ? 1 : 0), (answers.ticks ? 1 : 0), (answers.ticks ? 1 : 0), (answers.ticks ? 1 : 0), (answers.ticks ? 1 : 0), (answers.ticks ? 1 : 0), (answers.ticks ? 1 : 0), (answers.ticks ? 1 : 0), (answers.ticks ? 1 : 0), (answers.ticks ? 1 : 0), (answers.ticks ? 1 : 0), (answers.ticks ? 1 : 0), (answers.ticks ? 1 : 0), (answers.ticks ? 1 : 0), (answers.ticks ? 1 : 0), (answers.ticks ? 1 : 0), (answers.ticks ? 1 : 0), (answers.ticks ? 1 : 0), (answers.ticks ? 1 : 0)])",
+                "settings": {
+                  "result": "whole",
+                  "show_in_form": true
+                }
+              },
+              {
+                "id": "q_year1",
+                "key": "year",
+                "type": "calculated",
+                "label": "Year",
+                "help": "",
+                "required": false,
+                "required_when": null,
+                "visible_when": null,
+                "default": null,
+                "valid_when": null,
+                "valid_message": "",
+                "value": "format_date(answers.due, \"YYYY\")",
+                "settings": {
+                  "result": "text",
+                  "show_in_form": true
+                }
+              }
+            ]
+          }
+        ],
+        "layout": [
+          {
+            "id": "b_head1",
+            "visible_when": null,
+            "kind": "heading",
+            "text": "Host {{re_replace(answers.host, \"(a)\", \"$2\")}} at {{string(answers.due)}}"
+          },
+          {
+            "id": "b_text1",
+            "visible_when": null,
+            "kind": "text",
+            "content": {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "variable",
+                      "attrs": {
+                        "expr": "answers.host.replace(\"a\", \"b\", 1)"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "text": " {{answers.due == null}} {{answers.host.name}}"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ],
+        "sample": {
+          "answers": {}
+        }
+      },
+      "answers": {
+        "answers.due": "timestamp",
+        "answers.host": "string",
+        "answers.known": "bool",
+        "answers.label": "string",
+        "answers.loop_a": "double",
+        "answers.loop_b": "double",
+        "answers.mixed": "string",
+        "answers.score": "int",
+        "answers.seen": "timestamp",
+        "answers.status": "string",
+        "answers.ticks": "bool",
+        "answers.total": "int",
+        "answers.year": "string"
+      },
+      "problems": [
+        {
+          "element": "q_host",
+          "field": "valid_when",
+          "message": "The pattern in re_match() isn't a regular expression Skjald can use (RE2 syntax)."
+        },
+        {
+          "element": "q_loopa",
+          "field": "value",
+          "message": "A name can't start with a dot (position 1)."
+        },
+        {
+          "element": "q_loopb",
+          "field": "value",
+          "message": "A name can't start with a dot (position 1)."
+        },
+        {
+          "element": "q_label",
+          "field": "value",
+          "message": "A map has the key \"\" twice: each key can be there once."
+        },
+        {
+          "element": "q_mixed",
+          "field": "value",
+          "message": "A map's keys must all be the same kind, and this one has text and a whole number."
+        },
+        {
+          "element": "q_due01",
+          "field": "value",
+          "message": "'' isn't a date such as 2026-10-21 or 2026-10-21T14:30."
+        },
+        {
+          "element": "q_seen1",
+          "field": "value",
+          "message": "'21/10/2026' isn't a date such as 2026-10-21 or 2026-10-21T14:30."
+        },
+        {
+          "element": "q_score",
+          "field": "value",
+          "message": "This expression has too many steps in a row or inside each other: split it into calculated values, or add many numbers up with sum([...])."
+        },
+        {
+          "element": "q_year1",
+          "field": "value",
+          "message": "YYYY isn't part of a date pattern: put text in 'quotes'."
+        },
+        {
+          "element": "b_head1",
+          "field": "text",
+          "message": "The replacement uses $2, a group the pattern doesn't have."
+        },
+        {
+          "element": "b_head1",
+          "field": "text",
+          "message": "string() can't take a date and time."
+        },
+        {
+          "element": "b_text1",
+          "field": "content",
+          "message": "replace() takes 2 values inside its brackets, not 3."
+        },
+        {
+          "element": "b_text1",
+          "field": "content",
+          "message": "== doesn't work with a date and time and nothing."
+        },
+        {
+          "element": "b_text1",
+          "field": "content",
+          "message": "Nothing can be picked out of text: only a list, a row or a map has parts."
+        }
+      ]
     }
   ]
 }
