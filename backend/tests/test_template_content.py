@@ -145,6 +145,23 @@ def test_rich_text_holds_only_what_is_printed(doc: dict[str, Any]) -> None:
         check_doc(doc)
 
 
+@pytest.mark.parametrize("inline", [
+    {"type": "text", "text": "half \ud83d of an emoji"},
+    {"type": "variable", "attrs": {"expr": "answers.title + \"\udc00\""}},
+    {"type": "text", "text": "x", "marks": [
+        {"type": "link", "attrs": {"href": "https://fjordvik.example/\ud800"}}]},
+])
+def test_rich_text_holds_whole_characters(inline: dict[str, Any]) -> None:
+    # Half of a pair can't be written to the database: it's refused with the rest of
+    # what's checked on save, not when the document is stored.
+    with pytest.raises(ValidationError, match="half of a character"):
+        content(layout=[{"id": "b_text1", "kind": "text", "content": para(inline)}])
+    with pytest.raises(RichTextError):
+        check_doc(para(inline))
+    whole = para({"type": "text", "text": "A whole 🛡️ and æ"})
+    assert check_doc(whole) == whole
+
+
 def test_rich_text_lists_and_words() -> None:
     doc = {"type": "doc", "content": [
         {"type": "heading", "attrs": {"level": 3}, "content": [{"type": "text", "text": "Steps"}]},

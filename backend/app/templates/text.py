@@ -60,6 +60,16 @@ def _keys(node: dict[str, Any], allowed: set[str], where: str) -> None:
         raise RichTextError(f"{where} has unexpected parts: {', '.join(sorted(extra))}.")
 
 
+def _whole(text: str) -> None:
+    """Refuses half of a character pair (a lone surrogate): it can't be stored or
+    sent, and the rest of a template's text is refused the same way as it's read."""
+    try:
+        text.encode()
+    except UnicodeEncodeError:
+        raise RichTextError("Text holds half of a character, such as half an emoji: take it "
+                            "out and type it again.") from None
+
+
 def _content(node: dict[str, Any], where: str) -> list[Any]:
     content = node.get("content", [])
     if not isinstance(content, list):
@@ -77,6 +87,7 @@ def _inline(node: Any, walk: _Walk) -> None:
         text = node.get("text")
         if not isinstance(text, str) or not text:
             raise RichTextError("A text node needs its text.")
+        _whole(text)
         walk.text += len(text)
         marks = node.get("marks", [])
         if not isinstance(marks, list):
@@ -94,6 +105,7 @@ def _inline(node: Any, walk: _Walk) -> None:
                 if (not isinstance(href, str) or not href.startswith(LINK_SCHEMES)
                         or len(href) > 2000):
                     raise RichTextError("Links must start with https://, http:// or mailto:.")
+                _whole(href)
             else:
                 _keys(mark, {"type"}, "A mark")
     elif kind == "hardBreak":
@@ -104,6 +116,7 @@ def _inline(node: Any, walk: _Walk) -> None:
         if (not isinstance(attrs, dict) or set(attrs) != {"expr"}
                 or not isinstance(attrs["expr"], str)):
             raise RichTextError("A variable needs its expression, and nothing else.")
+        _whole(attrs["expr"])
     else:
         raise RichTextError(f"Text can't hold a {kind!r} node.")
 
