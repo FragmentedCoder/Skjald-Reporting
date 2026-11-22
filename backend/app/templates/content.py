@@ -259,12 +259,14 @@ class Sources(BlockBase):
 
 class Signer(Strict):
     # Someone who signs the report digitally, as the template's signing setting says, or
-    # "pad": a signature drawn in the form, on a signature pad question (someone who
-    # isn't a user of Skjald, such as the customer's witness).
+    # "pad": signed in the form, on a signature question, by someone who isn't a user of
+    # Skjald (the customer, a witness), whose name is typed and confirmed there. "pad" is
+    # the stored name for "signed in the form". It dates from when such a signature was
+    # drawn on a pad, and stays because published versions and .skjald files hold it.
     role: Literal["technician", "reviewer", "company", "pad"]
     label: Line
     style: Literal["handwritten", "stamp"] = "handwritten"
-    # The signature pad question, for a pad.
+    # The signature question, for one signed in the form.
     question: Id | None = None
 
 
