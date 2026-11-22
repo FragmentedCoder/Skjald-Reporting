@@ -2301,7 +2301,9 @@
       },
       "answers": {
         "answers.title": "string",
-        "answers.witness.filled": "bool"
+        "answers.witness.filled": "bool",
+        "answers.witness.name": "string",
+        "answers.witness.time": "timestamp"
       },
       "problems": [
         {

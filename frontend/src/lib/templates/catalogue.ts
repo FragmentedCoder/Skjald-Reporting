@@ -43,6 +43,8 @@ const PARTS: Record<string, string> = {
   ".filled": "is filled in",
   ".printed": "as printed",
   ".count": "how many",
+  ".name": "name",
+  ".time": "when it was confirmed",
   ".display_name": "name",
   ".first_name": "first name",
   ".middle_name": "middle name",
