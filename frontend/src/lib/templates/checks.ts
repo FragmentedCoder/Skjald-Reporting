@@ -273,15 +273,15 @@ class Checker {
     if (!columns.some((c) => c.key === key)) this.add(element, field, `“${q.label}” has no column ${key}.`);
   }
 
-  /** A signature drawn in the form: its signature pad question is there. */
+  /** A signature signed in the form (the role "pad"): its signature question is there. */
   pad(element: string, field: string, questionId: string | null) {
     if (questionId === null) {
-      this.add(element, field, "Choose the signature pad this signature shows.");
+      this.add(element, field, "Choose the signature question this signature shows.");
       return;
     }
     const q = this.byId.get(questionId);
-    if (!q) this.add(element, field, "The signature pad this signature shows was removed.");
-    else if (q.type !== "signature") this.add(element, field, `“${q.label}” isn't a signature pad.`);
+    if (!q) this.add(element, field, "The signature question this signature shows was removed.");
+    else if (q.type !== "signature") this.add(element, field, `“${q.label}” isn't a signature question.`);
   }
 
   /**

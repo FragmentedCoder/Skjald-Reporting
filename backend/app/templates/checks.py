@@ -309,15 +309,15 @@ class _Checker:
             self.add(element, field_, f"“{q.label}” has no column {key}.")
 
     def pad(self, element: str, field_: str, question_id: str | None) -> None:
-        """A signature drawn in the form: its signature pad question is there."""
+        """A signature signed in the form (the role "pad"): its signature question is there."""
         if question_id is None:
-            self.add(element, field_, "Choose the signature pad this signature shows.")
+            self.add(element, field_, "Choose the signature question this signature shows.")
             return
         q = self.by_id.get(question_id)
         if q is None:
-            self.add(element, field_, "The signature pad this signature shows was removed.")
+            self.add(element, field_, "The signature question this signature shows was removed.")
         elif q.type != "signature":
-            self.add(element, field_, f"“{q.label}” isn't a signature pad.")
+            self.add(element, field_, f"“{q.label}” isn't a signature question.")
 
     def switched(self, b: Switch, *, item: bool) -> None:
         """What picks a switch's case gives text or a whole number, and each case's

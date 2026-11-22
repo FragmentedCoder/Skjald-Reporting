@@ -2171,7 +2171,7 @@
       ]
     },
     {
-      "name": "Signatures: who signs, and signature pads",
+      "name": "Signatures: who signs, and signature questions",
       "content": {
         "schema": 1,
         "settings": {
@@ -2319,17 +2319,17 @@
         {
           "element": "b_sign2",
           "field": "signers.0.question",
-          "message": "Choose the signature pad this signature shows."
+          "message": "Choose the signature question this signature shows."
         },
         {
           "element": "b_sign2",
           "field": "signers.1.question",
-          "message": "The signature pad this signature shows was removed."
+          "message": "The signature question this signature shows was removed."
         },
         {
           "element": "b_sign2",
           "field": "signers.2.question",
-          "message": "“Title” isn't a signature pad."
+          "message": "“Title” isn't a signature question."
         }
       ]
     },
