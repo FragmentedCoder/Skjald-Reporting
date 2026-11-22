@@ -21,7 +21,7 @@ describe("signers", () => {
   });
 });
 
-describe("a signature pad as a signer", () => {
+describe("a signature question as a signer", () => {
   it("names its question, and lets go of it when someone else signs", () => {
     const signer: Signer = { role: "technician", label: "Technician", style: "handwritten" };
     changeSigner(signer, "pad");
@@ -29,6 +29,24 @@ describe("a signature pad as a signer", () => {
     signer.question = "q_pad1";
     changeSigner(signer, "company");
     expect(signer).toEqual({ role: "company", label: "Company seal", style: "stamp" });
+  });
+
+  it("is handwritten or a stamp, as the designer chose", () => {
+    const seal: Signer = { role: "company", label: "Company seal", style: "stamp" };
+    changeSigner(seal, "pad");
+    expect(seal).toEqual({ role: "pad", label: "Signature", style: "handwritten", question: null });
+
+    const own: Signer = { role: "reviewer", label: "Customer", style: "stamp" };
+    changeSigner(own, "pad");
+    expect(own).toEqual({ role: "pad", label: "Customer", style: "stamp", question: null });
+    own.question = "q_pad1";
+    changeSigner(own, "pad");
+    expect(own).toEqual({ role: "pad", label: "Customer", style: "stamp", question: "q_pad1" });
+  });
+
+  it("is added last, after the technician, the reviewer and the company seal", () => {
+    const three: Signer[] = [{ role: "technician", label: "T", style: "handwritten" }, { role: "reviewer", label: "R", style: "handwritten" }, { role: "company", label: "C", style: "stamp" }];
+    expect(nextSigner(three)).toEqual({ role: "pad", label: "Signature", style: "handwritten", question: null });
   });
 });
 

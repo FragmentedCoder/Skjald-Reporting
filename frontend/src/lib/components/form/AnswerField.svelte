@@ -3,19 +3,19 @@
   import EyeOff from "@lucide/svelte/icons/eye-off";
   import Plus from "@lucide/svelte/icons/plus";
   import X from "@lucide/svelte/icons/x";
-  import { instantOf, wallAt } from "#lib/cel/dates.js";
+  import { formatDate, instantOf, wallAt } from "#lib/cel/dates.js";
+  import { LOCALES } from "#lib/cel/library.js";
   import RichTextEditor from "#lib/components/builder/RichTextEditor.svelte";
   import { cvssScore } from "#lib/templates/answers.js";
   import { answerProblem, cellProblem } from "#lib/templates/formChecks.js";
   import { keepPhoto } from "#lib/templates/localPhotos.js";
   import { COLUMN_TYPES, settingsOf } from "#lib/templates/fields.js";
   import { peopleFor, type Person } from "#lib/templates/preview.js";
-  import type { Drawn } from "#lib/templates/signature.js";
+  import { NAME_MAX, sign, signed } from "#lib/templates/signature.js";
   import type { Question, RichText } from "#lib/templates/types.js";
-  import SignaturePad from "./SignaturePad.svelte";
 
-  // One question as the technician answers it, with its own check as they type. Files,
-  // photos and signatures stay in the browser here: uploading them is the report's job.
+  // One question as the technician answers it, with its own check as they type. Files
+  // and photos stay in the browser here: uploading them is the report's job.
   let { question, value = $bindable(), required, hidden, invalid, computed, checked = false, people = [], zone }: {
     question: Question;
     value: unknown;
@@ -44,8 +44,29 @@
   const columns = $derived((s.columns ?? []) as Column[]);
   const rows = $derived(Array.isArray(value) ? (value as Record<string, unknown>[]) : []);
 
+  // A signature question is signed by a name typed and a box ticked to confirm it
+  // (templates/signature.ts). Only a confirmed name is an answer: until the box is
+  // ticked, the name being typed is kept here.
+  const signature = $derived(question.type === "signature" ? signed(value) : null);
+  let typedName = $state("");
+  const signerName = $derived(signature?.name ?? typedName);
+
+  function typeName(text: string) {
+    typedName = text;
+    // A confirmation belongs to the name it was given for: another name isn't confirmed.
+    if (signature) value = null;
+  }
+
+  function confirmName(box: HTMLInputElement) {
+    const answer = box.checked ? sign(signerName) : null;
+    // The name stays in its field either way: in the answer once it's confirmed.
+    typedName = answer ? "" : signerName;
+    value = answer;
+    box.checked = answer !== null;
+  }
+
   const empty = $derived(value === null || value === undefined || value === "" || (Array.isArray(value) && value.length === 0)
-    || (question.type === "cvss" && !(value as { vector?: string } | null)?.vector));
+    || (question.type === "cvss" && !(value as { vector?: string } | null)?.vector) || (question.type === "signature" && !signature));
   // The answer's own problem. A list's are said in its cells; under the list only once
   // the answers are checked (too few rows, say, isn't a mistake while rows are being added).
   const listed = $derived(question.type === "repeating" || question.type === "table");
@@ -123,7 +144,9 @@
         <span class="label" id="{id}-label">{question.label}{#if required}<span class="required" aria-label="required"> *</span>{/if}</span>
         {#if question.help}<span class="small muted" id="{id}-help">{question.help}</span>{/if}
       </div>
-      <div class="control" role="group" aria-labelledby="{id}-label" onfocusout={() => (touched = true)}>
+      <!-- Left, not moved about in: a signature's name isn't missing its tick while the box is being reached. -->
+      <div class="control" role="group" aria-labelledby="{id}-label"
+        onfocusout={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) touched = true; }}>
         {#if question.type === "rich_text"}
           <RichTextEditor bind:value={() => (value as RichText | null) ?? null, (v) => (value = v)} entries={[]} names={false} label={question.label} id={id} />
         {:else if question.type === "number"}
@@ -182,7 +205,14 @@
           {/if}
           <span class="small muted">Here they stay in your browser. In a report they're uploaded, scanned and encrypted{question.type === "photo" ? ", and their location data removed" : ""}.</span>
         {:else if question.type === "signature"}
-          <SignaturePad bind:value={() => (value as Drawn | null) ?? null, (v) => (value = v)} label={question.label} />
+          <label class="small" for="{id}-name">Full name</label>
+          <input class="input" id="{id}-name" maxlength={NAME_MAX} autocomplete="off" spellcheck="false" value={signerName}
+            oninput={(e) => typeName(e.currentTarget.value)} aria-invalid={problem ? "true" : undefined} />
+          <label class="check"><input type="checkbox" checked={signature !== null} disabled={!signerName.trim()} aria-describedby="{id}-signing"
+            onchange={(e) => confirmName(e.currentTarget)} /> I confirm this is my signature</label>
+          <span class="small muted" id="{id}-signing">
+            {signature ? `Confirmed ${formatDate(signature.at, "d MMMM yyyy, HH:mm", zone, LOCALES.en)}. Changing the name takes the confirmation back.` : "Type the name, then tick the box to sign."}
+          </span>
         {:else if question.type === "repeating" || question.type === "table"}
           {@const fixed = question.type === "table" ? ((s.rows ?? []) as { key: string; label: string }[]) : null}
           <div class="grid-wrap">
