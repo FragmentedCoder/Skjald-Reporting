@@ -26,6 +26,11 @@ CSRF_HEADER = "X-CSRF-Token"
 # Why a request was refused, for the frontend to act on (sign in again, finish
 # multifactor, confirm it's you); the detail text is for people.
 REASON_HEADER = "X-Skjald-Reason"
+# What a page asks on a timer (the side menu's refresh, an open report's look at who
+# holds what) says so with this header set to 1, and isn't counted as activity: a page
+# left open must not keep its session alive past the idle limit. Only reading can be
+# asked this way; a request that changes something always counts.
+BACKGROUND_HEADER = "X-Skjald-Background"
 STEP_UP_WINDOW = timedelta(minutes=5)
 # What the admin panel shows. Outside the admin IP allowlist the Administrator role
 # opens none of it.
@@ -48,7 +53,10 @@ def current_session(request: Request, db: DB) -> UserSession:
     if not token:
         raise refuse(status.HTTP_401_UNAUTHORIZED, "Sign in to continue.", "signed_out")
     policy = load_policy(db)
-    record, reason = check_session(db, token, policy, ip=client_ip(request))
+    background = (request.method in SAFE_METHODS
+                  and request.headers.get(BACKGROUND_HEADER) == "1")
+    record, reason = check_session(db, token, policy, ip=client_ip(request),
+                                   touch=not background)
     db.commit()
     if record is None:
         raise refuse(

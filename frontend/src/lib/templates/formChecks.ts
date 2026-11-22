@@ -1,10 +1,15 @@
 // What keeps one answer from being sent for review, as the form shows it: the answer's
 // own check (answers.ts), how many are chosen, how many rows there are, and each row's
 // cells. "Try it" lists these under "Check the answers", and each field shows its own.
+// And what keeps a whole report from it: missingAnswers(), which the server works out
+// too for a real report (backend/app/reports/form.py). shared/reports/form.json holds
+// the two to the same list.
 
 import { checkAnswer } from "./answers";
-import { settingsOf } from "./fields";
-import type { Question } from "./types";
+import { fieldType, settingsOf } from "./fields";
+import type { PreviewModel } from "./preview";
+import { signed } from "./signature";
+import type { Id, Question, TemplateContent } from "./types";
 
 type Column = { key: string; label: string; type: string; required?: boolean; settings?: Record<string, unknown> };
 
@@ -53,4 +58,47 @@ export function answerProblem(question: Pick<Question, "type" | "settings">, val
     default:
       return checkAnswer(question.type, s, value);
   }
+}
+
+/** One thing that keeps a report from going for review: where it is, and what to say. */
+export interface Missing {
+  step: Id;
+  question: Id;
+  /** The field's own words, or "is required." to follow the question's label. */
+  message: string;
+}
+
+/**
+ * Everything that would keep a report from going for review, in the form's order. Only
+ * questions that are shown, on steps that are shown, and that ask something count; a
+ * question not answered yet counts as what it starts as. Each says its own problem
+ * (answerProblem), else what its rule says ("valid_when"), else that it's required and
+ * empty.
+ *
+ * model: what the form works out for these answers (preview.ts); answers: by question
+ * ID, as they're kept.
+ */
+export function missingAnswers(
+  content: Pick<TemplateContent, "form">,
+  model: Pick<PreviewModel, "formHidden" | "formRequired" | "invalid" | "defaults"> | null | undefined,
+  answers: Record<Id, unknown>,
+): Missing[] {
+  const hidden = new Set(model?.formHidden ?? []);
+  const required = new Set(model?.formRequired ?? []);
+  const invalid = new Map((model?.invalid ?? []).map((i) => [i.id, i.message]));
+  const found: Missing[] = [];
+  for (const step of content.form) {
+    if (hidden.has(step.id)) continue;
+    for (const q of step.questions) {
+      if (hidden.has(q.id) || !fieldType(q.type).asks || q.type === "calculated") continue;
+      const kept = answers[q.id];
+      const value = kept === undefined ? model?.defaults[q.id] : kept;
+      const empty = value === undefined || value === null || value === "" || (Array.isArray(value) && !value.length)
+        || (q.type === "cvss" && !(value as { vector?: string } | null)?.vector) || (q.type === "signature" && !signed(value));
+      // What the field itself says: its own check, how many are chosen, the rows and their cells.
+      const message = answerProblem(q, value) ?? invalid.get(q.id) ?? (required.has(q.id) && empty ? "is required." : null);
+      if (message) found.push({ step: step.id, question: q.id, message });
+    }
+  }
+  return found;
 }

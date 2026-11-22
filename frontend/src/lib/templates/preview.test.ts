@@ -399,6 +399,17 @@ describe("a date that isn't answered", () => {
     expect(model.defaults).toEqual({});
   });
 
+  it("starts nothing: a number question whose rule gives infinity, or no number at all", () => {
+    const c = content();
+    c.form[0].questions.push(
+      { ...q(c, "q_share", "share", "number", { default: "answers.cvss / 0.0" }), settings: { whole: false, min: null, max: null, decimals: 1, unit: "" } },
+      { ...q(c, "q_rest", "rest", "number", { default: "0.0 / 0.0" }), settings: { whole: false, min: null, max: null, decimals: 1, unit: "" } },
+    );
+    const model = preview({ ...input(c), timezone: "Europe/Copenhagen" });
+    expect(model.defaults).toEqual({});
+    expect(model.values).toMatchObject({ share: null, rest: null });
+  });
+
   it("lets a question start as a calculated value, and a calculated value read what a question starts as", () => {
     const c = content();
     c.form[0].questions.push(

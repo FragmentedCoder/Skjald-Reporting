@@ -48,6 +48,7 @@ def test_tables_whose_ids_reach_the_audit_log_never_reuse_an_id(engine) -> None:
         "customer_contacts", "projects", "jobs", "audit_stamps", "templates",
         "template_versions", "template_assets", "library_entries", "library_versions",
         "styles", "style_versions", "style_assets", "style_uploads", "custom_fields",
+        "reports", "report_checkouts",
     }
     with engine.connect() as conn:
         for name in autoincrement:
