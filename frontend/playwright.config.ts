@@ -3,7 +3,7 @@ import { defineConfig, devices } from "@playwright/test";
 // Runs against a deployed stack (Caddy in front), not a dev server: the session
 // cookie is Secure and __Host- prefixed, and passkeys need a real HTTPS origin.
 // See e2e/run.sh.
-const LATER = /(styles|custom-fields|template-files)\.spec\.ts/;
+const LATER = /(styles|custom-fields|template-files|reports)\.spec\.ts/;
 
 export default defineConfig({
   testDir: "e2e",
@@ -20,8 +20,8 @@ export default defineConfig({
     // A fresh install sends every page to the setup wizard, so it runs first.
     { name: "setup", testMatch: /setup\.spec\.ts/ },
     { name: "chromium", testIgnore: [/setup\.spec\.ts/, LATER], dependencies: ["setup"] },
-    // These leave customers and templates behind, which the empty lists the others
-    // start from don't expect: they run once the others are done.
+    // These leave customers, templates and reports behind, which the empty lists the
+    // others start from don't expect: they run once the others are done.
     { name: "later", testMatch: LATER, dependencies: ["chromium"] },
   ],
 });

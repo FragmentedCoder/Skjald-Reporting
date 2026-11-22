@@ -66,6 +66,9 @@ with Session(get_engine()) as db:
         ("e2e-filler", "Finn Filler", Role.MANAGER),
         ("e2e-mover", "Mona Mover", Role.REPORT_DESIGNER),
         ("e2e-dragger", "Dag Dragger", Role.REPORT_DESIGNER),
+        ("e2e-arranger", "Asta Arranger", Role.ADMINISTRATOR),
+        ("e2e-reporter", "Runa Reporter", Role.TECHNICIAN),
+        ("e2e-writer", "Vigga Writer", Role.TECHNICIAN),
     ):
         password = vet_new_password(os.environ["E2E_PASSWORD"], policy, username=username)
         grant_role(db, create_user(db, username, name, password), role, actor=None, ip=None)
