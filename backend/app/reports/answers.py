@@ -54,8 +54,9 @@ class Refused(ValueError):
 
 
 def _sound(value: Any) -> None:
-    """Refuses what could be kept but never read again or sent back: an answer nested
-    past anything an answer holds, and half of a character pair (a lone surrogate).
+    """Refuses what could be kept but never read again or sent back, or would be
+    misread: an answer nested past anything an answer holds, half of a character pair
+    (a lone surrogate), and a null character.
     Walked without recursion, before anything reads the answer by calling itself."""
     stack: list[tuple[Any, int]] = [(value, 1)]
     while stack:
@@ -71,6 +72,10 @@ def _sound(value: Any) -> None:
             except UnicodeEncodeError:
                 raise Refused("An answer holds half of a character, such as half an emoji: "
                               "take it out and type it again.") from None
+            if "\x00" in node:
+                # It ends text for the expression engine, so rules would read half an answer.
+                raise Refused("An answer holds a character that can't be kept (a null "
+                              "character): take it out and type it again.")
 
 
 def _text(value: Any, label: str, most: int = MAX_TEXT) -> str:
