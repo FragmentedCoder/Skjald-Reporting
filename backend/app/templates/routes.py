@@ -36,6 +36,7 @@ from app.branding import company_timezone
 from app.custom_fields import custom_names
 from app.library.routes import current_entries
 from app.library.values import library_names
+from app.reports.models import pinned_reports
 from app.roles import Capability
 from app.templates.assets import AssetRejected, clean_asset
 from app.templates.changes import Changes, changes
@@ -477,8 +478,8 @@ def delete_template(template_id: int, request: Request, record: Viewer, db: DB,
     """Delete a template. One never published goes with its draft, for those who build
     templates. A published one only once it's retired, for Administrators and Managers,
     who type its name and confirm it's them: its versions and images go with it, and the
-    audit log keeps its name and each version's SHA-256. (Phase 3: refused while a
-    report is pinned to one of its versions.)"""
+    audit log keeps its name and each version's SHA-256. A template reports were
+    written with is kept: each report is pinned to the version it was written with."""
     template = _template(db, template_id)
     published = _published(db, template.id)
     details: dict[str, object] = {"name": template.name}
@@ -493,6 +494,12 @@ def delete_template(template_id: int, request: Request, record: Viewer, db: DB,
                                 "A published template is kept: retire it instead. An "
                                 "administrator or manager can then delete it.")
         require(Capability.DELETE_TEMPLATES)(request, record, db)
+        written = pinned_reports(db, template.id)
+        if written:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                f"{written:,} report{' was' if written == 1 else 's were'} written with this "
+                "template, so it's kept: a report stays pinned to its template.")
         if body is None or body.confirm_name.strip() != template.name:
             raise HTTPException(status.HTTP_400_BAD_REQUEST,
                                 "Type the template's name exactly to confirm.")
