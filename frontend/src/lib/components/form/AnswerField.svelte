@@ -6,6 +6,7 @@
   import { formatDate, instantOf, wallAt } from "#lib/cel/dates.js";
   import { LOCALES } from "#lib/cel/library.js";
   import RichTextEditor from "#lib/components/builder/RichTextEditor.svelte";
+  import RichView from "#lib/components/preview/RichView.svelte";
   import { cvssScore } from "#lib/templates/answers.js";
   import { answerProblem, cellProblem } from "#lib/templates/formChecks.js";
   import { keepPhoto } from "#lib/templates/localPhotos.js";
@@ -14,9 +15,9 @@
   import { NAME_MAX, sign, signed } from "#lib/templates/signature.js";
   import type { Question, RichText } from "#lib/templates/types.js";
 
-  // One question as the technician answers it, with its own check as they type. Files
-  // and photos stay in the browser here: uploading them is the report's job.
-  let { question, value = $bindable(), required, hidden, invalid, computed, checked = false, people = [], zone }: {
+  // One question as the technician answers it, with its own check as they type. In
+  // "Try it", files and photos stay in the browser and a secret is the sample's own.
+  let { question, value = $bindable(), required, hidden, invalid, computed, checked = false, people = [], zone, readonly = false }: {
     question: Question;
     value: unknown;
     required: boolean;
@@ -31,6 +32,8 @@
     people?: Person[];
     /** The company's time zone, which dates are typed in. */
     zone: string;
+    /** Shown to be read, not changed: a report's step someone else holds, or nobody does. */
+    readonly?: boolean;
   } = $props();
 
   const s = $derived(settingsOf(question.type, question.settings));
@@ -117,20 +120,20 @@
 
 {#snippet input(c: ReturnType<typeof cell>)}
   {#if c.type === "number"}
-    <input class="input" type="number" step={c.settings?.whole ? "1" : "any"} aria-label={c.label} value={c.current ?? ""}
+    <input class="input" type="number" step={c.settings?.whole ? "1" : "any"} aria-label={c.label} value={c.current ?? ""} disabled={readonly}
       oninput={(e) => c.set(e.currentTarget.value === "" ? null : Number(e.currentTarget.value))} />
   {:else if c.type === "yes_no"}
-    <input type="checkbox" aria-label={c.label} checked={Boolean(c.current)} onchange={(e) => c.set(e.currentTarget.checked)} />
+    <input type="checkbox" aria-label={c.label} checked={Boolean(c.current)} disabled={readonly} onchange={(e) => c.set(e.currentTarget.checked)} />
   {:else if c.type === "dropdown"}
-    <select class="input" aria-label={c.label} value={String(c.current ?? "")} onchange={(e) => c.set(e.currentTarget.value || null)}>
+    <select class="input" aria-label={c.label} value={String(c.current ?? "")} disabled={readonly} onchange={(e) => c.set(e.currentTarget.value || null)}>
       <option value="">Choose…</option>
       {#each (c.settings?.options ?? []) as Option[] as o (o.value)}<option value={o.value}>{o.label}</option>{/each}
     </select>
   {:else if c.type === "datetime"}
     {@const day = c.settings?.mode === "date"}
-    <input class="input" type={day ? "date" : "datetime-local"} aria-label={c.label} value={toInput(c.current, day)} oninput={(e) => c.set(fromInput(e.currentTarget.value))} />
+    <input class="input" type={day ? "date" : "datetime-local"} aria-label={c.label} value={toInput(c.current, day)} disabled={readonly} oninput={(e) => c.set(fromInput(e.currentTarget.value))} />
   {:else}
-    <input class="input" aria-label={c.label} value={String(c.current ?? "")} oninput={(e) => c.set(e.currentTarget.value)} />
+    <input class="input" aria-label={c.label} value={String(c.current ?? "")} disabled={readonly} oninput={(e) => c.set(e.currentTarget.value)} />
   {/if}
 {/snippet}
 
@@ -147,31 +150,35 @@
       <!-- Left, not moved about in: a signature's name isn't missing its tick while the box is being reached. -->
       <div class="control" role="group" aria-labelledby="{id}-label"
         onfocusout={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) touched = true; }}>
-        {#if question.type === "rich_text"}
+        {#if question.type === "rich_text" && readonly}
+          <!-- Read, the text is drawn as the PDF draws it: from its nodes, never as HTML. -->
+          {@const doc = value && typeof value === "object" ? (value as RichText) : null}
+          <div class="read-text">{#if doc?.content?.length}<RichView nodes={doc.content} />{:else}<span class="muted">—</span>{/if}</div>
+        {:else if question.type === "rich_text"}
           <RichTextEditor bind:value={() => (value as RichText | null) ?? null, (v) => (value = v)} entries={[]} names={false} label={question.label} id={id} />
         {:else if question.type === "number"}
           <span class="with-unit">
-            <input class="input" type="number" step={s.whole ? "1" : "any"} aria-labelledby="{id}-label" value={value ?? ""}
+            <input class="input" type="number" step={s.whole ? "1" : "any"} aria-labelledby="{id}-label" value={value ?? ""} disabled={readonly}
               oninput={(e) => (value = e.currentTarget.value === "" ? null : Number(e.currentTarget.value))} />
             {#if s.unit}<span class="muted">{s.unit}</span>{/if}
           </span>
         {:else if question.type === "datetime"}
-          <input class="input" type={s.mode === "date" ? "date" : "datetime-local"} aria-labelledby="{id}-label"
+          <input class="input" type={s.mode === "date" ? "date" : "datetime-local"} aria-labelledby="{id}-label" disabled={readonly}
             value={toInput(value, s.mode === "date")} oninput={(e) => (value = fromInput(e.currentTarget.value))} />
         {:else if question.type === "yes_no"}
           <span class="choices">
-            <label class="check"><input type="radio" name={id} checked={value === true} onchange={() => (value = true)} /> {s.yes_label}</label>
-            <label class="check"><input type="radio" name={id} checked={value === false} onchange={() => (value = false)} /> {s.no_label}</label>
+            <label class="check"><input type="radio" name={id} checked={value === true} disabled={readonly} onchange={() => (value = true)} /> {s.yes_label}</label>
+            <label class="check"><input type="radio" name={id} checked={value === false} disabled={readonly} onchange={() => (value = false)} /> {s.no_label}</label>
           </span>
         {:else if question.type === "dropdown"}
-          <select class="input" aria-labelledby="{id}-label" value={String(value ?? "")} onchange={(e) => (value = e.currentTarget.value || null)}>
+          <select class="input" aria-labelledby="{id}-label" value={String(value ?? "")} disabled={readonly} onchange={(e) => (value = e.currentTarget.value || null)}>
             <option value="">Choose…</option>
             {#each options as o (o.value)}<option value={o.value}>{o.label}</option>{/each}
           </select>
         {:else if question.type === "person"}
           {@const choices = peopleFor(question, people)}
           {@const picked = (value as Person | null)?.id ?? ""}
-          <select class="input" aria-labelledby="{id}-label" value={picked}
+          <select class="input" aria-labelledby="{id}-label" value={picked} disabled={readonly}
             onchange={(e) => (value = choices.find((p) => p.id === e.currentTarget.value) ?? null)}>
             <option value="">Choose…</option>
             {#each choices as p (p.id)}<option value={p.id}>{p.display_name}{p.job_title ? `, ${p.job_title}` : ""}</option>{/each}
@@ -180,14 +187,14 @@
         {:else if question.type === "multi_select"}
           <span class="choices">
             {#each options as o (o.value)}
-              <label class="check"><input type="checkbox" checked={Array.isArray(value) && value.includes(o.value)}
+              <label class="check"><input type="checkbox" checked={Array.isArray(value) && value.includes(o.value)} disabled={readonly}
                 onchange={(e) => (value = e.currentTarget.checked ? [...(Array.isArray(value) ? value : []), o.value] : (Array.isArray(value) ? value : []).filter((v) => v !== o.value))} /> {o.label}</label>
             {/each}
           </span>
         {:else if question.type === "cvss"}
           {@const scored = value as { vector?: string; score?: number; severity?: string } | null}
           <input class="input mono" aria-labelledby="{id}-label" placeholder="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
-            value={scored?.vector ?? ""} oninput={(e) => setCvss(e.currentTarget.value)} spellcheck="false" />
+            value={scored?.vector ?? ""} disabled={readonly} oninput={(e) => setCvss(e.currentTarget.value)} spellcheck="false" />
           {#if scored?.vector && !typeProblem}<span class="small">Score {scored.score} · {scored.severity}</span>{/if}
         {:else if question.type === "secret"}
           <span class="with-unit">
@@ -206,18 +213,20 @@
           <span class="small muted">Here they stay in your browser. In a report they're uploaded, scanned and encrypted{question.type === "photo" ? ", and their location data removed" : ""}.</span>
         {:else if question.type === "signature"}
           <label class="small" for="{id}-name">Full name</label>
-          <input class="input" id="{id}-name" maxlength={NAME_MAX} autocomplete="off" spellcheck="false" value={signerName}
+          <input class="input" id="{id}-name" maxlength={NAME_MAX} autocomplete="off" spellcheck="false" value={signerName} disabled={readonly}
             oninput={(e) => typeName(e.currentTarget.value)} aria-invalid={problem ? "true" : undefined} />
-          <label class="check"><input type="checkbox" checked={signature !== null} disabled={!signerName.trim()} aria-describedby="{id}-signing"
+          <label class="check"><input type="checkbox" checked={signature !== null} disabled={readonly || !signerName.trim()} aria-describedby="{id}-signing"
             onchange={(e) => confirmName(e.currentTarget)} /> I confirm this is my signature</label>
           <span class="small muted" id="{id}-signing">
-            {signature ? `Confirmed ${formatDate(signature.at, "d MMMM yyyy, HH:mm", zone, LOCALES.en)}. Changing the name takes the confirmation back.` : "Type the name, then tick the box to sign."}
+            {signature
+              ? `Confirmed ${formatDate(signature.at, "d MMMM yyyy, HH:mm", zone, LOCALES.en)}.${readonly ? "" : " Changing the name takes the confirmation back."}`
+              : readonly ? "Not signed." : "Type the name, then tick the box to sign."}
           </span>
         {:else if question.type === "repeating" || question.type === "table"}
           {@const fixed = question.type === "table" ? ((s.rows ?? []) as { key: string; label: string }[]) : null}
           <div class="grid-wrap">
             <table class="grid">
-              <thead><tr>{#if fixed}<th></th>{/if}{#each columns as c (c.key)}<th>{c.label}{c.type === "number" && c.settings?.unit ? ` (${c.settings.unit})` : ""}</th>{/each}{#if !fixed}<th><span class="visually-hidden">Remove</span></th>{/if}</tr></thead>
+              <thead><tr>{#if fixed}<th></th>{/if}{#each columns as c (c.key)}<th>{c.label}{c.type === "number" && c.settings?.unit ? ` (${c.settings.unit})` : ""}</th>{/each}{#if !fixed && !readonly}<th><span class="visually-hidden">Remove</span></th>{/if}</tr></thead>
               <tbody>
                 {#each fixed ?? rows as row, r (r)}
                   <tr>
@@ -231,20 +240,22 @@
                         {#if message}<span class="small cell-problem">{message}</span>{/if}
                       </td>
                     {/each}
-                    {#if !fixed}<td><button class="icon" type="button" aria-label="Remove row {r + 1}" onclick={() => (value = rows.filter((_, i) => i !== r))}><X size={14} aria-hidden="true" /></button></td>{/if}
+                    {#if !fixed && !readonly}<td><button class="icon" type="button" aria-label="Remove row {r + 1}" onclick={() => (value = rows.filter((_, i) => i !== r))}><X size={14} aria-hidden="true" /></button></td>{/if}
                   </tr>
                 {/each}
               </tbody>
             </table>
           </div>
-          {#if !fixed && rows.length < Number(s.max_rows ?? 100)}
+          {#if !fixed && !readonly && rows.length < Number(s.max_rows ?? 100)}
             <button class="link-button small add" type="button" onclick={addRow}><Plus size={14} aria-hidden="true" /> Add a row</button>
+          {:else if !fixed && readonly && !rows.length}
+            <span class="small muted">No rows.</span>
           {/if}
         {:else if question.type === "calculated"}
           <output class="computed" aria-labelledby="{id}-label">{computed === null || computed === undefined || computed === "" ? "—" : computed instanceof Date ? computed.toISOString().slice(0, 16).replace("T", " ") : String(computed)}</output>
         {:else}
           <input class="input" class:mono={["ip", "mac", "serial", "hostname"].includes(question.type)} aria-labelledby="{id}-label"
-            placeholder={String(s.placeholder ?? "")} value={String(value ?? "")} oninput={(e) => (value = e.currentTarget.value)}
+            placeholder={readonly ? "" : String(s.placeholder ?? "")} value={String(value ?? "")} disabled={readonly} oninput={(e) => (value = e.currentTarget.value)}
             spellcheck={question.type === "text"} aria-invalid={problem ? "true" : undefined} />
           {#if question.type === "barcode"}<span class="small muted">In a report, it's read from a photo of the code.</span>{/if}
         {/if}
@@ -335,6 +346,23 @@
     padding: var(--space-2) var(--space-3);
     border-radius: var(--radius-sm);
     background: var(--surface-subtle);
+  }
+  /* Read, not changed: set back a little, and as easy to read as the rest. */
+  .answer :global(.input:disabled) {
+    background: var(--surface-subtle);
+    color: var(--text);
+    opacity: 1;
+    cursor: not-allowed;
+  }
+  .read-text {
+    display: grid;
+    gap: var(--space-2);
+    min-height: 44px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--surface-subtle);
+    overflow-wrap: anywhere;
   }
   .problem .input,
   .problem :global(.input[aria-invalid]) {
