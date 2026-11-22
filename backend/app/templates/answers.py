@@ -17,6 +17,7 @@ from typing import Any
 from cvss import CVSS3, CVSS4
 
 from app.cel.library import regex
+from app.cel.numbers import written
 
 V31_EXAMPLE = "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
 MESSAGES = {
@@ -183,10 +184,6 @@ def cvss_score(vector: str) -> tuple[float, str] | None:
     return round(score, 1), severity(score)
 
 
-def _number(value: float) -> str:
-    return str(int(value)) if float(value).is_integer() else repr(float(value))
-
-
 def check_answer(type_: str, settings: dict[str, Any], value: Any) -> str | None:
     """What's wrong with the answer, or None if it's fine (or empty)."""
     if value is None or value == "":
@@ -211,18 +208,21 @@ def check_answer(type_: str, settings: dict[str, Any], value: Any) -> str | None
         return None
     if type_ == "number":
         real = isinstance(value, int | float) and not isinstance(value, bool)
-        if not real or not math.isfinite(value):
+        try:
+            number = float(value) if real else math.nan
+        except OverflowError:  # a whole number too large for a double, which the form's are
+            number = math.inf
+        if not math.isfinite(number):
             return MESSAGES["number"]
-        number = float(value)
         if settings.get("whole") and not number.is_integer():
             return "Enter a whole number."
         low, high = settings.get("min"), settings.get("max")
         if low is not None and high is not None and not low <= number <= high:
-            return f"Enter a number from {_number(low)} to {_number(high)}."
+            return f"Enter a number from {written(low)} to {written(high)}."
         if low is not None and high is None and number < low:
-            return f"Enter a number of at least {_number(low)}."
+            return f"Enter a number of at least {written(low)}."
         if high is not None and low is None and number > high:
-            return f"Enter a number of at most {_number(high)}."
+            return f"Enter a number of at most {written(high)}."
         return None
     if type_ in ("text", "serial"):
         text = str(value)

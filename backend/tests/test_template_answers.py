@@ -30,3 +30,10 @@ def test_empty_answers_are_not_checked() -> None:
 
 def test_broken_vectors_have_no_score() -> None:
     assert cvss_score("CVSS:3.1/AV:N") is None
+
+
+def test_a_whole_number_too_large_for_the_form_is_no_number() -> None:
+    # The browser reads one this long as infinity; here it's a whole number that no
+    # double holds, and it's refused in the same words rather than failing.
+    assert check_answer("number", {}, 10**400) == "Enter a number."
+    assert check_answer("number", {"whole": True, "min": 0}, -(10**400)) == "Enter a number."
