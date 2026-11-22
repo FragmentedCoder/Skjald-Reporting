@@ -310,12 +310,23 @@ def test_a_date_in_a_row_is_a_date() -> None:
         assert engine.evaluate(expr, values) == expected, expr
     # The caller's own rows are left as they were given.
     assert rows[0]["when"] is when
+    # A cell stays of no declared kind wherever its column stands, as the rows are
+    # declared: text can be read from the cell beside a date, and a date compared with
+    # text is a problem found when the rule runs, not when it's checked.
+    first = {"answers": {"rows": [{"when": when, "name": "srv-01"}],
+                         "others": [{"from": when, "to": never}]}}
+    assert engine.evaluate("answers.rows.exists(r, r.name.startsWith(\"srv\"))", first) is True
+    assert engine.evaluate("answers.others.all(r, r.to < r.from)", first) is True
+    for expr in ("answers.rows[0].when.startsWith(\"a\")", "answers.others[0].to.size() > 1"):
+        with pytest.raises(ExpressionError) as caught:
+            engine.evaluate(expr, first)
+        assert caught.value.kind == "runtime", expr
     # What a rule is checked as doesn't change, and a problem is said as it was.
     assert engine.check("answers.rows.map(r, r.when)") == "list<dyn>"
     with pytest.raises(ExpressionError) as caught:
         engine.evaluate("answers.rows[0].when > 1", values)
     assert caught.value.message == "> doesn't work with a date and time and a whole number."
-    # Reading the rows this way is up to two steps deeper: at the very limit an
+    # Reading the rows this way is two or three steps deeper: at the very limit an
     # expression is too deep with a date column, and says so in the same words.
     deepest = "answers.rows.size()"
     for _ in range(30):

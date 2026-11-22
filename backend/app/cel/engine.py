@@ -617,11 +617,12 @@ def _dated(data: dict[str, Any], names: Collection[str]) -> dict[str, str]:
     refuses one. So each such date becomes text here (in data, in place), and what
     comes back, by declared name, is what a reference to those rows is rewritten to: a
     map() over them that makes every row again, with timestamp() around its dates.
-    Inside the engine the cells are then real dates. Reading the rows this way is up
-    to two steps deeper than they were written (see app/cel/reader.py), so an
-    expression at the very limit of 32 can be too deep here when its rows have a date
-    column; it's refused in the same words. Rows that aren't all alike (a cell a date
-    in one row and not in another) are left as they are, for the engine to refuse.
+    Inside the engine the cells are then real dates. Reading the rows this way is two
+    steps deeper than they were written, three when every column is a date (see
+    app/cel/reader.py), so an expression at the very limit of 32 can be too deep here
+    when its rows have a date column; it's refused in the same words. Rows that aren't
+    all alike (a cell a date in one row and not in another) are left as they are, for
+    the engine to refuse.
     """
     found: dict[str, str] = {}
     for name in names:
@@ -643,10 +644,17 @@ def _dated(data: dict[str, Any], names: Collection[str]) -> dict[str, str]:
                     moment = moment.replace(tzinfo=UTC)
                 row[key] = moment.astimezone(UTC).isoformat().replace("+00:00", "Z")
         read = {key: f'{_ROW}["{key}"]' if key in _WORDS else f"{_ROW}.{key}" for key in keys}
-        cells = ", ".join(
-            f'"{key}": timestamp({read[key]})' if key in dates else f'"{key}": {read[key]}'
-            for key in keys)
-        found[name] = f"{name}.map({_ROW}, {{{cells}}})"
+        cells = {key: f"timestamp({read[key]})" if key in dates else read[key] for key in keys}
+        # The engine's checker takes a map's cells to be the kind its first one is, so a
+        # cell of no declared kind goes first; where every cell is a date, the first is
+        # said to be of any kind with dyn(), which only this writes.
+        first = next((key for key in keys if key not in dates), None)
+        if first is None:
+            first = keys[0]
+            cells[first] = f"dyn({cells[first]})"
+        written = ", ".join(f'"{key}": {cells[key]}'
+                            for key in [first, *(key for key in keys if key != first)])
+        found[name] = f"{name}.map({_ROW}, {{{written}}})"
     return found
 
 
@@ -657,7 +665,8 @@ _FILLED = {
     "timestamp": ' != timestamp("1970-01-01T00:00:00Z")', "duration": ' != duration("0s")',
     "list": ".size() != 0", "map": ".size() != 0",
 }
-_ALLOWED_OVERLOADS = frozenset(SIGNATURES) | frozenset(ENGINE)
+# to_dyn is dyn(), which no template can call: _dated() writes it into what the engine gets.
+_ALLOWED_OVERLOADS = frozenset(SIGNATURES) | frozenset(ENGINE) | {"to_dyn"}
 # Google's checker lets nothing (null) stand in for a date or a length of time;
 # cel-js doesn't, and a declared date is never nothing, so it's refused here too.
 _NEVER_NULL = ("timestamp", "duration")
