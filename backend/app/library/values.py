@@ -163,22 +163,25 @@ def table_from_json(text: str) -> dict[str, Any]:
     raise ValueError(shape)
 
 
-def library_names(entries: Iterable[LibraryEntry]) -> dict[str, str]:
-    """The names templates can read from the library, and their types."""
+def library_names(entries: Iterable[LibraryEntry], *, removed: bool = False) -> dict[str, str]:
+    """The names templates can read from the library, and their types. With removed,
+    those taken out of the library too: a report's template was published while they
+    were there, and still reads them."""
     prefix = {"variable": "vars", "snippet": "text"}
     return {f"{prefix[e.kind]}.{e.key}": "string" for e in entries
-            if e.kind in prefix and e.removed_at is None}
+            if e.kind in prefix and (removed or e.removed_at is None)}
 
 
-def library_values(entries: Iterable[tuple[LibraryEntry, LibraryVersion]]
-                   ) -> tuple[dict[str, dict[str, str]], dict[str, Table]]:
+def library_values(entries: Iterable[tuple[LibraryEntry, LibraryVersion]], *,
+                   removed: bool = False) -> tuple[dict[str, dict[str, str]], dict[str, Table]]:
     """What templates read: {"vars": ..., "text": ...} with snippets' variables filled
-    in, and the data tables for lookup()."""
+    in, and the data tables for lookup(). With removed, entries taken out of the
+    library too, as they last were."""
     variables: dict[str, str] = {}
     snippets: dict[str, str] = {}
     tables: dict[str, Table] = {}
     for entry, version in entries:
-        if entry.removed_at is not None:
+        if entry.removed_at is not None and not removed:
             continue
         value = json.loads(version.value)
         if entry.kind == "variable":
