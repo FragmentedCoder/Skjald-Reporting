@@ -13,10 +13,11 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pytest
 
-from app.cel import Engine, ExpressionError, Table
+from app.cel import Engine, ExpressionError, Table, dates, numbers
 from app.cel.checked import calls
 from app.cel.engine import LOCALES, _engine_message, parse_type, validate
 from app.cel.lexer import LexError, tokenize
@@ -328,6 +329,42 @@ def test_a_date_in_a_row_is_a_date() -> None:
     # Rows that aren't alike can't be read this way, and the engine refuses the date.
     with pytest.raises(ExpressionError):
         engine.evaluate("answers.rows.size()", {"answers": {"rows": [{"a": when}, {"a": "x"}]}})
+
+
+def test_the_day_a_moment_falls_on() -> None:
+    copenhagen, havana = ZoneInfo("Europe/Copenhagen"), ZoneInfo("America/Havana")
+    late = datetime(2026, 10, 21, 22, 30, tzinfo=UTC)  # half past midnight on the 22nd
+    assert dates.start_of_day(late, copenhagen) == datetime(2026, 10, 21, 22, tzinfo=UTC)
+    assert dates.is_midnight(datetime(2026, 10, 21, 22, tzinfo=UTC), copenhagen)
+    assert not dates.is_midnight(late, copenhagen)
+    assert not dates.is_midnight(datetime(2026, 10, 21, tzinfo=UTC), copenhagen)
+    # The day summer time ends is an hour longer, and still starts at its midnight.
+    assert dates.start_of_day(datetime(2026, 10, 25, 20, tzinfo=UTC), copenhagen) == datetime(
+        2026, 10, 24, 22, tzinfo=UTC)
+    # In Havana summer time starts at midnight, so that day has none: it starts an
+    # hour later, as a time that never happens is read everywhere here.
+    assert dates.start_of_day(datetime(2026, 3, 8, 12, tzinfo=UTC), havana) == datetime(
+        2026, 3, 8, 5, tzinfo=UTC)
+
+
+def test_lengths_of_time_in_words() -> None:
+    en, da = LOCALES["en"], LOCALES["da"]
+    for seconds, words in ((5400, "1 hour 30 minutes"), (86_400 * 3 + 3600, "3 days 1 hour"),
+                           (1.5, "1.5 seconds"), (61, "1 minute 1 second"), (0, "0 minutes"),
+                           (-90, "-1 minute 30 seconds"), (0.0004, "0 minutes"),
+                           (59.9995, "60 seconds")):
+        assert dates.format_duration(seconds, en) == words, seconds
+    assert dates.format_duration(90061.5, da) == "1 dag 1 time 1 minut 1,5 sekunder"
+
+
+def test_numbers_are_written_as_the_browser_writes_them() -> None:
+    for value, text in ((0.1 + 0.2, "0.30000000000000004"), (100.0, "100"), (-1.5, "-1.5"),
+                        (1e21, "1e+21"), (123456789012345680000.0, "123456789012345680000"),
+                        (1e-7, "1e-7"), (1.5e-7, "1.5e-7"), (0.000001, "0.000001"),
+                        (5e-324, "5e-324"), (-0.0, "0"), (7, "7"),
+                        (2**60, "1152921504606847000"), (1.7976931348623157e308,
+                                                         "1.7976931348623157e+308")):
+        assert numbers.written(value) == text, value
 
 
 def test_engine_errors_are_said_plainly() -> None:
