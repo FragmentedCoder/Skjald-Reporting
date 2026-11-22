@@ -189,7 +189,8 @@ export function startValue(question: Question, value: unknown, zone: string): un
     const moment = settings.mode === "date" ? startOfDay(value, zone) : new Date(Math.floor(value.getTime() / 60_000) * 60_000);
     return moment.toISOString();
   }
-  if (question.type === "number") return typeof value === "number" ? (settings.whole ? Math.trunc(value) : value) : null;
+  // A number that isn't one a form holds (a rule that divides by nothing gives infinity) starts nothing.
+  if (question.type === "number") return typeof value === "number" && Number.isFinite(value) ? (settings.whole ? Math.trunc(value) : value) : null;
   if (question.type === "yes_no") return typeof value === "boolean" ? value : null;
   return typeof value === "string" ? value : null;
 }
