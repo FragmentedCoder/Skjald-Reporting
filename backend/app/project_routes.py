@@ -161,8 +161,10 @@ def sees(db: Session, user_id: int, roles: set[Role], project: Project) -> bool:
             or user_id in team_ids(db, project))
 
 
-def _visible(db: Session, request: Request, record: UserSession, project_id: int
-             ) -> tuple[Project, Customer]:
+def visible_project(db: Session, request: Request, record: UserSession, project_id: int
+                    ) -> tuple[Project, Customer]:
+    """The project and its customer, if this person may open it; else 404, as for one
+    that doesn't exist."""
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, NOT_FOUND)
@@ -276,7 +278,7 @@ def _set_sites(db: Session, project: Project, site_ids: list[int]) -> None:
 
 def _editable(db: Session, request: Request, record: UserSession, project_id: int
               ) -> tuple[Project, Customer]:
-    project, customer = _visible(db, request, record, project_id)
+    project, customer = visible_project(db, request, record, project_id)
     if not may_manage_projects(roles_of(db, record.user_id)):
         raise HTTPException(status.HTTP_403_FORBIDDEN,
                             "Only Managers and Administrators change projects.")
@@ -341,7 +343,7 @@ def create_project(customer_id: int, body: ProjectIn, request: Request, record: 
 
 @router.get("/projects/{project_id}")
 def get_project(project_id: int, request: Request, record: FullSession, db: DB) -> ProjectDetail:
-    project, _ = _visible(db, request, record, project_id)
+    project, _ = visible_project(db, request, record, project_id)
     return _detail(db, record, Keyring(), project)
 
 

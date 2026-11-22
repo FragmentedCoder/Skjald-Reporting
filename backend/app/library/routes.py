@@ -121,16 +121,20 @@ def _one(db: Session, entry: LibraryEntry) -> EntryOut:
     return _out(entry, version, _names(db, {version.saved_by, entry.locked_by}))
 
 
-def current_entries(db: Session) -> list[tuple[LibraryEntry, LibraryVersion]]:
-    """Every entry in use with its newest version, for templates and reports."""
-    rows = db.execute(
+def current_entries(db: Session, *, removed: bool = False
+                    ) -> list[tuple[LibraryEntry, LibraryVersion]]:
+    """Every entry in use with its newest version, for templates and reports. With
+    removed, the ones taken out of the library too, as they last were: reports are
+    written with templates published while those were there."""
+    query = (
         select(LibraryEntry, LibraryVersion)
         .join(LibraryVersion, (LibraryVersion.entry_id == LibraryEntry.id)
               & (LibraryVersion.number == LibraryEntry.current))
-        .where(LibraryEntry.removed_at.is_(None))
         .order_by(LibraryEntry.kind, LibraryEntry.key)
     )
-    return [(row[0], row[1]) for row in rows]
+    if not removed:
+        query = query.where(LibraryEntry.removed_at.is_(None))
+    return [(row[0], row[1]) for row in db.execute(query)]
 
 
 def _add_version(db: Session, entry: LibraryEntry, value: dict[str, Any], user_id: int) -> None:

@@ -73,10 +73,14 @@ def fields_for(db: Session, applies_to: str, *, archived: bool = False) -> list[
     return list(db.scalars(query.order_by(CustomField.position, CustomField.id)))
 
 
-def custom_names(db: Session) -> dict[str, str]:
-    """The names templates read custom fields by, with their types."""
-    return {f"{f.applies_to}.custom.{f.key}": CEL_TYPES[f.type]
-            for f in db.scalars(select(CustomField).where(CustomField.archived.is_(False)))}
+def custom_names(db: Session, *, archived: bool = False) -> dict[str, str]:
+    """The names templates read custom fields by, with their types. With archived, the
+    archived fields' too: a report's template may have been published while they were
+    in use, and still reads them."""
+    query = select(CustomField)
+    if not archived:
+        query = query.where(CustomField.archived.is_(False))
+    return {f"{f.applies_to}.custom.{f.key}": CEL_TYPES[f.type] for f in db.scalars(query)}
 
 
 def _value(field: CustomField, raw: Any, held: Any = None) -> Any:
