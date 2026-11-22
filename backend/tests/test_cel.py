@@ -281,6 +281,55 @@ def test_lists_and_maps_come_back_plain() -> None:
     assert [type(port) for port in rows[0]["ports"]] == [int, int]
 
 
+def test_a_date_in_a_row_is_a_date() -> None:
+    # The engine's Python binding refuses a datetime where no type is declared, as in
+    # a row's cell; the engine is given it as text and reads the rows through a map()
+    # that makes it a date again (app/cel/engine.py, _dated).
+    engine = Engine({"answers.rows": "list<map<string, dyn>>", "answers.start": "timestamp",
+                     "answers.others": "list<map<string, dyn>>"})
+    when = datetime(2026, 10, 21, 12, 30, tzinfo=UTC)
+    never = datetime(1970, 1, 1, tzinfo=UTC)
+    rows = [{"n": 1, "hours": 3.0, "ok": True, "when": when, "in": "a"},
+            {"n": 2, "hours": 2.5, "ok": False, "when": never, "in": ""}]
+    values = {"answers": {"start": "2026-10-21T00:00:00Z", "rows": rows, "others": [{"x": 1}]}}
+    for expr, expected in (
+        ("answers.rows[0].when > answers.start", True),
+        ("answers.rows.filter(r, r.when > answers.start).size()", 1),
+        ("answers.rows.map(r, r.when)", [when, never]),
+        ("answers.rows", rows),
+        ("format_date(answers.rows[0].when, \"d MMMM yyyy, HH:mm\")", "21 October 2026, 14:30"),
+        ("format_date(answers.rows[1].when, \"d MMMM yyyy\")", ""),
+        ("has(answers.rows) && answers.rows.all(r, has(r.when) && !has(r.other))", True),
+        ("answers.others.map(o, answers.rows.filter(r, r.n > o.x).map(r, r.when))", [[never]]),
+        ("hours_between(answers.start, answers.rows[0].when)", 12.5),
+        ("answers.rows[0].when + duration(\"90m\")", datetime(2026, 10, 21, 14, tzinfo=UTC)),
+        ("sum(answers.rows.map(r, r.hours * 1.5)) + double(answers.rows[1].n)", 10.25),
+        ("answers.rows.map(skjald_row, skjald_row[\"in\"])", ["a", ""]),
+    ):
+        assert engine.evaluate(expr, values) == expected, expr
+    # The caller's own rows are left as they were given.
+    assert rows[0]["when"] is when
+    # What a rule is checked as doesn't change, and a problem is said as it was.
+    assert engine.check("answers.rows.map(r, r.when)") == "list<dyn>"
+    with pytest.raises(ExpressionError) as caught:
+        engine.evaluate("answers.rows[0].when > 1", values)
+    assert caught.value.message == "> doesn't work with a date and time and a whole number."
+    # Reading the rows this way is up to two steps deeper: at the very limit an
+    # expression is too deep with a date column, and says so in the same words.
+    deepest = "answers.rows.size()"
+    for _ in range(30):
+        deepest = f"[{deepest}]"
+    plain = {"answers": {"rows": [{"n": 1}, {"n": 2}]}}
+    assert engine.evaluate(deepest[2:-2], values) == engine.evaluate(deepest[2:-2], plain)
+    engine.evaluate(deepest, plain)
+    with pytest.raises(ExpressionError) as caught:
+        engine.evaluate(deepest, values)
+    assert caught.value.message == TOO_DEEP
+    # Rows that aren't alike can't be read this way, and the engine refuses the date.
+    with pytest.raises(ExpressionError):
+        engine.evaluate("answers.rows.size()", {"answers": {"rows": [{"a": when}, {"a": "x"}]}})
+
+
 def test_engine_errors_are_said_plainly() -> None:
     engine = Engine({"answers.title": "string"})
     with pytest.raises(ExpressionError) as caught:
