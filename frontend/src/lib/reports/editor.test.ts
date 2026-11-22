@@ -517,7 +517,7 @@ describe("other people's work", () => {
     expect(server.sent("get")).toHaveLength(1);
   });
 
-  it("notices at its own save that someone else saved in between", async () => {
+  it("tells someone else's save from its own, though both came between two looks", async () => {
     const server = new Server();
     server.hold("s_details");
     server.hold("s_access", false);
@@ -525,8 +525,16 @@ describe("other people's work", () => {
     server.others({ q_password: "bo's secret value" });
     editor.set(Q.q_title, "Mine");
     await afterSaving();
+    // Its own save doesn't fetch the report: two people typing at once would fetch it at every save.
+    expect(server.sent("get")).toHaveLength(1);
+    expect(editor.answers).toEqual({ q_title: "Mine" });
+    // The next look does, since the report was saved once more than this browser saved it.
+    await editor.poll();
     expect(server.sent("get")).toHaveLength(2);
     expect(editor.answers).toEqual({ q_title: "Mine", q_password: { masked: true, printed: "bo••••••ue" } });
+    // And then it's level again.
+    await editor.poll();
+    expect(server.sent("get")).toHaveLength(2);
   });
 
   it("waits for a save under way before it looks, so an older answer never comes back", async () => {

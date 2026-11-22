@@ -5,8 +5,9 @@
 // two people working in different steps never overwrite each other. The server answers
 // with the answers as it kept them (a CVSS score worked out, a picked person's details,
 // a signature's moment, a secret masked), and those take the place of what was typed.
-// Now and then the editor asks whether anyone else saved; when they did, it fetches the
-// report again and takes their answers, keeping its own that aren't saved yet.
+// Now and then the editor asks whether anyone else saved (the report counts its saves,
+// and the editor counts its own); when they did, it fetches the report again and takes
+// their answers, keeping its own that aren't saved yet.
 //
 // Everything that talks to the server about the answers goes through one queue, one at
 // a time: a save never crosses a fetch, so an older reply can't undo a newer one.
@@ -57,7 +58,7 @@ export class ReportEditor {
   readonly #api: ReportsApi;
   /** The answers as the server keeps them, as far as this browser knows. */
   #kept = $state.raw<Answers>({});
-  /** How many saves of the report this browser has seen: its own, and others' it has fetched. */
+  /** How many of the report's saves this browser has seen: its own, and others' as of the last fetch. */
   #seen = 0;
   #timer: ReturnType<typeof setTimeout> | undefined;
   #queue: Promise<unknown> = Promise.resolve();
@@ -271,14 +272,16 @@ export class ReportEditor {
       const saved = await this.#api.save(report.id, sent);
       this.#keep(Object.keys(sent), here, saved);
       const mine = Object.keys(saved.answers).length + saved.forgotten.length > 0;
-      if (mine) this.savedAt = saved.updated_at;
-      // More saves than this one: someone else saved meanwhile.
-      const others = saved.saves > this.#seen + (mine ? 1 : 0);
-      this.#seen = Math.max(this.#seen, saved.saves);
+      if (mine) {
+        this.savedAt = saved.updated_at;
+        // Its own save is counted, and no more: if someone else saved meanwhile, the count
+        // stays behind the server's, and the next look fetches their answers. (Not here:
+        // two people typing at once would fetch the whole report at every save.)
+        this.#seen += 1;
+      }
       this.saveMessage = null;
       this.saveState = "saved";
       this.#settle(true);
-      if (others) await this.#refresh();
       if (mine && this.checked) this.verdict = await this.#api.check(report.id).catch(() => this.verdict);
     } catch (error) {
       await this.#refused(error);
