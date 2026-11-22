@@ -7,7 +7,10 @@ shared/templates/checks.json hold both to the same names and problems.
 
 What a type gives expressions is chosen with care. A secret never enters an
 expression: a rule sees whether it's filled in and how it's printed, never the
-value. Files, photos and signatures give whether there are any.
+value. Files and photos give whether there are any. A signature (a name typed and
+confirmed, by someone who isn't a user of Skjald) gives whether it's signed, the name
+and the time it was confirmed: not signed, the name is empty and the time is the
+first moment of 1970, as a date not filled in is.
 """
 
 from __future__ import annotations
@@ -210,7 +213,8 @@ FIELD_TYPES: dict[str, FieldType] = {
     "file": FieldType(FileSettings, lambda _s: {".filled": "bool", ".count": "int"}),
     "photo": FieldType(PhotoSettings, lambda _s: {".filled": "bool", ".count": "int"}),
     "barcode": FieldType(BarcodeSettings, _one("string")),
-    "signature": FieldType(NoSettings, lambda _s: {".filled": "bool"}),
+    "signature": FieldType(NoSettings, lambda _s: {
+        ".filled": "bool", ".name": "string", ".time": "timestamp"}),
     "person": FieldType(PersonSettings, lambda _s: {
         ".filled": "bool", **{f".{part}": "string" for part in PERSON_PARTS}}),
     "repeating": FieldType(RepeatingSettings, _one("list<map<string, dyn>>")),

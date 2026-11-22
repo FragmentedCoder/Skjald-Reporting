@@ -161,11 +161,17 @@ export const SIGNS: Record<Settings["signing"], ("technician" | "reviewer" | "co
 };
 
 export interface Signer {
-  /** Someone who signs the report digitally, or "pad": a signature drawn in the form. */
+  /**
+   * Someone who signs the report digitally, or "pad": signed in the form, on a signature
+   * question, by someone who isn't a user of Skjald, whose name is typed and confirmed
+   * there. "pad" is the stored name for "signed in the form": it dates from when such a
+   * signature was drawn on a pad, and stays because published versions and .skjald
+   * files hold it.
+   */
   role: "technician" | "reviewer" | "company" | "pad";
   label: string;
   style: "handwritten" | "stamp";
-  /** The signature pad question, for a pad. */
+  /** The signature question, for one signed in the form. */
   question?: Id | null;
 }
 

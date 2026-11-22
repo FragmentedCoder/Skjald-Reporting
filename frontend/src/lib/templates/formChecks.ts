@@ -8,6 +8,7 @@
 import { checkAnswer } from "./answers";
 import { fieldType, settingsOf } from "./fields";
 import type { PreviewModel } from "./preview";
+import { signed } from "./signature";
 import type { Id, Question, TemplateContent } from "./types";
 
 type Column = { key: string; label: string; type: string; required?: boolean; settings?: Record<string, unknown> };
@@ -93,7 +94,7 @@ export function missingAnswers(
       const kept = answers[q.id];
       const value = kept === undefined ? model?.defaults[q.id] : kept;
       const empty = value === undefined || value === null || value === "" || (Array.isArray(value) && !value.length)
-        || (q.type === "cvss" && !(value as { vector?: string } | null)?.vector);
+        || (q.type === "cvss" && !(value as { vector?: string } | null)?.vector) || (q.type === "signature" && !signed(value));
       // What the field itself says: its own check, how many are chosen, the rows and their cells.
       const message = answerProblem(q, value) ?? invalid.get(q.id) ?? (required.has(q.id) && empty ? "is required." : null);
       if (message) found.push({ step: step.id, question: q.id, message });

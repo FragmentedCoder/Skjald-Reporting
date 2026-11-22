@@ -14,10 +14,10 @@
 
   // "Try it": the technician's screen for the draft, one step at a time, with the PDF
   // beside it changing as the answers do. The answers are the template's sample
-  // answers, kept with the draft; photos, files and signatures stay in this browser.
+  // answers, kept with the draft; photos and files stay in this browser.
   const draft = useDraft();
   const content = $derived(draft.content as TemplateContent);
-  const LOCAL = new Set(["photo", "file", "signature"]);
+  const LOCAL = new Set(["photo", "file"]);
   let local = $state<Record<string, unknown>>({});
 
   const live = new LivePreview();
@@ -68,7 +68,7 @@
   let checked = $state(false);
   const missing = $derived.by(() => {
     const questions = content.form.flatMap((s) => s.questions);
-    // The answers as kept: photos, files and signatures are this browser's alone.
+    // The answers as kept: photos and files are this browser's alone.
     const kept = Object.fromEntries(questions.map((q) => [q.id, LOCAL.has(q.type) ? (local[q.id] ?? null) : content.sample.answers[q.id]]));
     const byId = new Map(questions.map((q) => [q.id, q]));
     return missingAnswers(content, model, kept).map((m) => ({ step: steps.findIndex((s) => s.id === m.step), question: byId.get(m.question) as Question, message: m.message }));
