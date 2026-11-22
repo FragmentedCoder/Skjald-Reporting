@@ -158,7 +158,8 @@
     const now = keptAs;
     untrack(() => {
       hide();
-      if (now !== null && secretDraft !== null && document.activeElement !== secretInput) leaveSecret();
+      // Still in its field (or on the button beside it): it stays until that's left.
+      if (now !== null && secretDraft !== null && !secretInput?.parentElement?.contains(document.activeElement)) leaveSecret();
     });
   });
 
@@ -324,12 +325,10 @@
               {#if showSecret}<EyeOff size={16} aria-hidden="true" />{:else}<Eye size={16} aria-hidden="true" />{/if}
             </button>
           </span>
-          {#if kept && secretDraft === ""}
-            <button class="link-button" type="button" onclick={leaveSecret}>Keep the one that's there</button>
-          {/if}
           <span class="small muted">
-            {report ? "Kept encrypted. Seeing it again takes a confirmation that it's you, and each look is logged."
-              : "In a report, seeing it again takes a confirmation with multifactor, and each look is logged."}
+            {#if kept && secretDraft === ""}Type the new one. Left empty, the one that's there is kept.
+            {:else if report}Kept encrypted. Seeing it again takes a confirmation that it's you, and each look is logged.
+            {:else}In a report, seeing it again takes a confirmation with multifactor, and each look is logged.{/if}
           </span>
         {:else if (question.type === "photo" || question.type === "file") && report}
           <input type="file" aria-labelledby="{id}-label" disabled />
