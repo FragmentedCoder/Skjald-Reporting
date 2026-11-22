@@ -80,3 +80,10 @@ const TIME = new Intl.DateTimeFormat("en-GB", { timeStyle: "medium" });
 export function time(iso: string): string {
   return TIME.format(new Date(iso));
 }
+
+const HOUR_MINUTE = new Intl.DateTimeFormat("en-GB", { timeStyle: "short" });
+
+/** "14:05" in the viewer's time zone. */
+export function hourMinute(iso: string): string {
+  return HOUR_MINUTE.format(new Date(iso));
+}

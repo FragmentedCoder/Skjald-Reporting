@@ -17,6 +17,21 @@ describe("dateRange", () => {
   });
 });
 
+describe("hourMinute", () => {
+  it("shows the time of day to the minute, where the viewer is", async () => {
+    vi.stubEnv("TZ", "Europe/Copenhagen");
+    try {
+      vi.resetModules();
+      const fresh = await import("./format");
+      expect(fresh.hourMinute("2026-10-24T08:14:59Z")).toBe("10:14");
+      expect(fresh.hourMinute("2026-01-24T23:05:00Z")).toBe("00:05");
+    } finally {
+      vi.unstubAllEnvs();
+      vi.resetModules();
+    }
+  });
+});
+
 describe("date", () => {
   it("keeps a plain date on its day, west of UTC too", async () => {
     vi.stubEnv("TZ", "America/Los_Angeles");
