@@ -12,6 +12,7 @@ import app.jobs
 import app.library.models
 import app.policy
 import app.projects
+import app.reports.models
 import app.roles
 import app.styles.models
 import app.templates.models
