@@ -6,7 +6,7 @@
   import ArchiveRestore from "@lucide/svelte/icons/archive-restore";
   import FolderKanban from "@lucide/svelte/icons/folder-kanban";
   import { untrack, type Snippet } from "svelte";
-  import { api, ApiError, sessionGone } from "#lib/api.js";
+  import { api, ApiError, BACKGROUND, sessionGone } from "#lib/api.js";
   import Dialog from "#lib/components/Dialog.svelte";
   import Pill from "#lib/components/Pill.svelte";
   import RecordHeader from "#lib/components/RecordHeader.svelte";
@@ -70,7 +70,8 @@
     if (now === checked || !project) return;
     checked = now;
     const name = project.name;
-    api("GET", `/projects/${id}`).catch((e) => {
+    // The timer's refresh asks without counting as activity, and so does this.
+    api("GET", `/projects/${id}`, undefined, untrack(() => workspace.background) ? { ...BACKGROUND } : {}).catch((e) => {
       if (e instanceof ApiError && e.status === 404) void lost(name);
     });
   });

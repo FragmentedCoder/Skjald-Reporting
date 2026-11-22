@@ -330,7 +330,7 @@ export class ReportEditor {
   /** Fetches the report again and takes it in. Failing, what's here stays as it is. */
   async #refresh(): Promise<void> {
     try {
-      this.#take(await this.#api.get(this.#id()));
+      this.#take(await this.#api.get(this.#id(), true));
     } catch (error) {
       this.#missing(error);
     }

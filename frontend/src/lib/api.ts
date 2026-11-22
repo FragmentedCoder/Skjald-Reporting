@@ -36,6 +36,14 @@ export function messageFrom(status: number, body: unknown): string {
   return FALLBACK;
 }
 
+/**
+ * Headers for what a page asks on a timer, with nobody doing anything (the side menu's
+ * refresh, an open report's look at who holds what). The server doesn't count such a
+ * read as activity, so a page left open doesn't keep its session alive past the idle
+ * limit. Never send it with something a person just did.
+ */
+export const BACKGROUND: Readonly<Record<string, string>> = { "X-Skjald-Background": "1" };
+
 type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 /** A JSON body, or raw bytes such as an uploaded picture. */

@@ -1,6 +1,6 @@
 // The reports API (backend/app/reports/routes.py): what it sends and takes.
 
-import { api } from "#lib/api.js";
+import { api, BACKGROUND } from "#lib/api.js";
 import type { Table } from "#lib/cel/library.js";
 import type { Named } from "#lib/customers.js";
 import type { Person } from "#lib/templates/preview.js";
@@ -145,12 +145,14 @@ export const reportsApi = {
   templates: (projectId: number) => api<TemplateChoice[]>("GET", `/projects/${projectId}/report-templates`),
   create: (projectId: number, body: { template_id: number; title?: string; site_id?: number | null }) =>
     api<ReportDetail>("POST", `/projects/${projectId}/reports`, body),
-  get: (id: number) => api<ReportDetail>("GET", base(id)),
+  // In the background: fetched again because someone else saved, not because the reader did anything.
+  get: (id: number, background = false) => api<ReportDetail>("GET", base(id), undefined, background ? { ...BACKGROUND } : {}),
   /** The title or the site: for someone holding a checkout. */
   update: (id: number, change: { title?: string; site_id?: number | null }) => api<ReportDetail>("PATCH", base(id), change),
   /** Only the answers that changed; an empty one as null. */
   save: (id: number, answers: Record<Id, unknown>) => api<Saved>("PATCH", `${base(id)}/answers`, { answers }),
-  activity: (id: number) => api<Activity>("GET", `${base(id)}/activity`),
+  // Asked on a timer, so it never counts as the reader's activity.
+  activity: (id: number) => api<Activity>("GET", `${base(id)}/activity`, undefined, { ...BACKGROUND }),
   check: (id: number) => api<FormState>("POST", `${base(id)}/check`),
   /** One step, or (null) the whole report. */
   checkOut: (id: number, step: Id | null) => api<Activity>("POST", `${base(id)}/checkouts`, { step }),
