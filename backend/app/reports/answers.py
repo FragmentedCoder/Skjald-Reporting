@@ -243,10 +243,20 @@ def _has_variables(node: Any) -> bool:
 
 
 def _blank(question: Question, value: Any) -> bool:
-    """Whether what was sent is no answer: nothing, a CVSS answer with no vector, a
-    signature whose name isn't typed or isn't confirmed."""
+    """Whether what was sent is no answer: nothing, text of spaces alone, a long text
+    with no words left in it, a CVSS answer with no vector, a signature whose name
+    isn't typed or isn't confirmed. Kept, any of these would pass for an answer to a
+    required question."""
     if value is None or value == "" or value == [] or value == {}:
         return True
+    if question.type in TEXT_TYPES:
+        return isinstance(value, str) and not value.strip()
+    if question.type == "rich_text":
+        try:
+            doc = check_doc(value)
+            return not _has_variables(doc) and not doc_text(doc).strip()
+        except (RichTextError, KeyError, TypeError, AttributeError):
+            return False  # not a document: refused as one, in words, by clean()
     if question.type == "cvss":
         return isinstance(value, dict) and not str(value.get("vector") or "").strip()
     if question.type == "signature":
