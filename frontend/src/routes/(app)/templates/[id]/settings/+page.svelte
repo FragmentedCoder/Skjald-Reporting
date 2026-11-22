@@ -72,8 +72,8 @@
     </fieldset>
     <p class="small muted">These are the digital signatures every finished report gets: each person signs as themselves, after confirming it's them,
       and the company seal is added by Skjald. A report isn't final until all of them have signed, in this order. The Signatures block on the
-      Layout tab sets where each one shows on the page and how it looks; it can only show those who sign here. A signature pad question is
-      something else: a signature drawn in the form by someone who isn't a user of Skjald, such as the customer's witness.</p>
+      Layout tab sets where each one shows on the page and how it looks; it can only show those who sign here. A signature question is
+      something else: a name typed and confirmed in the form by someone who isn't a user of Skjald, such as the customer or a witness.</p>
   </section>
 
   <section class="section">

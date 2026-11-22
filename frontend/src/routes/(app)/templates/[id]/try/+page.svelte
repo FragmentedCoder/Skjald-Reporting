@@ -11,14 +11,15 @@
   import { answerProblem } from "#lib/templates/formChecks.js";
   import { LivePreview } from "#lib/templates/live.svelte.js";
   import { samplePeople } from "#lib/templates/preview.js";
+  import { signed } from "#lib/templates/signature.js";
   import type { Question, TemplateContent } from "#lib/templates/types.js";
 
   // "Try it": the technician's screen for the draft, one step at a time, with the PDF
   // beside it changing as the answers do. The answers are the template's sample
-  // answers, kept with the draft; photos, files and signatures stay in this browser.
+  // answers, kept with the draft; photos and files stay in this browser.
   const draft = useDraft();
   const content = $derived(draft.content as TemplateContent);
-  const LOCAL = new Set(["photo", "file", "signature"]);
+  const LOCAL = new Set(["photo", "file"]);
   let local = $state<Record<string, unknown>>({});
 
   const live = new LivePreview();
@@ -73,7 +74,7 @@
         if (hidden.has(q.id) || !fieldType(q.type).asks || q.type === "calculated") continue;
         const value = answer(q);
         const empty = value === undefined || value === null || value === "" || (Array.isArray(value) && !value.length)
-          || (q.type === "cvss" && !(value as { vector?: string } | null)?.vector);
+          || (q.type === "cvss" && !(value as { vector?: string } | null)?.vector) || (q.type === "signature" && !signed(value));
         // What the field itself says: its own check, how many are chosen, the rows and their cells.
         const message = answerProblem(q, value) ?? invalid.get(q.id) ?? (required.has(q.id) && empty ? "is required." : null);
         if (message) found.push({ step: i, question: q, message });

@@ -26,7 +26,6 @@
   import { drawPhoto, isLocalPhoto } from "#lib/templates/localPhotos.js";
   import type { Paged, Placed } from "#lib/templates/pages.js";
   import { sampleContext, type Grid, type Shown } from "#lib/templates/preview.js";
-  import { strokeBox, strokePath } from "#lib/templates/signature.js";
   import RichView from "./RichView.svelte";
 
   // The PDF's pages, as A4 sheets that scale with the space they have. The page rules
@@ -85,12 +84,15 @@
   });
 
   // Who signs in the sample, and when: in the PDF, the signers' own signatures.
-  // The sample report's author and reviewer, as its text names them.
+  // The sample report's author and reviewer, as its text names them. A signature
+  // question is no sample: it prints the name typed in the form and when it was confirmed.
   const SAMPLE = sampleContext();
   const SAMPLE_SIGNERS = { technician: String(SAMPLE.author.display_name), reviewer: String(SAMPLE.reviewer.display_name) };
   const signedOn = $derived(
     new Intl.DateTimeFormat(language === "da" ? "da-DK" : "en-GB", { day: "numeric", month: "short", year: "numeric" }).format(new Date("2026-10-24T09:30:00Z")),
   );
+
+  const signedWord = $derived(language === "da" ? "underskrevet" : "signed");
 
   const total = $derived(paged.pages.length);
   const base = (id: string) => id.split("~")[0];
@@ -265,13 +267,6 @@
   }
 </script>
 
-{#snippet drawing(strokes: number[][])}
-  <svg class="drawing" viewBox={strokeBox(strokes)} preserveAspectRatio="xMinYMid meet" role="img" aria-label={language === "da" ? "Underskrift" : "Signature"}>
-    <!-- The line keeps its width however much the drawing is enlarged. -->
-    <path d={strokePath(strokes)} fill="none" stroke="currentColor" stroke-width="1.4" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" />
-  </svg>
-{/snippet}
-
 {#snippet grid(g: Grid, empty = "")}
   {#if g.rows.length}
     <table>
@@ -312,7 +307,12 @@
   {:else if b.kind === "answer"}
     <div class="answer">
       {#if b.label}<p class="question">{b.label}</p>{/if}
-      {#if b.rich}<RichView nodes={b.rich.content} />{:else if b.rows}{@render grid(b.rows)}{:else if b.strokes}<div class="hand drawn">{@render drawing(b.strokes)}</div>{:else}<p>{b.text || "—"}</p>{/if}
+      {#if b.rich}<RichView nodes={b.rich.content} />{:else if b.rows}{@render grid(b.rows)}
+      {:else if b.signature}
+        <!-- A signature question, signed: the name as a handwritten signature, and in print with when it was confirmed. -->
+        <div class="hand"><span>{b.signature.name}</span></div>
+        <p class="signed-by">{b.signature.name} · {signedWord} {b.signature.time}</p>
+      {:else}<p>{b.text || "—"}</p>{/if}
     </div>
   {:else if b.kind === "table"}
     <figure class="grid-figure">
@@ -353,25 +353,26 @@
   {:else if b.kind === "signatures"}
     <div class="signatures {b.layout}">
       {#each b.signers as signer, i (i)}
-        {@const name = signer.role === "pad" ? "" : signer.role === "company" ? company : SAMPLE_SIGNERS[signer.role]}
+        <!-- Signed in the form (the stored role "pad"): the name typed there and when it was confirmed, in the look chosen. -->
+        {@const typed = signer.role === "pad"}
+        {@const name = signer.role === "pad" ? (signer.signed?.name ?? "") : signer.role === "company" ? company : SAMPLE_SIGNERS[signer.role]}
         <figure class="signature">
-          {#if signer.role === "pad"}
-            <!-- Drawn in the form: the drawing, or an empty line saying it isn't signed. -->
-            <div class="hand drawn">
-              {#if signer.strokes}{@render drawing(signer.strokes)}{:else}<span class="unsigned">{language === "da" ? "Ikke underskrevet" : "Not signed"}</span>{/if}
-            </div>
+          {#if typed && !signer.signed}
+            <!-- Not signed yet: an empty line saying so. -->
+            <div class="hand open"><span class="unsigned">{language === "da" ? "Ikke underskrevet" : "Not signed"}</span></div>
           {:else if signer.style === "stamp"}
+            <!-- The logo and "Digitally signed" are for those who sign the PDF itself. -->
             <div class="stamp">
-              {#if look.logos.company}<img src={look.logos.company} alt="" />{/if}
-              <span><strong>{name}</strong>{language === "da" ? "Digitalt underskrevet" : "Digitally signed"}</span>
+              {#if !typed && look.logos.company}<img src={look.logos.company} alt="" />{/if}
+              <span><strong>{name}</strong>{typed ? (language === "da" ? "Skrevet og bekræftet" : "Typed and confirmed") : language === "da" ? "Digitalt underskrevet" : "Digitally signed"}</span>
             </div>
           {:else}
             <div class="hand"><span>{name}</span></div>
           {/if}
-          {#if signer.role === "pad"}
-            <figcaption><strong>{signer.label}</strong>{signer.strokes && b.showDate ? `${language === "da" ? "Underskrevet" : "Signed"} ${signedOn}` : ""}</figcaption>
+          {#if typed && !signer.signed}
+            <figcaption><strong>{signer.label}</strong></figcaption>
           {:else}
-            <figcaption><strong>{signer.label}</strong>{name}{b.showDate ? ` · ${language === "da" ? "underskrevet" : "signed"} ${signedOn}` : ""}</figcaption>
+            <figcaption><strong>{signer.label}</strong>{name}{b.showDate ? ` · ${signedWord} ${signer.signed?.time ?? signedOn}` : ""}</figcaption>
           {/if}
         </figure>
       {/each}
@@ -821,14 +822,10 @@
   .hand span {
     font-size: 2.2em;
   }
-  /* A signature drawn on a signature pad, or where one will be. */
-  .hand.drawn {
+  /* Where a signature question will sign, while it isn't signed: the line, saying so in the page's own type. */
+  .hand.open {
     padding-left: 0;
     font-family: inherit;
-  }
-  .drawing {
-    width: 100%;
-    height: 100%;
   }
   .hand .unsigned {
     align-self: end;
@@ -836,9 +833,14 @@
     color: var(--text-soft);
     font-size: 0.85em;
   }
-  .answer .hand.drawn {
-    width: 12em;
+  /* A signature question printed as an answer: the name as signed, with no line to sign on. */
+  .answer .hand {
+    padding-left: 0;
     border-bottom: 0;
+  }
+  .answer .signed-by {
+    color: var(--text-soft);
+    font-size: 0.85em;
   }
   /* The company seal: a double frame in the style's link colour, with the logo. */
   .stamp {

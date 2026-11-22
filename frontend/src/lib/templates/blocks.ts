@@ -113,9 +113,9 @@ export function nextSigner(signers: Signer[]): Signer {
 export function changeSigner(signer: Signer, role: Signer["role"]): void {
   const before = SIGNERS[signer.role];
   if (!signer.label.trim() || signer.label === before.label) signer.label = SIGNERS[role].label;
-  if (signer.style === before.style || role === "pad") signer.style = SIGNERS[role].style;
+  if (signer.style === before.style) signer.style = SIGNERS[role].style;
   signer.role = role;
-  // Only a signature pad names a question.
+  // Only one signed in the form (the role "pad") names a question: its signature question.
   if (role === "pad") signer.question ??= null;
   else delete signer.question;
 }

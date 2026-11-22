@@ -57,7 +57,7 @@ export const FIELD_TYPES: Record<string, FieldType> = {
   photo: field("Photo", "Taken or uploaded", "Files and signing", () => ({ multiple: false, max_photos: 10 }), () => ({ ".filled": "bool", ".count": "int" })),
   file: field("File", "Logs, captures and other files", "Files and signing", () => ({ multiple: false, max_files: 10 }), () => ({ ".filled": "bool", ".count": "int" })),
   barcode: field("Barcode or QR code", "Read from a photo", "Files and signing", () => ({ formats: ["qr", "code128"] }), one("string")),
-  signature: field("Signature pad", "Signed on screen", "Files and signing", none, () => ({ ".filled": "bool" })),
+  signature: field("Signature", "A name typed and confirmed", "Files and signing", none, () => ({ ".filled": "bool", ".name": "string", ".time": "timestamp" })),
   repeating: field("Repeating group", "Rows the technician adds", "Structure", () => ({ columns: [{ key: "value", label: "Value", type: "text", required: false, settings: FIELD_TYPES.text.settings() }], min_rows: 0, max_rows: 100 }), one("list<map<string, dyn>>")),
   table: field("Table", "Fixed rows to fill in", "Structure", () => ({ rows: [{ key: "row_1", label: "Row 1" }], columns: [{ key: "value", label: "Value", type: "text", required: false, settings: FIELD_TYPES.text.settings() }] }), one("list<map<string, dyn>>")),
   heading: field("Heading", "Splits a step into parts", "Structure", none, () => ({}), false),

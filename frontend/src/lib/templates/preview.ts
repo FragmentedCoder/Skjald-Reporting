@@ -12,7 +12,7 @@ import { fieldType, PERSON_PARTS, settingsOf } from "./fields";
 import { repeatedColumns, shownAs, type LabelColumn, type LabelContext } from "./labels";
 import { CONTEXT_GROUPS, declarations, ITEM } from "./names";
 import { printed } from "./secrets";
-import { drawn } from "./signature";
+import { signed } from "./signature";
 import { docText, interpolations } from "./text";
 import { questionsOf, type Block, type Id, type Question, type RichNode, type RichText, type Signer, type TemplateContent, type Tone } from "./types";
 
@@ -36,7 +36,7 @@ export type Shown =
   | { kind: "section"; id: Id; title: string; intro: RichText | null; newPage: boolean; numbered: boolean; landscape: boolean; blocks: Shown[] }
   | { kind: "heading"; id: Id; text: string }
   | { kind: "text"; id: Id; content: RichText }
-  | { kind: "answer"; id: Id; label: string | null; text: string | null; rich: RichText | null; rows: Grid | null; strokes?: number[][] }
+  | { kind: "answer"; id: Id; label: string | null; text: string | null; rich: RichText | null; rows: Grid | null; signature?: PrintedSignature }
   | { kind: "table"; id: Id; caption: string; grid: Grid; emptyText: string }
   | { kind: "image"; id: Id; url: string | null; caption: string; width: string; ratio: number }
   | { kind: "gallery"; id: Id; urls: string[]; caption: string; perRow: number }
@@ -52,8 +52,14 @@ export interface Grid {
   rows: string[][];
 }
 
-/** A signature as it's drawn: one from a signature pad with its strokes, or null while it isn't signed. */
-export type ShownSigner = Signer & { strokes?: number[][] | null };
+/** A signature question's answer as it prints: the name confirmed, and when, in the report's language. */
+export interface PrintedSignature {
+  name: string;
+  time: string;
+}
+
+/** A signer as it's shown. One signed in the form (role "pad") has what its signature question prints, or null while it isn't signed. */
+export type ShownSigner = Signer & { signed?: PrintedSignature | null };
 
 export interface PreviewModel {
   blocks: Shown[];
@@ -110,7 +116,10 @@ export function peopleFor(question: Question, people: Person[]): Person[] {
 
 // Answers as expressions read them
 
-/** One answer as expressions see it: a secret only as it prints, a photo only whether there is one. */
+/**
+ * One answer as expressions see it: a secret only as it prints, a photo only whether
+ * there is one, a signature by who confirmed it and when.
+ */
 export function answerValue(question: Question, raw: unknown): unknown {
   const settings = settingsOf(question.type, question.settings);
   switch (question.type) {
@@ -125,8 +134,11 @@ export function answerValue(question: Question, raw: unknown): unknown {
       const count = Array.isArray(raw) ? raw.length : raw ? 1 : 0;
       return { filled: count > 0, count };
     }
-    case "signature":
-      return { filled: drawn(raw) !== null };
+    case "signature": {
+      // Not signed, the name is empty and the time is no date, as a date not filled in is (see noDate).
+      const signature = signed(raw);
+      return { filled: signature !== null, name: signature?.name ?? "", time: signature?.at ?? null };
+    }
     case "person": {
       // The person as they were when picked: their details, each text.
       const picked = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
@@ -281,9 +293,15 @@ class Worker {
     this.byKey = new Map(questionsOf(input.content).filter((q) => q.key).map((q) => [q.key as string, q]));
   }
 
-  /** What's printed where a signature pad isn't signed. */
+  /** What's printed where a signature question isn't signed. */
   get unsigned(): string {
     return this.language === "da" ? "Ikke underskrevet" : "Not signed";
+  }
+
+  /** A signature question's answer as it prints, the time as other moments are; null when it isn't signed. */
+  signature(raw: unknown): PrintedSignature | null {
+    const signature = signed(raw);
+    return signature && { name: signature.name, time: formatDate(signature.at, "d MMMM yyyy, HH:mm", this.zone, LOCALES[this.language] ?? LOCALES.en) };
   }
 
   run(scope: Scope, element: Id, expr: string): unknown {
@@ -351,7 +369,7 @@ class Worker {
   }
 
   /** An answer as the PDF prints it. */
-  answer(question: Question, raw: unknown): { text: string | null; rich: RichText | null; rows: Grid | null; strokes?: number[][] } {
+  answer(question: Question, raw: unknown): { text: string | null; rich: RichText | null; rows: Grid | null; signature?: PrintedSignature } {
     const s = settingsOf(question.type, question.settings);
     const locale = LOCALES[this.language] ?? LOCALES.en;
     const none = { text: null, rich: null, rows: null };
@@ -392,8 +410,8 @@ class Worker {
       case "person":
         return { ...none, text: String((raw as { display_name?: unknown }).display_name ?? "") };
       case "signature": {
-        const strokes = drawn(raw);
-        return strokes ? { ...none, strokes } : { ...none, text: this.unsigned };
+        const signature = this.signature(raw);
+        return signature ? { ...none, signature } : { ...none, text: this.unsigned };
       }
       case "photo":
       case "file":
@@ -529,8 +547,8 @@ class Worker {
       case "signatures":
         return [{ kind: "signatures", id, layout: b.layout, showDate: b.show_date, signers: b.signers.map((s) => ({
           ...s, label: this.text(scope, id, s.label),
-          // A signature pad's drawing, or null while it isn't signed.
-          ...(s.role === "pad" ? { strokes: drawn(s.question ? this.input.answers[s.question] : null) } : {}),
+          // Signed in the form: what its signature question prints, or null while it isn't signed.
+          ...(s.role === "pad" ? { signed: this.signature(s.question ? this.input.answers[s.question] : null) } : {}),
         })) }];
       case "columns":
         return [{ kind: "columns", id, columns: b.columns.map((column) => this.blocks(scope, column, item)) }];

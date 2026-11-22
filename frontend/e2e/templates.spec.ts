@@ -269,13 +269,17 @@ test("a designer lays out the PDF and sees its pages", async ({ browser }) => {
   await page.getByRole("dialog").getByRole("button", { name: "Create" }).click();
   await expect(page.getByRole("heading", { name: "Storage device destruction" })).toBeVisible();
 
-  // Two questions to print.
+  // Three questions to print: the last is signed by someone who isn't a user of Skjald.
   await addField(page, "Short text");
   await panel(page).getByLabel("Question", { exact: true }).fill("Serial numbers");
   await rename(page, "serials");
   await addField(page, "Repeating group");
   await panel(page).getByLabel("Question", { exact: true }).fill("Devices");
   await rename(page, "devices");
+  await addField(page, "Signature");
+  await panel(page).getByLabel("Question", { exact: true }).fill("Witness");
+  await rename(page, "witness");
+  await expect(page.getByRole("button", { name: "Witness, Signature, edit" })).toBeVisible();
 
   await page.getByRole("link", { name: "Layout" }).click();
   const blocks = page.getByRole("region", { name: "Blocks" });
@@ -326,9 +330,19 @@ test("a designer lays out the PDF and sees its pages", async ({ browser }) => {
   await expect(panel(page).getByLabel("Image", { exact: true })).toHaveValue(/^[0-9a-f]{64}$/);
   await expect(page.getByText("No problems", { exact: true })).toBeVisible();
 
-  // The pages: the section's blocks, the callout critical (no devices yet), the image.
+  // A signature box for the signature question: it has to say which one.
+  await blocks.getByRole("button", { name: /^Signatures/ }).click();
+  await panel(page).getByLabel("Signature 1: who", { exact: true }).selectOption({ label: "A signature question in the form" });
+  await expect(panel(page).getByText("Choose the signature question this signature shows.")).toBeVisible();
+  await panel(page).getByLabel("Signature 1: which signature question", { exact: true }).selectOption({ label: "SG · Witness (witness)" });
+  await expect(panel(page).getByLabel("Signature 1: how it looks", { exact: true })).toHaveValue("handwritten");
+  await expect(page.getByText("No problems", { exact: true })).toBeVisible();
+
+  // The pages: the section's blocks, the callout critical (no devices yet), the image,
+  // and the signature's place, not signed yet.
   await page.getByRole("button", { name: "Pages", exact: true }).click();
   const sheet = page.getByRole("region", { name: "Page 1 of 1" });
+  await expect(sheet.getByText("Not signed", { exact: true })).toBeVisible();
   await expect(sheet.getByRole("heading", { name: "1 Summary" })).toBeVisible();
   await expect(sheet.getByText("Destroyed on site for Fjordvik Logistik A/S today. Call +45 70 20 30 40 for the full password.")).toBeVisible();
   await expect(sheet.locator("strong", { hasText: "today" })).toBeVisible();
@@ -353,6 +367,23 @@ test("a designer lays out the PDF and sees its pages", async ({ browser }) => {
   await page.getByRole("textbox", { name: "Value, row 1" }).fill("Seagate ST4000, SN-4471");
   await expect(pdf.locator("aside.callout.tone-info")).toBeVisible();
   await expect(pdf.getByRole("cell", { name: "Seagate ST4000, SN-4471" })).toBeVisible();
+
+  // A signature: a name typed and a box ticked to confirm it. The PDF prints the name
+  // with the time; another name takes the confirmation back until it's ticked again.
+  const witness = page.getByRole("group", { name: "Witness", exact: true });
+  const confirm = witness.getByRole("checkbox", { name: "I confirm this is my signature" });
+  await expect(pdf.getByText("Not signed", { exact: true })).toBeVisible();
+  await expect(confirm).toBeDisabled();
+  await witness.getByLabel("Full name", { exact: true }).fill("Anna Berg");
+  await confirm.check();
+  await expect(pdf.getByText("Anna Berg", { exact: true })).toBeVisible();
+  await expect(pdf.getByText(/Anna Berg · signed \d{1,2} [A-Z][a-z]+ \d{4}, \d{2}:\d{2}/)).toBeVisible();
+  await witness.getByLabel("Full name", { exact: true }).fill("Anna Bergh");
+  await expect(confirm).not.toBeChecked();
+  await expect(pdf.getByText("Not signed", { exact: true })).toBeVisible();
+  await confirm.check();
+  await expect(pdf.getByText("Anna Bergh", { exact: true })).toBeVisible();
+
   await page.getByRole("button", { name: "Check the answers" }).click();
   await expect(page.getByText("Nothing missing: a report like this could go for review.")).toBeVisible();
   await saved(page);
@@ -361,6 +392,8 @@ test("a designer lays out the PDF and sees its pages", async ({ browser }) => {
   // The Data tab: every name, with the sample answers; expressions tried on them.
   await page.getByRole("link", { name: "Data", exact: true }).click();
   await expect(page.getByRole("row", { name: /answers\.serials .*Serial numbers text "SN-4471"/ })).toBeVisible();
+  // The signature is kept with the sample answers, as the other answers are.
+  await expect(page.getByRole("row", { name: /answers\.witness\.name .*Witness: name text "Anna Bergh"/ })).toBeVisible();
   await page.getByRole("textbox", { name: "Expression" }).fill("answers.serials.lowerAscii()");
   await expect(page.getByRole("status")).toHaveText('"sn-4471", which is text');
   await page.getByRole("textbox", { name: "Expression" }).fill("answers.serials > 1");

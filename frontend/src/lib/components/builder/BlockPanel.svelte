@@ -37,7 +37,7 @@
   const questions = $derived(questionsOf(content));
   const lists = $derived(questions.filter((q) => q.type === "repeating" || q.type === "table"));
   const photos = $derived(questions.filter((q) => q.type === "photo"));
-  const pads = $derived(questions.filter((q) => q.type === "signature"));
+  const signatureQuestions = $derived(questions.filter((q) => q.type === "signature"));
   const problem = (field: string) => problems.find((p) => p.field === field)?.message ?? null;
   const fieldProblems = (prefix: string) => problems.filter((p) => p.field.startsWith(prefix)).map((p) => p.message);
   const columnsOf = (questionId: string | null) => {
@@ -364,16 +364,15 @@
         <div class="signer">
           <select class="input" aria-label="Signature {i + 1}: who" value={signer.role} onchange={(e) => changeSigner(signer, e.currentTarget.value as Signer["role"])}>
             <option value="technician">The technician</option><option value="reviewer">The reviewer</option><option value="company">The company seal</option>
-            <option value="pad">A signature pad in the form</option>
+            <option value="pad">A signature question in the form</option>
+          </select>
+          <select class="input" aria-label="Signature {i + 1}: how it looks" bind:value={signer.style}>
+            <option value="handwritten">Handwritten</option><option value="stamp">A stamp</option>
           </select>
           {#if signer.role === "pad"}
-            <select class="input" aria-label="Signature {i + 1}: which signature pad" value={signer.question ?? ""} onchange={(e) => (signer.question = e.currentTarget.value || null)}>
-              <option value="" disabled>{pads.length ? "Choose a signature pad…" : "Add a signature pad question first"}</option>
-              {#each pads as q (q.id)}<option value={q.id}>{questionChoice(q)}</option>{/each}
-            </select>
-          {:else}
-            <select class="input" aria-label="Signature {i + 1}: how it looks" bind:value={signer.style}>
-              <option value="handwritten">Handwritten</option><option value="stamp">A stamp</option>
+            <select class="input whole" aria-label="Signature {i + 1}: which signature question" value={signer.question ?? ""} onchange={(e) => (signer.question = e.currentTarget.value || null)}>
+              <option value="" disabled>{signatureQuestions.length ? "Choose a signature question…" : "Add a signature question first"}</option>
+              {#each signatureQuestions as q (q.id)}<option value={q.id}>{questionChoice(q)}</option>{/each}
             </select>
           {/if}
           <NameInput label="Signature {i + 1}: label" bind:value={signer.label} {entries} />
@@ -391,8 +390,9 @@
     </div>
     <label class="check"><input type="checkbox" bind:checked={block.show_date} /> Print the date of signing</label>
     <p class="small muted">The technician, the reviewer and the company seal sign the finished report digitally: who does, and in what order, is
-      “Who signs” on the Settings tab, and each signs as themselves. A signature pad is drawn in the form, by someone who isn't a user of Skjald,
-      such as the customer's witness; until it's drawn its place says “Not signed”. Make the question required to hold the report back until then.</p>
+      “Who signs” on the Settings tab, and each signs as themselves. A signature question is signed in the form, by someone who isn't a user of Skjald,
+      such as the customer or a witness: their name is typed and a box ticked to confirm it. It prints the name, with the time it was confirmed when the
+      date of signing is printed; until then its place says “Not signed”. Make the question required to hold the report back until then.</p>
   {:else if block.kind === "columns"}
     <div class="field">
       <label for="{id}-count">Columns</label>
@@ -545,6 +545,10 @@
   }
   .signer {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  /* Which signature question: a row of its own, between who signs and the label. */
+  .signer .whole {
+    grid-column: 1 / -1;
   }
   .start,
   .small-button {

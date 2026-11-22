@@ -189,26 +189,90 @@ describe("a person picked from the company", () => {
   });
 });
 
-describe("signature pads", () => {
-  it("draws a pad's strokes where it signs, and says so where it isn't signed", () => {
+describe("signature questions", () => {
+  // Someone who isn't a user of Skjald signs in the form: their name typed, and confirmed.
+  const witnessed = () => {
     const c = content();
     c.form[0].questions.push({ ...c.form[0].questions[0], id: "q_pad1", key: "witness", type: "signature", label: "Witness", required: false, settings: {} });
+    return c;
+  };
+  const answer = { name: "Anna Berg", confirmed: true, at: "2026-11-22T13:04:05Z" };
+  // What the drawing pad this replaced kept.
+  const drawn = { strokes: [[10, 20, 30, 40], [50, 60]] };
+
+  it("gives rules whether it's signed, the name and the time it was confirmed", () => {
+    const c = witnessed();
+    c.layout.push(
+      { id: "b_padtext", kind: "heading", visible_when: null, text: '{{answers.witness.filled ? "Signed by " + answers.witness.name : "Not yet"}}' },
+      { id: "b_padtime", kind: "heading", visible_when: null, text: '[{{answers.witness.name}}] [{{answers.witness.time}}] [{{format_date(answers.witness.time, "yyyy-MM-dd HH:mm")}}]' },
+      { id: "b_padrule", kind: "heading", visible_when: "answers.witness.time > report.started", text: "Signed after the report was started" },
+    );
+    const signed = preview(input(c, { ...c.sample.answers, q_pad1: answer }));
+    expect(signed.errors).toEqual([]);
+    expect(signed.values.witness).toEqual({ filled: true, name: "Anna Berg", time: new Date("2026-11-22T13:04:05Z") });
+    expect(find(signed.blocks, "b_padtext")).toMatchObject({ text: "Signed by Anna Berg" });
+    expect(find(signed.blocks, "b_padtime")).toMatchObject({ text: "[Anna Berg] [22 November 2026, 14:04] [2026-11-22 14:04]" });
+    expect(find(signed.blocks, "b_padrule")).toBeDefined();
+
+    // Not signed: no name, and no date, which prints as nothing.
+    for (const not of [undefined, null, "", "Anna Berg", { name: "Anna Berg", confirmed: false, at: answer.at }, drawn]) {
+      const empty = preview(input(c, { ...c.sample.answers, q_pad1: not }));
+      expect(empty.errors).toEqual([]);
+      expect(empty.values.witness).toEqual({ filled: false, name: "", time: null });
+      expect(find(empty.blocks, "b_padtext")).toMatchObject({ text: "Not yet" });
+      expect(find(empty.blocks, "b_padtime")).toMatchObject({ text: "[] [] []" });
+      expect(find(empty.blocks, "b_padrule")).toBeUndefined();
+    }
+  });
+
+  it("prints the name and when it was confirmed where it signs, and says so where it isn't signed", () => {
+    const c = witnessed();
     c.layout.push(
       { id: "b_pads", kind: "signatures", visible_when: null, layout: "row", show_date: true,
-        signers: [{ role: "pad", label: "Witness", style: "handwritten", question: "q_pad1" }, { role: "technician", label: "Technician", style: "handwritten" }] },
+        signers: [{ role: "pad", label: "Witness", style: "handwritten", question: "q_pad1" }, { role: "technician", label: "Technician", style: "handwritten" },
+          { role: "pad", label: "Customer", style: "stamp", question: "q_pad1" }] },
       { id: "b_padanswer", kind: "answer", visible_when: null, question: "q_pad1", show_label: true },
-      { id: "b_padtext", kind: "heading", visible_when: null, text: '{{answers.witness.filled ? "Signed" : "Not yet"}}' },
     );
-    const empty = preview(input(c));
-    expect(find(empty.blocks, "b_pads")).toMatchObject({ signers: [{ role: "pad", strokes: null }, { role: "technician" }] });
-    expect(find(empty.blocks, "b_padanswer")).toMatchObject({ text: "Not signed" });
-    expect(find(empty.blocks, "b_padtext")).toMatchObject({ text: "Not yet" });
+    const printed = { name: "Anna Berg", time: "22 November 2026, 14:04" };
+    const signed = preview(input(c, { ...c.sample.answers, q_pad1: answer }));
+    expect(signed.errors).toEqual([]);
+    expect(find(signed.blocks, "b_pads")).toMatchObject({ showDate: true, signers: [{ role: "pad", style: "handwritten", signed: printed }, { role: "technician" }, { role: "pad", style: "stamp", signed: printed }] });
+    expect((find(signed.blocks, "b_pads") as { signers: object[] }).signers[1]).not.toHaveProperty("signed");
+    expect(find(signed.blocks, "b_padanswer")).toMatchObject({ label: "Witness", text: null, signature: printed });
 
-    const strokes = [[10, 20, 30, 40], [50, 60]];
-    const signed = preview(input(c, { ...c.sample.answers, q_pad1: { strokes } }));
-    expect(find(signed.blocks, "b_pads")).toMatchObject({ signers: [{ role: "pad", strokes }, { role: "technician" }] });
-    expect(find(signed.blocks, "b_padanswer")).toMatchObject({ text: null, strokes });
-    expect(find(signed.blocks, "b_padtext")).toMatchObject({ text: "Signed" });
+    for (const not of [undefined, null, drawn]) {
+      const empty = preview(input(c, { ...c.sample.answers, q_pad1: not }));
+      expect(empty.errors).toEqual([]);
+      expect(find(empty.blocks, "b_pads")).toMatchObject({ signers: [{ role: "pad", signed: null }, { role: "technician" }, { role: "pad", signed: null }] });
+      expect(find(empty.blocks, "b_padanswer")).toMatchObject({ text: "Not signed" });
+      expect(find(empty.blocks, "b_padanswer")).not.toHaveProperty("signature");
+    }
+  });
+
+  it("prints the time in the report's language, where the report is written", () => {
+    const c = witnessed();
+    c.settings.language = "da";
+    c.layout.push(
+      { id: "b_pads", kind: "signatures", visible_when: null, layout: "row", show_date: true, signers: [{ role: "pad", label: "Vidne", style: "handwritten", question: "q_pad1" }] },
+      { id: "b_padanswer", kind: "answer", visible_when: null, question: "q_pad1", show_label: false },
+    );
+    // A minute before midnight in Copenhagen is the day before in New York.
+    const late = { ...answer, at: "2026-11-22T22:59:30Z" };
+    const danish = preview(input(c, { ...c.sample.answers, q_pad1: late }));
+    expect(find(danish.blocks, "b_pads")).toMatchObject({ signers: [{ signed: { name: "Anna Berg", time: "22 november 2026, 23:59" } }] });
+    const elsewhere = preview({ ...input(c, { ...c.sample.answers, q_pad1: late }), timezone: "America/New_York" });
+    expect(find(elsewhere.blocks, "b_padanswer")).toMatchObject({ label: null, signature: { time: "22 november 2026, 17:59" } });
+    expect(find(preview(input(c, { ...c.sample.answers, q_pad1: null })).blocks, "b_padanswer")).toMatchObject({ text: "Ikke underskrevet" });
+  });
+
+  it("shows nothing signed for a signer with no question, or one that's gone or isn't a signature question", () => {
+    const c = witnessed();
+    c.layout.push({ id: "b_pads", kind: "signatures", visible_when: null, layout: "row", show_date: true,
+      signers: [{ role: "pad", label: "A", style: "handwritten", question: null }, { role: "pad", label: "B", style: "handwritten", question: "q_gone1" },
+        { role: "pad", label: "C", style: "handwritten", question: "q_detected" }, { role: "pad", label: "D", style: "handwritten" }] });
+    const model = preview(input(c, { ...c.sample.answers, q_pad1: answer }));
+    expect(model.errors).toEqual([]);
+    expect(find(model.blocks, "b_pads")).toMatchObject({ signers: [{ signed: null }, { signed: null }, { signed: null }, { signed: null }] });
   });
 });
 
