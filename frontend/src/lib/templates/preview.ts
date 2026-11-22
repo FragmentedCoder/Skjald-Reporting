@@ -95,8 +95,13 @@ export function sampleContext(custom: { customer?: Record<string, unknown>; proj
   return context;
 }
 
-/** Someone a person question can pick: their business details, as author and reviewer have them. */
-export type Person = { id: string; role: "technician" | "reviewer" } & Record<(typeof PERSON_PARTS)[number], string>;
+/**
+ * Someone a person question can pick: their business details, as author and reviewer
+ * have them. The builder's two sample people have a role; a report's people say
+ * whether they're a technician, a reviewer and on the project's team.
+ */
+export type Person = { id: string; role?: "technician" | "reviewer"; technician?: boolean; reviewer?: boolean; on_team?: boolean }
+  & Record<(typeof PERSON_PARTS)[number], string>;
 
 /**
  * The people a person question offers in the builder: the sample report's author (a
@@ -108,10 +113,20 @@ export function samplePeople(context: Record<string, Record<string, unknown>>): 
   return [one("sample-author", "technician", context.author), one("sample-reviewer", "reviewer", context.reviewer)].filter((p) => p.display_name);
 }
 
-/** The people a person question lets the technician pick among. */
+/**
+ * The people a person question lets the technician pick among: the technicians, the
+ * reviewers, the project's team or everyone, as the question asks. The server takes
+ * nobody else (backend/app/reports/routes.py).
+ */
 export function peopleFor(question: Question, people: Person[]): Person[] {
   const who = settingsOf(question.type, question.settings).who;
-  return people.filter((p) => (who === "technicians" ? p.role === "technician" : who === "reviewers" ? p.role === "reviewer" : true));
+  return people.filter((p) => {
+    if (who === "technicians") return p.technician ?? p.role === "technician";
+    if (who === "reviewers") return p.reviewer ?? p.role === "reviewer";
+    // The sample people don't say: both are on the sample report's project.
+    if (who === "team") return p.on_team ?? true;
+    return true;
+  });
 }
 
 // Answers as expressions read them
