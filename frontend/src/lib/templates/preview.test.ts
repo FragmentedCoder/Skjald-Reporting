@@ -189,6 +189,40 @@ describe("a person picked from the company", () => {
   });
 });
 
+describe("a secret kept in a report", () => {
+  // The server gives a kept secret out masked: that it's filled in, and how the PDF prints it.
+  const masked = { masked: true, printed: "So••••••rd" };
+
+  it("is read as filled in, and printed as the server says", () => {
+    const c = content();
+    c.layout.push({ id: "b_secret", kind: "answer", visible_when: null, question: "q_credentials", show_label: true });
+    const model = preview(input(c, { ...c.sample.answers, q_credentials: masked }));
+    expect(model.errors).toEqual([]);
+    expect(model.values.credentials).toEqual({ filled: true, printed: "So••••••rd" });
+    expect(find(model.blocks, "b_secret")).toMatchObject({ label: "New portal admin password", text: "So••••••rd" });
+    // Rules that ask whether it's filled in show what they did for a secret typed in "Try it".
+    expect(find(model.blocks, "b_credhead")).toBeDefined();
+    expect(words((find(model.blocks, "b_credtext") as { content: { content?: unknown[] } }).content))
+      .toBe("The portal admin password was changed to So••••••rd. The full password was given to Mette Lund by phone.");
+  });
+
+  it("is filled in even when the template leaves it out of the PDF", () => {
+    const c = content();
+    c.layout.push({ id: "b_secret", kind: "answer", visible_when: null, question: "q_credentials", show_label: false });
+    const model = preview(input(c, { ...c.sample.answers, q_credentials: { masked: true, printed: "" } }));
+    expect(model.values.credentials).toEqual({ filled: true, printed: "" });
+    expect(find(model.blocks, "b_secret")).toMatchObject({ text: "" });
+  });
+
+  it("still prints a secret typed in the browser, as \"Try it\" keeps them", () => {
+    const c = content();
+    c.layout.push({ id: "b_secret", kind: "answer", visible_when: null, question: "q_credentials", show_label: false });
+    const model = preview(input(c));
+    expect(model.values.credentials).toEqual({ filled: true, printed: "Hu••••••in" });
+    expect(find(model.blocks, "b_secret")).toMatchObject({ text: "Hu••••••in" });
+  });
+});
+
 describe("signature questions", () => {
   // Someone who isn't a user of Skjald signs in the form: their name typed, and confirmed.
   const witnessed = () => {
