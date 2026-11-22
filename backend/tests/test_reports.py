@@ -520,6 +520,17 @@ def test_an_empty_answer_is_forgotten_or_kept_as_cleared(client, world) -> None:
     # Saving what's there already changes nothing.
     same = save(client, astrid, report, q_severity=None, q_title="")
     assert same.json()["saves"] == cleared.json()["saves"] and same.json()["answers"] == {}
+    # Spaces alone, and a long text with every word deleted, are no answers either:
+    # kept, they would pass for one where the question is required.
+    emptied = {"type": "doc", "content": [{"type": "paragraph"}, {"type": "paragraph",
+               "content": [{"type": "text", "text": "  "}]}]}
+    save(client, astrid, report, q_title="Something", q_note={"type": "doc", "content": [
+        {"type": "paragraph", "content": [{"type": "text", "text": "Words."}]}]})
+    blanked = save(client, astrid, report, q_title=" \t ", q_note=emptied)
+    assert sorted(blanked.json()["forgotten"]) == ["q_note", "q_title"]
+    assert opened(client, astrid, report)["answers"] == {"q_severity": None}
+    assert "q_title" in [m["question"] for m in opened(client, astrid, report)[
+        "state"]["missing"]]
 
 
 # Checkouts
