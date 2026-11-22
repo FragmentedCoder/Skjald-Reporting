@@ -12,6 +12,11 @@ import { holds, type Checkout } from "./api";
 
 export type Answers = Record<Id, unknown>;
 
+/** The answers as they stand now, apart from the state they're read from: answers are plain data, as JSON holds it. */
+export function copy(answers: Answers): Answers {
+  return JSON.parse(JSON.stringify(answers)) as Answers;
+}
+
 /**
  * Whether a value is no answer, as the server reads it (backend/app/reports/answers.py):
  * nothing, a CVSS answer with no vector, a signature whose name isn't typed or isn't
