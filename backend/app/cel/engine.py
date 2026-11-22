@@ -549,45 +549,50 @@ def to_cel(value: Any, spec: TypeSpec, name: str) -> Any:
     """A plain value (as JSON would carry it) converted to its declared type."""
     if value is None:
         return _empty(spec)
-    wrong = ExpressionError("runtime", f"{name} should be {spec}, not {value!r}.")
+
+    def wrong() -> ExpressionError:
+        # Worded only when it's raised: a list of rows is long to write out, and this
+        # runs for every declared name each time an expression does.
+        return ExpressionError("runtime", f"{name} should be {spec}, not {value!r}.")
+
     kind = spec.name
     if kind == "bool":
         if not isinstance(value, bool):
-            raise wrong
+            raise wrong()
         return value
     if kind in ("int", "uint"):
         if isinstance(value, bool) or not isinstance(value, int | float):
-            raise wrong
+            raise wrong()
         if isinstance(value, float) and not value.is_integer():
-            raise wrong
+            raise wrong()
         return int(value)
     if kind == "double":
         if isinstance(value, bool) or not isinstance(value, int | float):
-            raise wrong
+            raise wrong()
         return float(value)
     if kind == "string":
         if not isinstance(value, str):
-            raise wrong
+            raise wrong()
         return value
     if kind == "timestamp":
         if isinstance(value, datetime):
             return value
         if not isinstance(value, str):
-            raise wrong
+            raise wrong()
         try:
             parsed = datetime.fromisoformat(value)
         except ValueError:
-            raise wrong from None
+            raise wrong() from None
         if parsed.tzinfo is None:
-            raise wrong
+            raise wrong()
         return parsed.astimezone(UTC)
     if kind == "list":
         if not isinstance(value, list):
-            raise wrong
+            raise wrong()
         return [to_cel(item, spec.args[0], name) for item in value]
     if kind == "map":
         if not isinstance(value, dict):
-            raise wrong
+            raise wrong()
         return {k: to_cel(v, spec.args[1], name) for k, v in value.items()}
     return value
 
