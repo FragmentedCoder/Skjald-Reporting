@@ -3,6 +3,7 @@
 // Skjald default.
 
 import { branding } from "#lib/branding.svelte.js";
+import type { Capability } from "#lib/roles.js";
 import { stylesApi, type Style, type StyleSummary } from "./api";
 import { lookOf, pageTexts, type PageLook } from "./look";
 import { resolve, type ResolvedStyle } from "./resolve";
@@ -18,6 +19,18 @@ export function imageOf(style: Style | null, base: number | null | undefined = s
     if (style.assets.some((a) => a.sha256 === sha)) return stylesApi.assetUrl(style.id, sha);
     return base ? stylesApi.assetUrl(base, sha) : null;
   };
+}
+
+/** What lets someone read styles (READERS in backend/app/styles/routes.py). */
+const READS_STYLES: Capability[] = ["edit_styles", "build_templates", "manage_customers"];
+
+/**
+ * Whether someone with these capabilities may read styles. Technicians and reviewers
+ * may not: a preview of theirs doesn't ask (the server would refuse, and log it as
+ * access denied), and is drawn in the Skjald default.
+ */
+export function readsStyles(capabilities: readonly Capability[]): boolean {
+  return READS_STYLES.some((capability) => capabilities.includes(capability));
 }
 
 export class PreviewStyle {

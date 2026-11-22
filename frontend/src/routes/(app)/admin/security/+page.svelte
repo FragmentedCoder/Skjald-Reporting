@@ -11,6 +11,7 @@
     type AdminSecurity,
     type SecuritySettings,
   } from "#lib/policy.js";
+  import { reportsApi, STALE_HOURS } from "#lib/reports/api.js";
   import { withStepUp } from "#lib/stepUp.svelte.js";
   import { toast } from "#lib/toast.svelte.js";
 
@@ -19,6 +20,9 @@
   let values = $state<SecuritySettings | null>(null);
   let lists = $state({ admin: "", login: "", adminOn: false, loginOn: false });
   let yourAddress = $state<string | null>(null);
+  // After how many hours without a save a report's checkout is marked stale; and what's kept.
+  let staleHours = $state<number | null>(null);
+  let keptStaleHours = $state<number | null>(null);
   let error = $state<string | null>(null);
   let busy = $state(false);
 
@@ -36,6 +40,7 @@
   onMount(async () => {
     try {
       use(await api<AdminSecurity>("GET", "/admin/security"));
+      staleHours = keptStaleHours = (await reportsApi.settings()).checkout_stale_hours;
     } catch (e) {
       error = e instanceof ApiError ? e.message : "Not available.";
     }
@@ -55,6 +60,9 @@
     };
     try {
       use(await withStepUp(() => api<AdminSecurity>("PUT", "/admin/security", body)));
+      if (staleHours !== null && staleHours !== keptStaleHours) {
+        staleHours = keptStaleHours = (await reportsApi.saveSettings({ checkout_stale_hours: staleHours })).checkout_stale_hours;
+      }
       toast("Security settings saved.", "ok", { key: "saved" });
     } catch (e) {
       if (e instanceof ApiError && e.reason === "step_up_cancelled") return;
@@ -139,6 +147,25 @@
       </div>
     </section>
 
+    {#if keptStaleHours !== null}
+      <section class="section" aria-labelledby="reports-title">
+        <h2 class="section-title" id="reports-title">Reports</h2>
+        <p class="small muted">
+          Whoever changes a report checks it out first: one step of its form, or all of it. A checkout
+          nobody has saved under for a while is marked stale, so others can see it may have been
+          forgotten. An Administrator can end any checkout, stale or not.
+        </p>
+        <div class="stack form-narrow">
+          <div class="field">
+            <label for="stale-hours">Mark a checkout stale after</label>
+            <input id="stale-hours" class="input number" type="number" min={STALE_HOURS.min} max={STALE_HOURS.max} step="1" required
+              aria-describedby="stale-hours-hint" bind:value={staleHours} />
+            <span class="hint" id="stale-hours-hint">Hours without a save under it. From {STALE_HOURS.min} to {STALE_HOURS.max}.</span>
+          </div>
+        </div>
+      </section>
+    {/if}
+
     <div>
       <button class="button button-primary" type="submit" disabled={busy}>Save settings</button>
     </div>
@@ -149,5 +176,8 @@
   .network {
     padding-top: var(--space-4);
     border-top: 1px solid var(--border);
+  }
+  .number {
+    max-width: 10rem;
   }
 </style>

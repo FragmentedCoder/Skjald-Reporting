@@ -20,6 +20,7 @@ export const ACTION_GROUPS: { value: string; label: string }[] = [
   { value: "auth.*", label: "Sign-in and security" },
   { value: "admin.*", label: "Administration" },
   { value: "account.*", label: "Account changes" },
+  { value: "report.*", label: "Reports" },
   { value: "setup.*", label: "Setup" },
   { value: "audit.*", label: "Audit log" },
 ];

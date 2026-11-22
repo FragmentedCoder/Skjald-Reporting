@@ -28,7 +28,7 @@
   import Users from "@lucide/svelte/icons/users";
   import UsersRound from "@lucide/svelte/icons/users-round";
   import X from "@lucide/svelte/icons/x";
-  import { onMount, tick, type Component, type Snippet } from "svelte";
+  import { onMount, tick, untrack, type Component, type Snippet } from "svelte";
   import { SvelteSet } from "svelte/reactivity";
   import { api } from "#lib/api.js";
   import { classificationTone, type ProjectSummary } from "#lib/customers.js";
@@ -127,12 +127,16 @@
     return { href, label: "Customer settings", icon: Settings, current: path === href };
   });
 
+  // A report's page is under its project in the menu, though not in its address: the
+  // page opens its project here (workspace.project), and Reports is marked for it.
+  const onReport = $derived(path.startsWith("/reports/"));
+
   // The open project's own sections, shown under it in the list.
   function projectItems(projectId: number): Item[] {
     const id = String(projectId);
     return [
       { href: resolve("/(app)/projects/[id]", { id }), label: "Reports", icon: FileText,
-        current: path === resolve("/(app)/projects/[id]", { id }) },
+        current: path === resolve("/(app)/projects/[id]", { id }) || (onReport && workspace.project?.id === projectId) },
       { href: resolve("/(app)/projects/[id]/details", { id }), label: "Details", icon: ListChecks,
         current: path === resolve("/(app)/projects/[id]/details", { id }) },
       { href: resolve("/(app)/projects/[id]/team", { id }), label: "Team", icon: Users,
@@ -198,6 +202,18 @@
   // So does arriving: the menu comes once the session has loaded, after the
   // first page has, and afterNavigate only runs for the pages after that.
   onMount(() => void showWhereYouAre());
+
+  // A report's project is known once the report has loaded: its groups open then.
+  $effect(() => {
+    const open = onReport ? workspace.project : null;
+    if (!open) return;
+    untrack(() => {
+      folded.delete("projects");
+      folded.delete(`project:${open.id}`);
+      following = true;
+      void tick().then(showCurrent);
+    });
+  });
 
   const listedProjects = $derived(activeProjects(workspace.projects, workspace.project));
 

@@ -1,4 +1,4 @@
-import { api } from "./api.js";
+import { api, BACKGROUND } from "./api.js";
 import type { CustomerSummary, ProjectSummary } from "./customers.js";
 
 // What the side menu works from: the customers someone can pick, the one that's
@@ -15,7 +15,10 @@ export const workspace = $state<{
   project: ProjectSummary | null;
   // Goes up on every refresh, so open pages can check they're still allowed.
   checks: number;
-}>({ customers: null, customerId: null, projects: null, project: null, checks: 0 });
+  // Whether the last refresh was the timer's own, not someone's doing: what open pages
+  // ask because of it is asked the same way (see BACKGROUND in api.ts).
+  background: boolean;
+}>({ customers: null, customerId: null, projects: null, project: null, checks: 0, background: false });
 
 let lastRefresh = 0;
 
@@ -51,30 +54,36 @@ function remembered(): number | null {
   }
 }
 
-async function loadProjects(): Promise<void> {
+async function loadProjects(headers: Record<string, string> = {}): Promise<void> {
   const open = openCustomer();
   workspace.projects =
     open?.visibility === "full"
-      ? await api<ProjectSummary[]>("GET", `/customers/${open.id}/projects`).catch(() => [])
+      ? await api<ProjectSummary[]>("GET", `/customers/${open.id}/projects`, undefined, headers).catch(() => [])
       : null;
 }
 
-/** Fetch the customers again (names, counts) and the open one's projects. */
-export async function refreshWorkspace(): Promise<void> {
+/**
+ * Fetch the customers again (names, counts) and the open one's projects. In the
+ * background (the timer's refresh, or coming back to the page) it doesn't count as
+ * activity, so the menu keeping itself up to date never keeps a session alive.
+ */
+export async function refreshWorkspace(background = false): Promise<void> {
   lastRefresh = Date.now();
-  const found = await api<CustomerSummary[]>("GET", "/customers").catch(() => null);
+  const headers = background ? { ...BACKGROUND } : {};
+  const found = await api<CustomerSummary[]>("GET", "/customers", undefined, headers).catch(() => null);
   // A failed request (offline, signed out) keeps what's there rather than emptying it.
   if (found === null && workspace.customers !== null) return;
   workspace.customers = found ?? [];
   if (workspace.customerId === null) workspace.customerId = remembered();
   if (workspace.customerId !== null && !openCustomer()) workspace.customerId = null;
-  await loadProjects();
+  await loadProjects(headers);
+  workspace.background = background;
   workspace.checks++;
 }
 
 /** Refresh unless that happened in the last few seconds (as on every page change). */
-export function refreshSoon(): void {
-  if (Date.now() - lastRefresh > 15_000) void refreshWorkspace();
+export function refreshSoon(background = false): void {
+  if (Date.now() - lastRefresh > 15_000) void refreshWorkspace(background);
 }
 
 /**
@@ -84,10 +93,10 @@ export function refreshSoon(): void {
  */
 export function watchWorkspace(): () => void {
   const visible = () => {
-    if (document.visibilityState === "visible") refreshSoon();
+    if (document.visibilityState === "visible") refreshSoon(true);
   };
   const timer = setInterval(() => {
-    if (document.visibilityState === "visible") void refreshWorkspace();
+    if (document.visibilityState === "visible") void refreshWorkspace(true);
   }, 60_000);
   document.addEventListener("visibilitychange", visible);
   window.addEventListener("focus", visible);

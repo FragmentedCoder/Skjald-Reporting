@@ -187,6 +187,71 @@ describe("a person picked from the company", () => {
     expect(find(after.blocks, "b_done")).toMatchObject({ label: "Procedure performed by", text: "Freja Holm" });
     expect(find(after.blocks, "b_donetext")).toMatchObject({ text: `Freja Holm, ${people[0].job_title}` });
   });
+
+  it("offers a report's people by whether they're technicians, reviewers or on the project's team", () => {
+    const c = content();
+    const details = { first_name: "", middle_name: "", last_name: "", job_title: "", department: "", company: "Nordlys IT ApS", email: "", phone: "" };
+    // As a report gives them (backend/app/reports/routes.py PersonOut).
+    const people = [
+      { id: "4", technician: true, reviewer: false, on_team: true, display_name: "Astrid Fjeld", ...details },
+      { id: "5", technician: true, reviewer: false, on_team: false, display_name: "Tor Dahl", ...details },
+      { id: "6", technician: false, reviewer: true, on_team: true, display_name: "Rasmus Holm", ...details },
+      { id: "7", technician: true, reviewer: true, on_team: false, display_name: "Bo Berg", ...details },
+      { id: "8", technician: false, reviewer: false, on_team: false, display_name: "Mona Lind", ...details },
+    ];
+    const question = { ...c.form[0].questions[0], id: "q_lead", key: "lead", type: "person", label: "Who led the work", required: false, settings: {} };
+    const offered = (who: string) => peopleFor({ ...question, settings: { who } }, people).map((p) => p.display_name);
+    expect(offered("technicians")).toEqual(["Astrid Fjeld", "Tor Dahl", "Bo Berg"]);
+    expect(offered("reviewers")).toEqual(["Rasmus Holm", "Bo Berg"]);
+    expect(offered("team")).toEqual(["Astrid Fjeld", "Rasmus Holm"]);
+    expect(offered("everyone")).toHaveLength(5);
+    // A question that doesn't say asks for technicians.
+    expect(peopleFor(question, people)).toHaveLength(3);
+    // The builder's two sample people are both offered for the team.
+    expect(peopleFor({ ...question, settings: { who: "team" } }, samplePeople(sampleContext()))).toHaveLength(2);
+
+    // Picked, the person prints as the server kept them: their ID and their details.
+    c.form[0].questions.push(question);
+    c.layout.push({ id: "b_lead", kind: "answer", visible_when: null, question: "q_lead", show_label: false });
+    const model = preview(input(c, { ...c.sample.answers, q_lead: { id: "4", display_name: "Astrid Fjeld", ...details } }));
+    expect(model.errors).toEqual([]);
+    expect(find(model.blocks, "b_lead")).toMatchObject({ text: "Astrid Fjeld" });
+    expect(model.values.lead).toMatchObject({ filled: true, display_name: "Astrid Fjeld", company: "Nordlys IT ApS" });
+  });
+});
+
+describe("a secret kept in a report", () => {
+  // The server gives a kept secret out masked: that it's filled in, and how the PDF prints it.
+  const masked = { masked: true, printed: "So••••••rd" };
+
+  it("is read as filled in, and printed as the server says", () => {
+    const c = content();
+    c.layout.push({ id: "b_secret", kind: "answer", visible_when: null, question: "q_credentials", show_label: true });
+    const model = preview(input(c, { ...c.sample.answers, q_credentials: masked }));
+    expect(model.errors).toEqual([]);
+    expect(model.values.credentials).toEqual({ filled: true, printed: "So••••••rd" });
+    expect(find(model.blocks, "b_secret")).toMatchObject({ label: "New portal admin password", text: "So••••••rd" });
+    // Rules that ask whether it's filled in show what they did for a secret typed in "Try it".
+    expect(find(model.blocks, "b_credhead")).toBeDefined();
+    expect(words((find(model.blocks, "b_credtext") as { content: { content?: unknown[] } }).content))
+      .toBe("The portal admin password was changed to So••••••rd. The full password was given to Mette Lund by phone.");
+  });
+
+  it("is filled in even when the template leaves it out of the PDF", () => {
+    const c = content();
+    c.layout.push({ id: "b_secret", kind: "answer", visible_when: null, question: "q_credentials", show_label: false });
+    const model = preview(input(c, { ...c.sample.answers, q_credentials: { masked: true, printed: "" } }));
+    expect(model.values.credentials).toEqual({ filled: true, printed: "" });
+    expect(find(model.blocks, "b_secret")).toMatchObject({ text: "" });
+  });
+
+  it("still prints a secret typed in the browser, as \"Try it\" keeps them", () => {
+    const c = content();
+    c.layout.push({ id: "b_secret", kind: "answer", visible_when: null, question: "q_credentials", show_label: false });
+    const model = preview(input(c));
+    expect(model.values.credentials).toEqual({ filled: true, printed: "Hu••••••in" });
+    expect(find(model.blocks, "b_secret")).toMatchObject({ text: "Hu••••••in" });
+  });
 });
 
 describe("signature questions", () => {

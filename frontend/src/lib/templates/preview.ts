@@ -11,7 +11,7 @@ import { formatNumber } from "#lib/cel/numbers.js";
 import { fieldType, PERSON_PARTS, settingsOf } from "./fields";
 import { repeatedColumns, shownAs, type LabelColumn, type LabelContext } from "./labels";
 import { CONTEXT_GROUPS, declarations, ITEM } from "./names";
-import { printed } from "./secrets";
+import { maskedSecret, printed } from "./secrets";
 import { signed } from "./signature";
 import { docText, interpolations } from "./text";
 import { questionsOf, type Block, type Id, type Question, type RichNode, type RichText, type Signer, type TemplateContent, type Tone } from "./types";
@@ -95,8 +95,13 @@ export function sampleContext(custom: { customer?: Record<string, unknown>; proj
   return context;
 }
 
-/** Someone a person question can pick: their business details, as author and reviewer have them. */
-export type Person = { id: string; role: "technician" | "reviewer" } & Record<(typeof PERSON_PARTS)[number], string>;
+/**
+ * Someone a person question can pick: their business details, as author and reviewer
+ * have them. The builder's two sample people have a role; a report's people say
+ * whether they're a technician, a reviewer and on the project's team.
+ */
+export type Person = { id: string; role?: "technician" | "reviewer"; technician?: boolean; reviewer?: boolean; on_team?: boolean }
+  & Record<(typeof PERSON_PARTS)[number], string>;
 
 /**
  * The people a person question offers in the builder: the sample report's author (a
@@ -108,17 +113,28 @@ export function samplePeople(context: Record<string, Record<string, unknown>>): 
   return [one("sample-author", "technician", context.author), one("sample-reviewer", "reviewer", context.reviewer)].filter((p) => p.display_name);
 }
 
-/** The people a person question lets the technician pick among. */
+/**
+ * The people a person question lets the technician pick among: the technicians, the
+ * reviewers, the project's team or everyone, as the question asks. The server takes
+ * nobody else (backend/app/reports/routes.py).
+ */
 export function peopleFor(question: Question, people: Person[]): Person[] {
   const who = settingsOf(question.type, question.settings).who;
-  return people.filter((p) => (who === "technicians" ? p.role === "technician" : who === "reviewers" ? p.role === "reviewer" : true));
+  return people.filter((p) => {
+    if (who === "technicians") return p.technician ?? p.role === "technician";
+    if (who === "reviewers") return p.reviewer ?? p.role === "reviewer";
+    // The sample people don't say: both are on the sample report's project.
+    if (who === "team") return p.on_team ?? true;
+    return true;
+  });
 }
 
 // Answers as expressions read them
 
 /**
- * One answer as expressions see it: a secret only as it prints, a photo only whether
- * there is one, a signature by who confirmed it and when.
+ * One answer as expressions see it: a secret only as it prints (a report's kept secret
+ * comes masked, with how it prints), a photo only whether there is one, a signature by
+ * who confirmed it and when.
  */
 export function answerValue(question: Question, raw: unknown): unknown {
   const settings = settingsOf(question.type, question.settings);
@@ -126,6 +142,9 @@ export function answerValue(question: Question, raw: unknown): unknown {
     case "rich_text":
       return raw && typeof raw === "object" ? docText(raw as RichText) : typeof raw === "string" ? raw : "";
     case "secret": {
+      // A secret kept in a report arrives masked: filled in, and printed as the server says.
+      const kept = maskedSecret(raw);
+      if (kept) return { filled: true, printed: kept.printed };
       const secret = typeof raw === "string" ? raw : "";
       return { filled: secret !== "", printed: printed(secret, settings.pdf as "partial" | "omit") };
     }
@@ -400,7 +419,7 @@ class Worker {
         return { ...none, text: (Array.isArray(raw) ? raw : []).map((v) => options.find((o) => o.value === v)?.label ?? String(v)).join(", ") };
       }
       case "secret":
-        return { ...none, text: printed(String(raw ?? ""), s.pdf as "partial" | "omit") };
+        return { ...none, text: maskedSecret(raw)?.printed ?? printed(String(raw ?? ""), s.pdf as "partial" | "omit") };
       case "cvss": {
         const v = (raw ?? {}) as { vector?: string; score?: number; severity?: string };
         return { ...none, text: v.vector ? `${formatNumber(Number(v.score ?? 0), 1, locale.decimal, locale.group)} ${v.severity ?? ""} (${v.vector})` : "" };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Style } from "./api";
-import { imageOf } from "./preview.svelte";
+import { imageOf, readsStyles } from "./preview.svelte";
 import { emptyContent } from "./resolve";
 
 const OWN = "1".repeat(64);
@@ -24,5 +24,19 @@ describe("where a style's pictures load from", () => {
     expect(imageOf(style, 9)(OWN)).toBe("/api/styles/7/assets/" + OWN);
     // The Skjald default has no pictures.
     expect(imageOf(style, null)(BASE)).toBeNull();
+  });
+});
+
+describe("who may read styles", () => {
+  it("is those who edit styles, build templates or manage customers", () => {
+    expect(readsStyles(["edit_styles"])).toBe(true);
+    expect(readsStyles(["build_templates", "edit_library"])).toBe(true);
+    expect(readsStyles(["manage_customers", "manage_projects"])).toBe(true);
+  });
+
+  it("isn't a technician or a reviewer, whose report preview keeps the Skjald default", () => {
+    expect(readsStyles(["create_reports", "fill_in_reports", "edit_library", "check_signed_reports"])).toBe(false);
+    expect(readsStyles(["review_and_countersign", "check_signed_reports"])).toBe(false);
+    expect(readsStyles([])).toBe(false);
   });
 });

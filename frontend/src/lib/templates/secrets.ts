@@ -11,3 +11,19 @@ export function printed(secret: string, how: "partial" | "omit" = "partial"): st
   const shown = Math.min(3, Math.floor(Math.floor(characters.length / 4) / 2));
   return characters.slice(0, shown).join("") + DOTS + (shown ? characters.slice(-shown).join("") : "");
 }
+
+/**
+ * A secret kept in a report, as it reaches the browser: never its value, only that
+ * it's filled in and how the PDF prints it (backend/app/reports/answers.py).
+ */
+export interface MaskedSecret {
+  masked: true;
+  printed: string;
+}
+
+/** The masked secret an answer holds, or null when it holds anything else: a value typed here, or nothing. */
+export function maskedSecret(raw: unknown): MaskedSecret | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const { masked, printed: prints } = raw as Record<string, unknown>;
+  return masked === true ? { masked: true, printed: typeof prints === "string" ? prints : "" } : null;
+}
