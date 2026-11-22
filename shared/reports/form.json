@@ -1,0 +1,4097 @@
+{
+ "about": "What a report's form comes to for a set of answers, the same on the server (backend/app/reports/form.py, with Google's engine) and in the browser (frontend/src/lib/templates/preview.ts and formChecks.ts, with cel-js): what expressions read (values, by variable name, a moment as ISO text in UTC), what unanswered questions start as (defaults, by question ID, as answers are kept), what the form hides and requires, which answers their own rule refuses (invalid), and everything that keeps the report from going for review (missing). Each case is a form (the template's steps; language is en unless given), answers by question ID as they're kept (a question that isn't there isn't answered yet; null was cleared on purpose), and where it matters the time zone (Europe/Copenhagen otherwise), the shared library, and context: values laid over the sample context in shared/templates/names.json. errors lists the elements whose expressions fail, in order; a message is given where it's Skjald's own sentence, which both sides must say, and left out where each engine words the failure its own way. Everything is fictional.",
+ "cases": [
+  {
+   "name": "what expressions read of each kind of answer",
+   "form": [
+    {
+     "id": "s_kinds",
+     "title": "Step",
+     "questions": [
+      {
+       "id": "q_text",
+       "key": "text",
+       "type": "text",
+       "label": "Text"
+      },
+      {
+       "id": "q_long",
+       "key": "long",
+       "type": "rich_text",
+       "label": "Long"
+      },
+      {
+       "id": "q_amount",
+       "key": "amount",
+       "type": "number",
+       "label": "Amount",
+       "settings": {
+        "whole": false
+       }
+      },
+      {
+       "id": "q_count",
+       "key": "count",
+       "type": "number",
+       "label": "Count",
+       "settings": {
+        "whole": true
+       }
+      },
+      {
+       "id": "q_when",
+       "key": "when",
+       "type": "datetime",
+       "label": "When",
+       "settings": {
+        "mode": "datetime"
+       }
+      },
+      {
+       "id": "q_agreed",
+       "key": "agreed",
+       "type": "yes_no",
+       "label": "Agreed"
+      },
+      {
+       "id": "q_level",
+       "key": "level",
+       "type": "dropdown",
+       "label": "Level",
+       "settings": {
+        "options": [
+         {
+          "value": "low",
+          "label": "Low"
+         },
+         {
+          "value": "medium",
+          "label": "Medium"
+         },
+         {
+          "value": "high",
+          "label": "High"
+         }
+        ]
+       }
+      },
+      {
+       "id": "q_levels",
+       "key": "levels",
+       "type": "multi_select",
+       "label": "Levels",
+       "settings": {
+        "options": [
+         {
+          "value": "low",
+          "label": "Low"
+         },
+         {
+          "value": "medium",
+          "label": "Medium"
+         },
+         {
+          "value": "high",
+          "label": "High"
+         }
+        ]
+       }
+      },
+      {
+       "id": "q_address",
+       "key": "address",
+       "type": "ip",
+       "label": "Address"
+      },
+      {
+       "id": "q_host",
+       "key": "host",
+       "type": "hostname",
+       "label": "Host"
+      },
+      {
+       "id": "q_card",
+       "key": "card",
+       "type": "mac",
+       "label": "Card"
+      },
+      {
+       "id": "q_serial",
+       "key": "serial",
+       "type": "serial",
+       "label": "Serial"
+      },
+      {
+       "id": "q_mail",
+       "key": "mail",
+       "type": "email",
+       "label": "Mail"
+      },
+      {
+       "id": "q_phone",
+       "key": "phone",
+       "type": "phone",
+       "label": "Phone"
+      },
+      {
+       "id": "q_code",
+       "key": "code",
+       "type": "barcode",
+       "label": "Code"
+      },
+      {
+       "id": "q_score",
+       "key": "score",
+       "type": "cvss",
+       "label": "Score"
+      },
+      {
+       "id": "q_newer",
+       "key": "newer",
+       "type": "cvss",
+       "label": "Newer"
+      },
+      {
+       "id": "q_password",
+       "key": "password",
+       "type": "secret",
+       "label": "Password"
+      },
+      {
+       "id": "q_hidden",
+       "key": "hidden",
+       "type": "secret",
+       "label": "Hidden",
+       "settings": {
+        "pdf": "omit"
+       }
+      },
+      {
+       "id": "q_logs",
+       "key": "logs",
+       "type": "file",
+       "label": "Logs",
+       "settings": {
+        "multiple": true
+       }
+      },
+      {
+       "id": "q_photos",
+       "key": "photos",
+       "type": "photo",
+       "label": "Photos"
+      },
+      {
+       "id": "q_who1",
+       "key": "who",
+       "type": "person",
+       "label": "Who"
+      },
+      {
+       "id": "q_signed",
+       "key": "signed",
+       "type": "signature",
+       "label": "Signed"
+      },
+      {
+       "id": "q_part",
+       "key": null,
+       "type": "heading",
+       "label": "A heading asks nothing"
+      },
+      {
+       "id": "q_empty",
+       "key": "empty",
+       "type": "calculated",
+       "label": "Empty",
+       "value": "!has(answers.text) && answers.long == \"\" && answers.amount == 0.0 && answers.count == 0 && !has(answers.when) && !answers.agreed && answers.level == \"\" && answers.levels.size() == 0 && answers.score.score == 0.0 && !answers.password.filled && answers.logs.count == 0 && !answers.who.filled && answers.who.email == \"\" && !answers.signed.filled && answers.signed.name == \"\" && !has(answers.signed.time)",
+       "settings": {
+        "result": "yes_no"
+       }
+      }
+     ]
+    }
+   ],
+   "answers": {
+    "q_text": "Portal sign-in",
+    "q_long": {
+     "type": "doc",
+     "content": [
+      {
+       "type": "paragraph",
+       "content": [
+        {
+         "type": "text",
+         "text": "Blocked at the firewall."
+        },
+        {
+         "type": "hardBreak"
+        },
+        {
+         "type": "text",
+         "text": "No accounts taken over."
+        }
+       ]
+      },
+      {
+       "type": "bulletList",
+       "content": [
+        {
+         "type": "listItem",
+         "content": [
+          {
+           "type": "paragraph",
+           "content": [
+            {
+             "type": "text",
+             "text": "Rate limiting on"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    "q_amount": 3,
+    "q_count": 2.7,
+    "q_when": "2026-10-21T03:14:00+02:00",
+    "q_agreed": false,
+    "q_level": "high",
+    "q_levels": [
+     "low",
+     "high"
+    ],
+    "q_address": "198.51.100.23",
+    "q_host": "srv-01.fjordvik.example",
+    "q_card": "00:1A:2B:3C:4D:5E",
+    "q_serial": "SN-2291-A",
+    "q_mail": "mette.lund@fjordvik.example",
+    "q_phone": "+45 76 10 20 30",
+    "q_code": "5701234567890",
+    "q_score": {
+     "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+     "score": 9.8,
+     "severity": "Critical"
+    },
+    "q_newer": {
+     "vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N",
+     "score": 9.3,
+     "severity": "Critical"
+    },
+    "q_password": "Hunter2-portal-admin",
+    "q_hidden": "Hunter2-portal-admin",
+    "q_logs": [
+     "auth.log",
+     "fw.log"
+    ],
+    "q_photos": [],
+    "q_who1": {
+     "id": "0d6c7a54-6a55-4f0b-9c0e-2f8f0c1d7e11",
+     "role": "technician",
+     "display_name": "Freja Holm",
+     "first_name": "Freja",
+     "middle_name": "",
+     "last_name": "Holm",
+     "job_title": "Security consultant",
+     "department": "Incident response",
+     "company": "Nordlys IT ApS",
+     "email": "freja.holm@nordlys.example",
+     "phone": "+45 70 20 30 41"
+    },
+    "q_signed": {
+     "name": "Mette Lund",
+     "confirmed": true,
+     "at": "2026-10-21T08:05:00Z"
+    }
+   },
+   "expect": {
+    "hidden": [],
+    "required": [],
+    "invalid": {},
+    "values": {
+     "text": "Portal sign-in",
+     "long": "Blocked at the firewall.\nNo accounts taken over.\nRate limiting on",
+     "amount": 3,
+     "count": 2,
+     "when": "2026-10-21T01:14:00.000Z",
+     "agreed": false,
+     "level": "high",
+     "levels": [
+      "low",
+      "high"
+     ],
+     "address": "198.51.100.23",
+     "host": "srv-01.fjordvik.example",
+     "card": "00:1A:2B:3C:4D:5E",
+     "serial": "SN-2291-A",
+     "mail": "mette.lund@fjordvik.example",
+     "phone": "+45 76 10 20 30",
+     "code": "5701234567890",
+     "score": {
+      "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+      "score": 9.8,
+      "severity": "Critical"
+     },
+     "newer": {
+      "vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N",
+      "score": 9.3,
+      "severity": "Critical"
+     },
+     "password": {
+      "filled": true,
+      "printed": "Hu••••••in"
+     },
+     "hidden": {
+      "filled": true,
+      "printed": ""
+     },
+     "logs": {
+      "filled": true,
+      "count": 2
+     },
+     "photos": {
+      "filled": false,
+      "count": 0
+     },
+     "who": {
+      "filled": true,
+      "display_name": "Freja Holm",
+      "first_name": "Freja",
+      "middle_name": "",
+      "last_name": "Holm",
+      "job_title": "Security consultant",
+      "department": "Incident response",
+      "company": "Nordlys IT ApS",
+      "email": "freja.holm@nordlys.example",
+      "phone": "+45 70 20 30 41"
+     },
+     "signed": {
+      "filled": true,
+      "name": "Mette Lund",
+      "time": "2026-10-21T08:05:00.000Z"
+     },
+     "empty": false
+    },
+    "defaults": {},
+    "missing": [
+     {
+      "step": "s_kinds",
+      "question": "q_count",
+      "message": "Enter a whole number."
+     }
+    ],
+    "errors": []
+   }
+  },
+  {
+   "name": "what expressions read where nothing is answered: each kind's empty value",
+   "form": [
+    {
+     "id": "s_kinds",
+     "title": "Step",
+     "questions": [
+      {
+       "id": "q_text",
+       "key": "text",
+       "type": "text",
+       "label": "Text"
+      },
+      {
+       "id": "q_long",
+       "key": "long",
+       "type": "rich_text",
+       "label": "Long"
+      },
+      {
+       "id": "q_amount",
+       "key": "amount",
+       "type": "number",
+       "label": "Amount",
+       "settings": {
+        "whole": false
+       }
+      },
+      {
+       "id": "q_count",
+       "key": "count",
+       "type": "number",
+       "label": "Count",
+       "settings": {
+        "whole": true
+       }
+      },
+      {
+       "id": "q_when",
+       "key": "when",
+       "type": "datetime",
+       "label": "When",
+       "settings": {
+        "mode": "datetime"
+       }
+      },
+      {
+       "id": "q_agreed",
+       "key": "agreed",
+       "type": "yes_no",
+       "label": "Agreed"
+      },
+      {
+       "id": "q_level",
+       "key": "level",
+       "type": "dropdown",
+       "label": "Level",
+       "settings": {
+        "options": [
+         {
+          "value": "low",
+          "label": "Low"
+         },
+         {
+          "value": "medium",
+          "label": "Medium"
+         },
+         {
+          "value": "high",
+          "label": "High"
+         }
+        ]
+       }
+      },
+      {
+       "id": "q_levels",
+       "key": "levels",
+       "type": "multi_select",
+       "label": "Levels",
+       "settings": {
+        "options": [
+         {
+          "value": "low",
+          "label": "Low"
+         },
+         {
+          "value": "medium",
+          "label": "Medium"
+         },
+         {
+          "value": "high",
+          "label": "High"
+         }
+        ]
+       }
+      },
+      {
+       "id": "q_address",
+       "key": "address",
+       "type": "ip",
+       "label": "Address"
+      },
+      {
+       "id": "q_host",
+       "key": "host",
+       "type": "hostname",
+       "label": "Host"
+      },
+      {
+       "id": "q_card",
+       "key": "card",
+       "type": "mac",
+       "label": "Card"
+      },
+      {
+       "id": "q_serial",
+       "key": "serial",
+       "type": "serial",
+       "label": "Serial"
+      },
+      {
+       "id": "q_mail",
+       "key": "mail",
+       "type": "email",
+       "label": "Mail"
+      },
+      {
+       "id": "q_phone",
+       "key": "phone",
+       "type": "phone",
+       "label": "Phone"
+      },
+      {
+       "id": "q_code",
+       "key": "code",
+       "type": "barcode",
+       "label": "Code"
+      },
+      {
+       "id": "q_score",
+       "key": "score",
+       "type": "cvss",
+       "label": "Score"
+      },
+      {
+       "id": "q_newer",
+       "key": "newer",
+       "type": "cvss",
+       "label": "Newer"
+      },
+      {
+       "id": "q_password",
+       "key": "password",
+       "type": "secret",
+       "label": "Password"
+      },
+      {
+       "id": "q_hidden",
+       "key": "hidden",
+       "type": "secret",
+       "label": "Hidden",
+       "settings": {
+        "pdf": "omit"
+       }
+      },
+      {
+       "id": "q_logs",
+       "key": "logs",
+       "type": "file",
+       "label": "Logs",
+       "settings": {
+        "multiple": true
+       }
+      },
+      {
+       "id": "q_photos",
+       "key": "photos",
+       "type": "photo",
+       "label": "Photos"
+      },
+      {
+       "id": "q_who1",
+       "key": "who",
+       "type": "person",
+       "label": "Who"
+      },
+      {
+       "id": "q_signed",
+       "key": "signed",
+       "type": "signature",
+       "label": "Signed"
+      },
+      {
+       "id": "q_part",
+       "key": null,
+       "type": "heading",
+       "label": "A heading asks nothing"
+      },
+      {
+       "id": "q_empty",
+       "key": "empty",
+       "type": "calculated",
+       "label": "Empty",
+       "value": "!has(answers.text) && answers.long == \"\" && answers.amount == 0.0 && answers.count == 0 && !has(answers.when) && !answers.agreed && answers.level == \"\" && answers.levels.size() == 0 && answers.score.score == 0.0 && !answers.password.filled && answers.logs.count == 0 && !answers.who.filled && answers.who.email == \"\" && !answers.signed.filled && answers.signed.name == \"\" && !has(answers.signed.time)",
+       "settings": {
+        "result": "yes_no"
+       }
+      }
+     ]
+    }
+   ],
+   "answers": {},
+   "expect": {
+    "hidden": [],
+    "required": [],
+    "invalid": {},
+    "values": {
+     "text": null,
+     "long": "",
+     "amount": null,
+     "count": null,
+     "when": null,
+     "agreed": null,
+     "level": null,
+     "levels": null,
+     "address": null,
+     "host": null,
+     "card": null,
+     "serial": null,
+     "mail": null,
+     "phone": null,
+     "code": null,
+     "score": {
+      "vector": "",
+      "score": 0.0,
+      "severity": ""
+     },
+     "newer": {
+      "vector": "",
+      "score": 0.0,
+      "severity": ""
+     },
+     "password": {
+      "filled": false,
+      "printed": ""
+     },
+     "hidden": {
+      "filled": false,
+      "printed": ""
+     },
+     "logs": {
+      "filled": false,
+      "count": 0
+     },
+     "photos": {
+      "filled": false,
+      "count": 0
+     },
+     "who": {
+      "filled": false,
+      "display_name": "",
+      "first_name": "",
+      "middle_name": "",
+      "last_name": "",
+      "job_title": "",
+      "department": "",
+      "company": "",
+      "email": "",
+      "phone": ""
+     },
+     "signed": {
+      "filled": false,
+      "name": "",
+      "time": null
+     },
+     "empty": true
+    },
+    "defaults": {},
+    "missing": [],
+    "errors": []
+   }
+  },
+  {
+   "name": "a row's cells are their columns' kinds, and a blank cell its kind's empty value",
+   "form": [
+    {
+     "id": "s_rows",
+     "title": "Step",
+     "questions": [
+      {
+       "id": "q_ports",
+       "key": "ports",
+       "type": "repeating",
+       "label": "Ports",
+       "settings": {
+        "columns": [
+         {
+          "key": "host",
+          "label": "Host",
+          "type": "text"
+         },
+         {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "settings": {
+           "whole": true
+          }
+         },
+         {
+          "key": "hours",
+          "label": "Hours",
+          "type": "number"
+         },
+         {
+          "key": "open",
+          "label": "Open",
+          "type": "yes_no"
+         },
+         {
+          "key": "seen",
+          "label": "Seen",
+          "type": "datetime"
+         },
+         {
+          "key": "status",
+          "label": "Status",
+          "type": "dropdown",
+          "settings": {
+           "options": [
+            {
+             "value": "low",
+             "label": "Low"
+            },
+            {
+             "value": "medium",
+             "label": "Medium"
+            },
+            {
+             "value": "high",
+             "label": "High"
+            }
+           ]
+          }
+         }
+        ]
+       }
+      },
+      {
+       "id": "q_week",
+       "key": "week",
+       "type": "table",
+       "label": "Week",
+       "settings": {
+        "rows": [
+         {
+          "key": "mon",
+          "label": "Monday"
+         },
+         {
+          "key": "tue",
+          "label": "Tuesday"
+         }
+        ],
+        "columns": [
+         {
+          "key": "hours",
+          "label": "Hours",
+          "type": "number"
+         },
+         {
+          "key": "note",
+          "label": "Note",
+          "type": "text"
+         }
+        ]
+       }
+      },
+      {
+       "id": "q_billed",
+       "key": "billed",
+       "type": "calculated",
+       "label": "Billed",
+       "value": "sum(answers.ports.map(r, r.hours * 1.5))",
+       "settings": {
+        "result": "number"
+       }
+      },
+      {
+       "id": "q_total",
+       "key": "total",
+       "type": "calculated",
+       "label": "Total",
+       "value": "sum(answers.ports.map(r, r.port))",
+       "settings": {
+        "result": "whole"
+       }
+      },
+      {
+       "id": "q_open",
+       "key": "open",
+       "type": "calculated",
+       "label": "Open",
+       "value": "answers.ports.filter(r, r.open).size()",
+       "settings": {
+        "result": "whole"
+       }
+      },
+      {
+       "id": "q_seen",
+       "key": "seen",
+       "type": "calculated",
+       "label": "Seen",
+       "value": "answers.ports.filter(r, r.seen > report.started).size()",
+       "settings": {
+        "result": "whole"
+       }
+      },
+      {
+       "id": "q_never",
+       "key": "never",
+       "type": "calculated",
+       "label": "Never",
+       "value": "answers.ports.filter(r, format_date(r.seen, \"yyyy\") == \"\").size()",
+       "settings": {
+        "result": "whole"
+       }
+      },
+      {
+       "id": "q_first",
+       "key": "first",
+       "type": "calculated",
+       "label": "First",
+       "value": "format_date(answers.ports[0].seen, \"d MMMM yyyy, HH:mm\")",
+       "settings": {
+        "result": "text"
+       }
+      },
+      {
+       "id": "q_later",
+       "key": "later",
+       "type": "calculated",
+       "label": "Later",
+       "value": "answers.ports[0].seen > report.started && answers.ports[1].seen < report.started",
+       "settings": {
+        "result": "yes_no"
+       }
+      },
+      {
+       "id": "q_names",
+       "key": "names",
+       "type": "calculated",
+       "label": "Names",
+       "value": "answers.ports.map(r, r.host + \"/\" + r.status).join(\", \")",
+       "settings": {
+        "result": "text"
+       }
+      },
+      {
+       "id": "q_written",
+       "key": "written",
+       "type": "calculated",
+       "label": "Written",
+       "value": "answers.week.size()",
+       "settings": {
+        "result": "whole"
+       }
+      }
+     ]
+    }
+   ],
+   "answers": {
+    "q_ports": [
+     {
+      "host": "srv-01",
+      "port": 443,
+      "hours": 3,
+      "open": true,
+      "seen": "2026-10-21T22:30:00.000Z",
+      "status": "high"
+     },
+     {
+      "host": "",
+      "port": null,
+      "open": false,
+      "seen": null
+     },
+     null,
+     {
+      "host": "srv-02",
+      "port": 8443.0,
+      "hours": 2.5,
+      "open": true,
+      "seen": "not a date",
+      "status": "low"
+     }
+    ],
+    "q_week": [
+     {
+      "hours": 7.5,
+      "note": "On site"
+     }
+    ]
+   },
+   "expect": {
+    "hidden": [],
+    "required": [],
+    "invalid": {},
+    "values": {
+     "ports": [
+      {
+       "host": "srv-01",
+       "port": 443,
+       "hours": 3.0,
+       "open": true,
+       "seen": "2026-10-21T22:30:00.000Z",
+       "status": "high"
+      },
+      {
+       "host": "",
+       "port": 0,
+       "hours": 0.0,
+       "open": false,
+       "seen": "1970-01-01T00:00:00.000Z",
+       "status": ""
+      },
+      {
+       "host": "",
+       "port": 0,
+       "hours": 0.0,
+       "open": false,
+       "seen": "1970-01-01T00:00:00.000Z",
+       "status": ""
+      },
+      {
+       "host": "srv-02",
+       "port": 8443,
+       "hours": 2.5,
+       "open": true,
+       "seen": "1970-01-01T00:00:00.000Z",
+       "status": "low"
+      }
+     ],
+     "week": [
+      {
+       "hours": 7.5,
+       "note": "On site"
+      }
+     ],
+     "billed": 8.25,
+     "total": 8886,
+     "open": 2,
+     "seen": 1,
+     "never": 3,
+     "first": "22 October 2026, 00:30",
+     "later": true,
+     "names": "srv-01/high, /, /, srv-02/low",
+     "written": 1
+    },
+    "defaults": {},
+    "missing": [],
+    "errors": []
+   }
+  },
+  {
+   "name": "a whole number and a decimal one are different kinds",
+   "form": [
+    {
+     "id": "s_numbers",
+     "title": "Step",
+     "questions": [
+      {
+       "id": "q_count",
+       "key": "count",
+       "type": "number",
+       "label": "Count",
+       "settings": {
+        "whole": true
+       }
+      },
+      {
+       "id": "q_amount",
+       "key": "amount",
+       "type": "number",
+       "label": "Amount",
+       "valid_when": "answers.count > answers.amount"
+      },
+      {
+       "id": "q_half",
+       "key": "half",
+       "type": "calculated",
+       "label": "Half",
+       "value": "answers.count / 2",
+       "settings": {
+        "result": "whole"
+       }
+      },
+      {
+       "id": "q_share",
+       "key": "share",
+       "type": "calculated",
+       "label": "Share",
+       "value": "answers.amount / 2.0",
+       "settings": {
+        "result": "number"
+       }
+      },
+      {
+       "id": "q_both",
+       "key": "both",
+       "type": "calculated",
+       "label": "Both",
+       "value": "double(answers.count) + answers.amount",
+       "settings": {
+        "result": "number"
+       }
+      },
+      {
+       "id": "q_round",
+       "key": "round",
+       "type": "calculated",
+       "label": "Round",
+       "value": "answers.amount * 2.0",
+       "settings": {
+        "result": "whole"
+       }
+      },
+      {
+       "id": "q_plain",
+       "key": "plain",
+       "type": "calculated",
+       "label": "Plain",
+       "value": "answers.count + 1",
+       "settings": {
+        "result": "number"
+       }
+      }
+     ]
+    }
+   ],
+   "answers": {
+    "q_count": 7,
+    "q_amount": 7
+   },
+   "expect": {
+    "hidden": [],
+    "required": [],
+    "invalid": {},
+    "values": {
+     "count": 7,
+     "amount": 7,
+     "half": 3,
+     "share": 3.5,
+     "both": 14.0,
+     "round": 14,
+     "plain": 8.0
+    },
+    "defaults": {},
+    "missing": [],
+    "errors": [
+     {
+      "element": "q_amount",
+      "message": "A whole number can't be compared with a decimal: write 9.0 rather than 9, or convert one side with double() or int()."
+     }
+    ]
+   }
+  },
+  {
+   "name": "a date question starts as the day, a date and time question as the minute",
+   "form": [
+    {
+     "id": "s_dates",
+     "title": "Step",
+     "questions": [
+      {
+       "id": "q_day1",
+       "key": "day",
+       "type": "datetime",
+       "label": "Day",
+       "settings": {
+        "mode": "date"
+       },
+       "default": "report.date"
+      },
+      {
+       "id": "q_moment",
+       "key": "moment",
+       "type": "datetime",
+       "label": "Moment",
+       "default": "timestamp(\"2026-10-21T22:30:45Z\")"
+      },
+      {
+       "id": "q_shown",
+       "key": "shown",
+       "type": "calculated",
+       "label": "Shown",
+       "value": "format_date(answers.day, \"d MMMM yyyy HH:mm\")",
+       "settings": {
+        "result": "text"
+       }
+      },
+      {
+       "id": "q_apart",
+       "key": "apart",
+       "type": "calculated",
+       "label": "Apart",
+       "value": "days_between(answers.day, answers.moment)",
+       "settings": {
+        "result": "whole"
+       }
+      }
+     ]
+    }
+   ],
+   "context": {
+    "report": {
+     "date": "2026-10-21T22:30:00Z"
+    }
+   },
+   "answers": {},
+   "expect": {
+    "hidden": [],
+    "required": [],
+    "invalid": {},
+    "values": {
+     "day": "2026-10-21T22:00:00.000Z",
+     "moment": "2026-10-21T22:30:00.000Z",
+     "shown": "22 October 2026 00:00",
+     "apart": 0
+    },
+    "defaults": {
+     "q_day1": "2026-10-21T22:00:00.000Z",
+     "q_moment": "2026-10-21T22:30:00.000Z"
+    },
+    "missing": [],
+    "errors": []
+   }
+  },
+  {
+   "name": "the day is the company's: the same moment in New York",
+   "timezone": "America/New_York",
+   "form": [
+    {
+     "id": "s_dates",
+     "title": "Step",
+     "questions": [
+      {
+       "id": "q_day1",
+       "key": "day",
+       "type": "datetime",
+       "label": "Day",
+       "settings": {
+        "mode": "date"
+       },
+       "default": "report.date"
+      },
+      {
+       "id": "q_shown",
+       "key": "shown",
+       "type": "calculated",
+       "label": "Shown",
+       "value": "format_date(answers.day, \"d MMMM yyyy HH:mm\")",
+       "settings": {
+        "result": "text"
+       }
+      }
+     ]
+    }
+   ],
+   "context": {
+    "report": {
+     "date": "2026-10-21T22:30:00Z"
+    }
+   },
+   "answers": {},
+   "expect": {
+    "hidden": [],
+    "required": [],
+    "invalid": {},
+    "values": {
+     "day": "2026-10-21T04:00:00.000Z",
+     "shown": "21 October 2026 00:00"
+    },
+    "defaults": {
+     "q_day1": "2026-10-21T04:00:00.000Z"
+    },
+    "missing": [],
+    "errors": []
+   }
+  },
+  {
+   "name": "a day with no midnight starts an hour later (summer time starts at midnight in Havana)",
+   "timezone": "America/Havana",
+   "form": [
+    {
+     "id": "s_dates",
+     "title": "Step",
+     "questions": [
+      {
+       "id": "q_day1",
+       "key": "day",
+       "type": "datetime",
+       "label": "Day",
+       "settings": {
+        "mode": "date"
+       },
+       "default": "date(\"2026-03-08T12:00\")"
+      }
+     ]
+    }
+   ],
+   "answers": {},
+   "expect": {
+    "hidden": [],
+    "required": [],
+    "invalid": {},
+    "values": {
+     "day": "2026-03-08T05:00:00.000Z"
+    },
+    "defaults": {
+     "q_day1": "2026-03-08T05:00:00.000Z"
+    },
+    "missing": [],
+    "errors": []
+   }
+  },
+  {
+   "name": "a date kept with an offset is the same moment, and one not answered is no date",
+   "form": [
+    {
+     "id": "s_dates",
+     "title": "Step",
+     "questions": [
+      {
+       "id": "q_detected",
+       "key": "detected",
+       "type": "datetime",
+       "label": "Detected"
+      },
+      {
+       "id": "q_closed",
+       "key": "closed",
+       "type": "datetime",
+       "label": "Closed"
+      },
+      {
+       "id": "q_until",
+       "key": "until",
+       "type": "datetime",
+       "label": "Until",
+       "default": "answers.closed"
+      },
+      {
+       "id": "q_review",
+       "key": "review",
+       "type": "datetime",
+       "label": "Review",
+       "settings": {
+        "mode": "date"
+       },
+       "default": "add_days(answers.closed, 14)"
+      },
+      {
+       "id": "q_deadline",
+       "key": "deadline",
+       "type": "calculated",
+       "label": "Deadline",
+       "value": "add_hours(answers.detected, 72)",
+       "settings": {
+        "result": "date"
+       }
+      },
+      {
+       "id": "q_same",
+       "key": "same",
+       "type": "calculated",
+       "label": "Same",
+       "value": "answers.detected == timestamp(\"2026-10-21T01:14:00Z\")",
+       "settings": {
+        "result": "yes_no"
+       }
+      },
+      {
+       "id": "q_days",
+       "key": "days",
+       "type": "calculated",
+       "label": "Days",
+       "value": "days_between(answers.detected, report.date)",
+       "settings": {
+        "result": "whole"
+       }
+      },
+      {
+       "id": "q_none",
+       "key": "none",
+       "type": "calculated",
+       "label": "None",
+       "value": "!has(answers.closed) && format_date(answers.closed, \"d MMMM yyyy\") == \"\"",
+       "settings": {
+        "result": "yes_no"
+       }
+      },
+      {
+       "id": "q_still",
+       "key": "still",
+       "type": "calculated",
+       "label": "Still",
+       "value": "add_days(answers.closed, 14)",
+       "settings": {
+        "result": "date"
+       }
+      }
+     ]
+    }
+   ],
+   "answers": {
+    "q_detected": "2026-10-21T03:14:00+02:00"
+   },
+   "expect": {
+    "hidden": [],
+    "required": [],
+    "invalid": {},
+    "values": {
+     "detected": "2026-10-21T01:14:00.000Z",
+     "closed": null,
+     "until": null,
+     "review": null,
+     "deadline": "2026-10-24T01:14:00.000Z",
+     "same": true,
+     "days": 3,
+     "none": true,
+     "still": "1970-01-01T00:00:00.000Z"
+    },
+    "defaults": {},
+    "missing": [],
+    "errors": []
+   }
+  },
+  {
+   "name": "calculated values are worked out in the order they read each other, whatever the form's order",
+   "form": [
+    {
+     "id": "s_chain",
+     "title": "Step",
+     "questions": [
+      {
+       "id": "q_third",
+       "key": "third",
+       "type": "calculated",
+       "label": "Third",
+       "value": "answers.second + 1",
+       "settings": {
+        "result": "whole"
+       }
+      },
+      {
+       "id": "q_second",
+       "key": "second",
+       "type": "calculated",
+       "label": "Second",
+       "value": "answers.first * 2",
+       "settings": {
+        "result": "whole"
+       }
+      },
+      {
+       "id": "q_first",
+       "key": "first",
+       "type": "calculated",
+       "label": "First",
+       "value": "answers.base + 1",
+       "settings": {
+        "result": "whole"
+       }
+      },
+      {
+       "id": "q_base",
+       "key": "base",
+       "type": "number",
+       "label": "Base",
+       "settings": {
+        "whole": true
+       }
+      },
+      {
+       "id": "q_label",
+       "key": "label",
+       "type": "calculated",
+       "label": "Label",
+       "value": "answers.third > 10 ? \"many\" : \"few\"",
+       "settings": {
+        "result": "text"
+       },
+       "required": true
+      }
+     ]
+    }
+   ],
+   "answers": {
+    "q_base": 4
+   },
+   "expect": {
+    "hidden": [],
+    "required": [
+     "q_label"
+    ],
+    "invalid": {},
+    "values": {
+     "base": 4,
+     "first": 5,
+     "second": 10,
+     "third": 11,
+     "label": "many"
+    },
+    "defaults": {},
+    "missing": [],
+    "errors": []
+   }
+  },
+  {
+   "name": "a calculated value of another kind than it's set to give stays empty, and says so",
+   "form": [
+    {
+     "id": "s_kinds",
+     "title": "Step",
+     "questions": [
+      {
+       "id": "q_done",
+       "key": "done",
+       "type": "number",
+       "label": "Done",
+       "settings": {
+        "whole": true
+       }
+      },
+      {
+       "id": "q_all1",
+       "key": "all",
+       "type": "number",
+       "label": "All",
+       "settings": {
+        "whole": true
+       }
+      },
+      {
+       "id": "q_ratio",
+       "key": "ratio",
+       "type": "calculated",
+       "label": "Ratio",
+       "value": "double(answers.done) / double(answers.all)",
+       "settings": {
+        "result": "whole"
+       }
+      },
+      {
+       "id": "q_text",
+       "key": "text",
+       "type": "calculated",
+       "label": "Text",
+       "value": "answers.done",
+       "settings": {
+        "result": "text"
+       }
+      },
+      {
+       "id": "q_flag",
+       "key": "flag",
+       "type": "calculated",
+       "label": "Flag",
+       "value": "\"yes\"",
+       "settings": {
+        "result": "yes_no"
+       }
+      },
+      {
+       "id": "q_span",
+       "key": "span",
+       "type": "calculated",
+       "label": "Span",
+       "value": "report.date - report.started",
+       "settings": {
+        "result": "date"
+       }
+      },
+      {
+       "id": "q_list",
+       "key": "list",
+       "type": "calculated",
+       "label": "List",
+       "value": "[1, 2.5]",
+       "settings": {
+        "result": "number"
+       }
+      },
+      {
+       "id": "q_day1",
+       "key": "day",
+       "type": "calculated",
+       "label": "Day",
+       "value": "project.start_date",
+       "settings": {
+        "result": "text"
+       }
+      },
+      {
+       "id": "q_time",
+       "key": "time",
+       "type": "calculated",
+       "label": "Time",
+       "value": "report.date",
+       "settings": {
+        "result": "text"
+       }
+      },
+      {
+       "id": "q_yes1",
+       "key": "yes",
+       "type": "calculated",
+       "label": "Yes",
+       "value": "answers.done < answers.all",
+       "settings": {
+        "result": "text"
+       }
+      },
+      {
+       "id": "q_map1",
+       "key": "map",
+       "type": "calculated",
+       "label": "Map",
+       "value": "{\"a\": 1}",
+       "settings": {
+        "result": "text"
+       }
+      },
+      {
+       "id": "q_big1",
+       "key": "big",
+       "type": "calculated",
+       "label": "Big",
+       "value": "1.0e21",
+       "settings": {
+        "result": "text"
+       }
+      },
+      {
+       "id": "q_small",
+       "key": "small",
+       "type": "calculated",
+       "label": "Small",
+       "value": "0.00000015",
+       "settings": {
+        "result": "text"
+       }
+      },
+      {
+       "id": "q_whole",
+       "key": "whole",
+       "type": "calculated",
+       "label": "Whole",
+       "value": "double(answers.all)",
+       "settings": {
+        "result": "whole"
+       }
+      },
+      {
+       "id": "q_decimal",
+       "key": "decimal",
+       "type": "calculated",
+       "label": "Decimal",
+       "value": "answers.all",
+       "settings": {
+        "result": "number"
+       }
+      },
+      {
+       "id": "q_reads",
+       "key": "reads",
+       "type": "calculated",
+       "label": "Reads",
+       "value": "answers.ratio == 0 && !has(answers.text)",
+       "settings": {
+        "result": "yes_no"
+       }
+      }
+     ]
+    }
+   ],
+   "answers": {
+    "q_done": 3,
+    "q_all1": 4
+   },
+   "expect": {
+    "hidden": [],
+    "required": [],
+    "invalid": {},
+    "values": {
+     "done": 3,
+     "all": 4,
+     "ratio": null,
+     "text": null,
+     "flag": null,
+     "span": null,
+     "list": null,
+     "day": null,
+     "time": null,
+     "yes": null,
+     "map": null,
+     "big": null,
+     "small": null,
+     "whole": 4,
+     "decimal": 4.0,
+     "reads": true
+    },
+    "defaults": {},
+    "missing": [],
+    "errors": [
+     {
+      "element": "q_ratio",
+      "message": "This should give a whole number, but with these answers it gives 0.75."
+     },
+     {
+      "element": "q_text",
+      "message": "This should give text, but with these answers it gives 3."
+     },
+     {
+      "element": "q_flag",
+      "message": "This should give yes or no, but with these answers it gives yes."
+     },
+     {
+      "element": "q_span",
+      "message": "This should give a date and time, but with these answers it gives 3 days 1 hour 25 minutes."
+     },
+     {
+      "element": "q_list",
+      "message": "This should give a decimal number, but with these answers it gives 1, 2.5."
+     },
+     {
+      "element": "q_day1",
+      "message": "This should give text, but with these answers it gives 21 October 2026."
+     },
+     {
+      "element": "q_time",
+      "message": "This should give text, but with these answers it gives 24 October 2026, 11:30."
+     },
+     {
+      "element": "q_yes1",
+      "message": "This should give text, but with these answers it gives Yes."
+     },
+     {
+      "element": "q_map1",
+      "message": "This should give text, but with these answers it gives something else."
+     },
+     {
+      "element": "q_big1",
+      "message": "This should give text, but with these answers it gives 1e+21."
+     },
+     {
+      "element": "q_small",
+      "message": "This should give text, but with these answers it gives 1.5e-7."
+     }
+    ]
+   }
+  },
+  {
+   "name": "the same in Danish: what a value is printed as follows the report's language",
+   "language": "da",
+   "form": [
+    {
+     "id": "s_kinds",
+     "title": "Step",
+     "questions": [
+      {
+       "id": "q_ratio",
+       "key": "ratio",
+       "type": "calculated",
+       "label": "Ratio",
+       "value": "3.0 / 4.0",
+       "settings": {
+        "result": "whole"
+       }
+      },
+      {
+       "id": "q_flag",
+       "key": "flag",
+       "type": "calculated",
+       "label": "Flag",
+       "value": "report.revision == 1",
+       "settings": {
+        "result": "text"
+       }
+      },
+      {
+       "id": "q_span",
+       "key": "span",
+       "type": "calculated",
+       "label": "Span",
+       "value": "duration(\"36h1.5s\")",
+       "settings": {
+        "result": "date"
+       }
+      },
+      {
+       "id": "q_time",
+       "key": "time",
+       "type": "calculated",
+       "label": "Time",
+       "value": "report.date",
+       "settings": {
+        "result": "text"
+       }
+      },
+      {
+       "id": "q_small",
+       "key": "small",
+       "type": "calculated",
+       "label": "Small",
+       "value": "0.00000015",
+       "settings": {
+        "result": "text"
+       }
+      }
+     ]
+    }
+   ],
+   "answers": {},
+   "expect": {
+    "hidden": [],
+    "required": [],
+    "invalid": {},
+    "values": {
+     "ratio": null,
+     "flag": null,
+     "span": null,
+     "time": null,
+     "small": null
+    },
+    "defaults": {},
+    "missing": [],
+    "errors": [
+     {
+      "element": "q_ratio",
+      "message": "This should give a whole number, but with these answers it gives 0,75."
+     },
+     {
+      "element": "q_flag",
+      "message": "This should give text, but with these answers it gives Ja."
+     },
+     {
+      "element": "q_span",
+      "message": "This should give a date and time, but with these answers it gives 1 dag 12 timer 1,5 sekunder."
+     },
+     {
+      "element": "q_time",
+      "message": "This should give text, but with these answers it gives 24 oktober 2026, 11:30."
+     },
+     {
+      "element": "q_small",
+      "message": "This should give text, but with these answers it gives 1,5e-7."
+     }
+    ]
+   }
+  },
+  {
+   "name": "a calculated value that fails is its own question's failure, and reads as empty",
+   "form": [
+    {
+     "id": "s_fails",
+     "title": "Step",
+     "questions": [
+      {
+       "id": "q_all1",
+       "key": "all",
+       "type": "number",
+       "label": "All",
+       "settings": {
+        "whole": true
+       }
+      },
+      {
+       "id": "q_share",
+       "key": "share",
+       "type": "calculated",
+       "label": "Share",
+       "value": "100 / answers.all",
+       "settings": {
+        "result": "whole"
+       }
+      },
+      {
+       "id": "q_next",
+       "key": "next",
+       "type": "calculated",
+       "label": "Next",
+       "value": "answers.share + 1",
+       "settings": {
+        "result": "whole"
+       }
+      },
+      {
+       "id": "q_wrong",
+       "key": "wrong",
+       "type": "calculated",
+       "label": "Wrong",
+       "value": "answers.nothing",
+       "settings": {
+        "result": "text"
+       }
+      }
+     ]
+    }
+   ],
+   "answers": {},
+   "expect": {
+    "hidden": [],
+    "required": [],
+    "invalid": {},
+    "values": {
+     "all": null,
+     "next": 1
+    },
+    "defaults": {},
+    "missing": [],
+    "errors": [
+     {
+      "element": "q_share"
+     },
+     {
+      "element": "q_wrong",
+      "message": "answers.nothing isn't a name this template has."
+     }
+    ]
+   }
+  },
+  {
+   "name": "a start value can read a calculated value, and a calculated value a start value",
+   "form": [
+    {
+     "id": "s_starts",
+     "title": "Step",
+     "questions": [
+      {
+       "id": "q_score",
+       "key": "score",
+       "type": "number",
+       "label": "Score"
+      },
+      {
+       "id": "q_severity",
+       "key": "severity",
+       "type": "calculated",
+       "label": "Severity",
+       "value": "answers.score >= 9.0 ? \"Critical\" : \"Lower\"",
+       "settings": {
+        "result": "text"
+       }
+      },
+      {
+       "id": "q_note",
+       "key": "note",
+       "type": "text",
+       "label": "Note",
+       "default": "answers.severity"
+      },
+      {
+       "id": "q_shout",
+       "key": "shout",
+       "type": "calculated",
+       "label": "Shout",
+       "value": "answers.note + \"!\"",
+       "settings": {
+        "result": "text"
+       }
+      },
+      {
+       "id": "q_after",
+       "key": "after",
+       "type": "text",
+       "label": "After",
+       "default": "answers.note + \" again\""
+      },
+      {
+       "id": "q_before",
+       "key": "before",
+       "type": "text",
+       "label": "Before",
+       "default": "answers.last + \"?\""
+      },
+      {
+       "id": "q_last",
+       "key": "last",
+       "type": "text",
+       "label": "Last",
+       "default": "\"last\""
+      }
+     ]
+    }
+   ],
+   "answers": {
+    "q_score": 9.1
+   },
+   "expect": {
+    "hidden": [],
+    "required": [],
+    "invalid": {},
+    "values": {
+     "score": 9.1,
+     "note": "Critical",
+     "after": "Critical again",
+     "before": "?",
+     "last": "last",
+     "severity": "Critical",
+     "shout": "Critical!"
+    },
+    "defaults": {
+     "q_note": "Critical",
+     "q_after": "Critical again",
+     "q_before": "?",
+     "q_last": "last"
+    },
+    "missing": [],
+    "errors": []
+   }
+  },
+  {
+   "name": "what each kind of question starts as, and what's no start",
+   "form": [
+    {
+     "id": "s_starts",
+     "title": "Step",
+     "questions": [
+      {
+       "id": "q_agreed",
+       "key": "agreed",
+       "type": "yes_no",
+       "label": "Agreed",
+       "default": "report.revision == 1"
+      },
+      {
+       "id": "q_level",
+       "key": "level",
+       "type": "dropdown",
+       "label": "Level",
+       "settings": {
+        "options": [
+         {
+          "value": "low",
+          "label": "Low"
+         },
+         {
+          "value": "medium",
+          "label": "Medium"
+         },
+         {
+          "value": "high",
+          "label": "High"
+         }
+        ]
+       },
+       "default": "\"medium\""
+      },
+      {
+       "id": "q_count",
+       "key": "count",
+       "type": "number",
+       "label": "Count",
+       "settings": {
+        "whole": true
+       },
+       "default": "5.0 / 2.0"
+      },
+      {
+       "id": "q_amount",
+       "key": "amount",
+       "type": "number",
+       "label": "Amount",
+       "default": "report.revision"
+      },
+      {
+       "id": "q_long",
+       "key": "long",
+       "type": "rich_text",
+       "label": "Long",
+       "default": "customer.name"
+      },
+      {
+       "id": "q_site",
+       "key": "site",
+       "type": "text",
+       "label": "Site",
+       "default": "site.name"
+      },
+      {
+       "id": "q_none",
+       "key": "none",
+       "type": "text",
+       "label": "None",
+       "default": "\"\""
+      },
+      {
+       "id": "q_kind",
+       "key": "kind",
+       "type": "number",
+       "label": "Kind",
+       "default": "\"seven\""
+      },
+      {
+       "id": "q_share",
+       "key": "share",
+       "type": "number",
+       "label": "Share",
+       "default": "1.0 / 0.0"
+      },
+      {
+       "id": "q_fails",
+       "key": "fails",
+       "type": "number",
+       "label": "Fails",
+       "settings": {
+        "whole": true
+       },
+       "default": "1 / 0"
+      },
+      {
+       "id": "q_levels",
+       "key": "levels",
+       "type": "multi_select",
+       "label": "Levels",
+       "settings": {
+        "options": [
+         {
+          "value": "low",
+          "label": "Low"
+         },
+         {
+          "value": "medium",
+          "label": "Medium"
+         },
+         {
+          "value": "high",
+          "label": "High"
+         }
+        ]
+       },
+       "default": "[\"low\", \"high\"]"
+      },
+      {
+       "id": "q_blank",
+       "key": "blank",
+       "type": "text",
+       "label": "Blank",
+       "default": "   "
+      }
+     ]
+    }
+   ],
+   "answers": {},
+   "expect": {
+    "hidden": [],
+    "required": [],
+    "invalid": {},
+    "values": {
+     "agreed": true,
+     "level": "medium",
+     "count": 2,
+     "amount": 1,
+     "long": "Fjordvik Logistik A/S",
+     "site": "Terminal 3",
+     "none": null,
+     "kind": null,
+     "share": null,
+     "fails": null,
+     "levels": null,
+     "blank": null
+    },
+    "defaults": {
+     "q_agreed": true,
+     "q_level": "medium",
+     "q_count": 2,
+     "q_amount": 1,
+     "q_long": "Fjordvik Logistik A/S",
+     "q_site": "Terminal 3"
+    },
+    "missing": [],
+    "errors": [
+     {
+      "element": "q_fails"
+     }
+    ]
+   }
+  },
+  {
+   "name": "a question cleared on purpose stays empty; one not answered yet starts as its rule says",
+   "form": [
+    {
+     "id": "s_cleared",
+     "title": "Step",
+     "questions": [
+      {
+       "id": "q_first",
+       "key": "first",
+       "type": "text",
+       "label": "First",
+       "default": "\"Esbjerg\"",
+       "required": true
+      },
+      {
+       "id": "q_second",
+       "key": "second",
+       "type": "text",
+       "label": "Second",
+       "default": "\"Esbjerg\"",
+       "required": true
+      },
+      {
+       "id": "q_third",
+       "key": "third",
+       "type": "text",
+       "label": "Third",
+       "default": "\"Esbjerg\"",
+       "required": true
+      },
+      {
+       "id": "q_reads",
+       "key": "reads",
+       "type": "calculated",
+       "label": "Reads",
+       "value": "answers.first + \"/\" + answers.second + \"/\" + answers.third",
+       "settings": {
+        "result": "text"
+       }
+      }
+     ]
+    }
+   ],
+   "answers": {
+    "q_second": null,
+    "q_third": "Aarhus"
+   },
+   "expect": {
+    "hidden": [],
+    "required": [
+     "q_first",
+     "q_second",
+     "q_third"
+    ],
+    "invalid": {},
+    "values": {
+     "first": "Esbjerg",
+     "second": null,
+     "third": "Aarhus",
+     "reads": "Esbjerg//Aarhus"
+    },
+    "defaults": {
+     "q_first": "Esbjerg"
+    },
+    "missing": [
+     {
+      "step": "s_cleared",
+      "question": "q_second",
+      "message": "is required."
+     }
+    ],
+    "errors": []
+   }
+  },
+  {
+   "name": "what the form hides isn't missing, though it's still required",
+   "form": [
+    {
+     "id": "s_shown",
+     "title": "Step",
+     "questions": [
+      {
+       "id": "q_found",
+       "key": "found",
+       "type": "yes_no",
+       "label": "Found",
+       "required": true
+      },
+      {
+       "id": "q_how1",
+       "key": "how",
+       "type": "text",
+       "label": "How",
+       "required": true,
+       "visible_when": "answers.found"
+      },
+      {
+       "id": "q_why1",
+       "key": "why",
+       "type": "text",
+       "label": "Why",
+       "required": true,
+       "visible_when": "!answers.found"
+      }
+     ]
+    },
+    {
+     "id": "s_attack",
+     "title": "Step",
+     "visible_when": "answers.found",
+     "questions": [
+      {
+       "id": "q_source",
+       "key": "source",
+       "type": "ip",
+       "label": "Source",
+       "required": true
+      },
+      {
+       "id": "q_extra",
+       "key": "extra",
+       "type": "text",
+       "label": "Extra"
+      }
+     ]
+    },
+    {
+     "id": "s_calm",
+     "title": "Step",
+     "visible_when": "!answers.found",
+     "questions": [
+      {
+       "id": "q_note",
+       "key": "note",
+       "type": "text",
+       "label": "Note",
+       "required": true
+      }
+     ]
+    }
+   ],
+   "answers": {
+    "q_found": false,
+    "q_source": "not an address"
+   },
+   "expect": {
+    "hidden": [
+     "q_how1",
+     "s_attack"
+    ],
+    "required": [
+     "q_found",
+     "q_how1",
+     "q_why1",
+     "q_source",
+     "q_note"
+    ],
+    "invalid": {},
+    "values": {
+     "found": false,
+     "how": null,
+     "why": null,
+     "source": "not an address",
+     "extra": null,
+     "note": null
+    },
+    "defaults": {},
+    "missing": [
+     {
+      "step": "s_shown",
+      "question": "q_why1",
+      "message": "is required."
+     },
+     {
+      "step": "s_calm",
+      "question": "q_note",
+      "message": "is required."
+     }
+    ],
+    "errors": []
+   }
+  },
+  {
+   "name": "required always, required by a rule, and a rule that takes it away",
+   "form": [
+    {
+     "id": "s_required",
+     "title": "Step",
+     "questions": [
+      {
+       "id": "q_found",
+       "key": "found",
+       "type": "yes_no",
+       "label": "Found",
+       "required": true
+      },
+      {
+       "id": "q_always",
+       "key": "always",
+       "type": "text",
+       "label": "Always",
+       "required": true
+      },
+      {
+       "id": "q_ruled",
+       "key": "ruled",
+       "type": "text",
+       "label": "Ruled",
+       "required_when": "answers.found"
+      },
+      {
+       "id": "q_spared",
+       "key": "spared",
+       "type": "text",
+       "label": "Spared",
+       "required": true,
+       "required_when": "!answers.found"
+      },
+      {
+       "id": "q_number",
+       "key": "number",
+       "type": "text",
+       "label": "Number",
+       "required_when": "report.revision"
+      },
+      {
+       "id": "q_part",
+       "key": null,
+       "type": "heading",
+       "label": "Part",
+       "required": true
+      },
+      {
+       "id": "q_sum1",
+       "key": "sum",
+       "type": "calculated",
+       "label": "Sum",
+       "value": "\"x\"",
+       "settings": {
+        "result": "text"
+       },
+       "required": true
+      }
+     ]
+    }
+   ],
+   "answers": {
+    "q_found": true
+   },
+   "expect": {
+    "hidden": [],
+    "required": [
+     "q_found",
+     "q_always",
+     "q_ruled",
+     "q_sum1"
+    ],
+    "invalid": {},
+    "values": {
+     "found": true,
+     "always": null,
+     "ruled": null,
+     "spared": null,
+     "number": null,
+     "sum": "x"
+    },
+    "defaults": {},
+    "missing": [
+     {
+      "step": "s_required",
+      "question": "q_always",
+      "message": "is required."
+     },
+     {
+      "step": "s_required",
+      "question": "q_ruled",
+      "message": "is required."
+     }
+    ],
+    "errors": []
+   }
+  },
+  {
+   "name": "an answer its own rule refuses, with the template's words or without",
+   "form": [
+    {
+     "id": "s_valid",
+     "title": "Step",
+     "questions": [
+      {
+       "id": "q_start",
+       "key": "start",
+       "type": "datetime",
+       "label": "Start"
+      },
+      {
+       "id": "q_end1",
+       "key": "end",
+       "type": "datetime",
+       "label": "End",
+       "valid_when": "answers.end > answers.start",
+       "valid_message": "The end must be after the start."
+      },
+      {
+       "id": "q_port",
+       "key": "port",
+       "type": "number",
+       "label": "Port",
+       "settings": {
+        "whole": true
+       },
+       "valid_when": "answers.port != 23"
+      },
+      {
+       "id": "q_fine",
+       "key": "fine",
+       "type": "text",
+       "label": "Fine",
+       "valid_when": "answers.fine != \"\"",
+       "valid_message": "Never shown."
+      },
+      {
+       "id": "q_kind",
+       "key": "kind",
+       "type": "text",
+       "label": "Kind",
+       "valid_when": "answers.kind"
+      },
+      {
+       "id": "q_empty",
+       "key": "empty",
+       "type": "text",
+       "label": "Empty",
+       "required": true,
+       "valid_when": "answers.empty != \"\""
+      }
+     ]
+    }
+   ],
+   "answers": {
+    "q_start": "2026-10-21T08:00:00.000Z",
+    "q_end1": "2026-10-21T07:00:00.000Z",
+    "q_port": 23,
+    "q_fine": "ok",
+    "q_kind": "x"
+   },
+   "expect": {
+    "hidden": [],
+    "required": [
+     "q_empty"
+    ],
+    "invalid": {
+     "q_end1": "The end must be after the start.",
+     "q_port": "This answer isn't valid.",
+     "q_empty": "This answer isn't valid."
+    },
+    "values": {
+     "start": "2026-10-21T08:00:00.000Z",
+     "end": "2026-10-21T07:00:00.000Z",
+     "port": 23,
+     "fine": "ok",
+     "kind": "x",
+     "empty": null
+    },
+    "defaults": {},
+    "missing": [
+     {
+      "step": "s_valid",
+      "question": "q_end1",
+      "message": "The end must be after the start."
+     },
+     {
+      "step": "s_valid",
+      "question": "q_port",
+      "message": "This answer isn't valid."
+     },
+     {
+      "step": "s_valid",
+      "question": "q_empty",
+      "message": "This answer isn't valid."
+     }
+    ],
+    "errors": []
+   }
+  },
+  {
+   "name": "each field's own problem: text, numbers and addresses",
+   "form": [
+    {
+     "id": "s_fields",
+     "title": "Step",
+     "questions": [
+      {
+       "id": "q_ticket",
+       "key": "ticket",
+       "type": "text",
+       "label": "Ticket",
+       "settings": {
+        "pattern": "^INC-[0-9]{4}$",
+        "pattern_message": "Write it as INC-0142."
+       }
+      },
+      {
+       "id": "q_plain",
+       "key": "plain",
+       "type": "text",
+       "label": "Plain",
+       "settings": {
+        "pattern": "^[a-z]+$"
+       }
+      },
+      {
+       "id": "q_short",
+       "key": "short",
+       "type": "text",
+       "label": "Short",
+       "settings": {
+        "max_length": 3
+       }
+      },
+      {
+       "id": "q_emoji",
+       "key": "emoji",
+       "type": "text",
+       "label": "Emoji",
+       "settings": {
+        "max_length": 3
+       }
+      },
+      {
+       "id": "q_ports",
+       "key": "ports",
+       "type": "number",
+       "label": "Ports",
+       "settings": {
+        "whole": true,
+        "min": 1,
+        "max": 65535
+       }
+      },
+      {
+       "id": "q_parts",
+       "key": "parts",
+       "type": "number",
+       "label": "Parts",
+       "settings": {
+        "whole": true
+       }
+      },
+      {
+       "id": "q_least",
+       "key": "least",
+       "type": "number",
+       "label": "Least",
+       "settings": {
+        "min": 0.5
+       }
+      },
+      {
+       "id": "q_most",
+       "key": "most",
+       "type": "number",
+       "label": "Most",
+       "settings": {
+        "max": 10
+       }
+      },
+      {
+       "id": "q_typed",
+       "key": "typed",
+       "type": "number",
+       "label": "Typed"
+      },
+      {
+       "id": "q_ipv4",
+       "key": "v4",
+       "type": "ip",
+       "label": "V4",
+       "settings": {
+        "versions": "v4"
+       }
+      },
+      {
+       "id": "q_net1",
+       "key": "net",
+       "type": "ip",
+       "label": "Net",
+       "settings": {
+        "cidr": "required"
+       }
+      },
+      {
+       "id": "q_host",
+       "key": "host",
+       "type": "hostname",
+       "label": "Host"
+      },
+      {
+       "id": "q_card",
+       "key": "card",
+       "type": "mac",
+       "label": "Card"
+      },
+      {
+       "id": "q_serial",
+       "key": "serial",
+       "type": "serial",
+       "label": "Serial",
+       "settings": {
+        "pattern": "^SN-[0-9]{4}$"
+       }
+      },
+      {
+       "id": "q_mail",
+       "key": "mail",
+       "type": "email",
+       "label": "Mail"
+      },
+      {
+       "id": "q_phone",
+       "key": "phone",
+       "type": "phone",
+       "label": "Phone"
+      },
+      {
+       "id": "q_score",
+       "key": "score",
+       "type": "cvss",
+       "label": "Score",
+       "settings": {
+        "versions": [
+         "4.0"
+        ]
+       }
+      },
+      {
+       "id": "q_broken",
+       "key": "broken",
+       "type": "cvss",
+       "label": "Broken"
+      }
+     ]
+    }
+   ],
+   "answers": {
+    "q_ticket": "142",
+    "q_plain": "ABC",
+    "q_short": "four",
+    "q_emoji": "🙂🙂🙂",
+    "q_ports": 70000,
+    "q_parts": 2.5,
+    "q_least": 0.25,
+    "q_most": 11,
+    "q_typed": "seven",
+    "q_ipv4": "2001:db8::5",
+    "q_net1": "198.51.100.0",
+    "q_host": "bad_host",
+    "q_card": "00:1A:2B",
+    "q_serial": "2291",
+    "q_mail": "mette.lund",
+    "q_phone": "call me",
+    "q_score": {
+     "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+     "score": 9.8,
+     "severity": "Critical"
+    },
+    "q_broken": {
+     "vector": "CVSS:3.1/AV:N",
+     "score": 0,
+     "severity": ""
+    }
+   },
+   "expect": {
+    "hidden": [],
+    "required": [],
+    "invalid": {},
+    "values": {
+     "ticket": "142",
+     "plain": "ABC",
+     "short": "four",
+     "emoji": "🙂🙂🙂",
+     "ports": 70000,
+     "parts": 2,
+     "least": 0.25,
+     "most": 11,
+     "typed": null,
+     "v4": "2001:db8::5",
+     "net": "198.51.100.0",
+     "host": "bad_host",
+     "card": "00:1A:2B",
+     "serial": "2291",
+     "mail": "mette.lund",
+     "phone": "call me",
+     "score": {
+      "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+      "score": 9.8,
+      "severity": "Critical"
+     },
+     "broken": {
+      "vector": "CVSS:3.1/AV:N",
+      "score": 0.0,
+      "severity": ""
+     }
+    },
+    "defaults": {},
+    "missing": [
+     {
+      "step": "s_fields",
+      "question": "q_ticket",
+      "message": "Write it as INC-0142."
+     },
+     {
+      "step": "s_fields",
+      "question": "q_plain",
+      "message": "This doesn't match what the template asks for."
+     },
+     {
+      "step": "s_fields",
+      "question": "q_short",
+      "message": "Keep it to 3 characters."
+     },
+     {
+      "step": "s_fields",
+      "question": "q_ports",
+      "message": "Enter a number from 1 to 65535."
+     },
+     {
+      "step": "s_fields",
+      "question": "q_parts",
+      "message": "Enter a whole number."
+     },
+     {
+      "step": "s_fields",
+      "question": "q_least",
+      "message": "Enter a number of at least 0.5."
+     },
+     {
+      "step": "s_fields",
+      "question": "q_most",
+      "message": "Enter a number of at most 10."
+     },
+     {
+      "step": "s_fields",
+      "question": "q_typed",
+      "message": "Enter a number."
+     },
+     {
+      "step": "s_fields",
+      "question": "q_ipv4",
+      "message": "Enter an IPv4 address, such as 198.51.100.23."
+     },
+     {
+      "step": "s_fields",
+      "question": "q_net1",
+      "message": "Add the prefix length, such as /24."
+     },
+     {
+      "step": "s_fields",
+      "question": "q_host",
+      "message": "Enter a host name, such as srv-01.fjordvik.example."
+     },
+     {
+      "step": "s_fields",
+      "question": "q_card",
+      "message": "Enter a MAC address: six pairs of hex digits, such as 00:1A:2B:3C:4D:5E."
+     },
+     {
+      "step": "s_fields",
+      "question": "q_serial",
+      "message": "This doesn't match what the template asks for."
+     },
+     {
+      "step": "s_fields",
+      "question": "q_mail",
+      "message": "Enter an email address, such as name@fjordvik.example."
+     },
+     {
+      "step": "s_fields",
+      "question": "q_phone",
+      "message": "Enter a phone number: digits, spaces and + ( ) - only."
+     },
+     {
+      "step": "s_fields",
+      "question": "q_score",
+      "message": "This template takes CVSS 4.0 vectors only."
+     },
+     {
+      "step": "s_fields",
+      "question": "q_broken",
+      "message": "Enter a CVSS 3.1 or 4.0 vector, such as CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H."
+     }
+    ],
+    "errors": []
+   }
+  },
+  {
+   "name": "each field's own problem: how many are chosen, how many rows, and a row's cells",
+   "form": [
+    {
+     "id": "s_lists",
+     "title": "Step",
+     "questions": [
+      {
+       "id": "q_few1",
+       "key": "few",
+       "type": "multi_select",
+       "label": "Few",
+       "settings": {
+        "options": [
+         {
+          "value": "low",
+          "label": "Low"
+         },
+         {
+          "value": "medium",
+          "label": "Medium"
+         },
+         {
+          "value": "high",
+          "label": "High"
+         }
+        ],
+        "min_selected": 2
+       }
+      },
+      {
+       "id": "q_many",
+       "key": "many",
+       "type": "multi_select",
+       "label": "Many",
+       "settings": {
+        "options": [
+         {
+          "value": "low",
+          "label": "Low"
+         },
+         {
+          "value": "medium",
+          "label": "Medium"
+         },
+         {
+          "value": "high",
+          "label": "High"
+         }
+        ],
+        "max_selected": 1
+       }
+      },
+      {
+       "id": "q_right",
+       "key": "right",
+       "type": "multi_select",
+       "label": "Right",
+       "settings": {
+        "options": [
+         {
+          "value": "low",
+          "label": "Low"
+         },
+         {
+          "value": "medium",
+          "label": "Medium"
+         },
+         {
+          "value": "high",
+          "label": "High"
+         }
+        ],
+        "min_selected": 1,
+        "max_selected": 2
+       }
+      },
+      {
+       "id": "q_none",
+       "key": "none",
+       "type": "multi_select",
+       "label": "None",
+       "settings": {
+        "options": [
+         {
+          "value": "low",
+          "label": "Low"
+         },
+         {
+          "value": "medium",
+          "label": "Medium"
+         },
+         {
+          "value": "high",
+          "label": "High"
+         }
+        ],
+        "min_selected": 1
+       },
+       "required": true
+      },
+      {
+       "id": "q_short",
+       "key": "short",
+       "type": "repeating",
+       "label": "Short",
+       "settings": {
+        "columns": [
+         {
+          "key": "host",
+          "label": "Host",
+          "type": "text"
+         }
+        ],
+        "min_rows": 2
+       }
+      },
+      {
+       "id": "q_one1",
+       "key": "one",
+       "type": "repeating",
+       "label": "One",
+       "settings": {
+        "columns": [
+         {
+          "key": "host",
+          "label": "Host",
+          "type": "text"
+         }
+        ],
+        "min_rows": 1
+       }
+      },
+      {
+       "id": "q_long",
+       "key": "long",
+       "type": "repeating",
+       "label": "Long",
+       "settings": {
+        "columns": [
+         {
+          "key": "host",
+          "label": "Host",
+          "type": "text"
+         }
+        ],
+        "max_rows": 1
+       }
+      },
+      {
+       "id": "q_cells",
+       "key": "cells",
+       "type": "repeating",
+       "label": "Cells",
+       "settings": {
+        "columns": [
+         {
+          "key": "address",
+          "label": "Address",
+          "type": "ip",
+          "required": true
+         },
+         {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "settings": {
+           "whole": true,
+           "min": 1,
+           "max": 65535
+          }
+         }
+        ]
+       }
+      },
+      {
+       "id": "q_blank",
+       "key": "blank",
+       "type": "repeating",
+       "label": "Blank",
+       "settings": {
+        "columns": [
+         {
+          "key": "address",
+          "label": "Address",
+          "type": "ip",
+          "required": true
+         },
+         {
+          "key": "port",
+          "label": "Port",
+          "type": "number"
+         }
+        ]
+       }
+      },
+      {
+       "id": "q_week",
+       "key": "week",
+       "type": "table",
+       "label": "Week",
+       "settings": {
+        "rows": [
+         {
+          "key": "mon",
+          "label": "Monday"
+         },
+         {
+          "key": "tue",
+          "label": "Tuesday"
+         }
+        ],
+        "columns": [
+         {
+          "key": "hours",
+          "label": "Hours",
+          "type": "number",
+          "required": true
+         }
+        ]
+       }
+      },
+      {
+       "id": "q_plan",
+       "key": "plan",
+       "type": "table",
+       "label": "Plan",
+       "settings": {
+        "rows": [
+         {
+          "key": "one",
+          "label": "First"
+         },
+         {
+          "key": "two",
+          "label": ""
+         }
+        ],
+        "columns": [
+         {
+          "key": "mail",
+          "label": "Mail",
+          "type": "email"
+         }
+        ]
+       }
+      },
+      {
+       "id": "q_full",
+       "key": "full",
+       "type": "table",
+       "label": "Full",
+       "settings": {
+        "rows": [
+         {
+          "key": "mon",
+          "label": "Monday"
+         }
+        ],
+        "columns": [
+         {
+          "key": "hours",
+          "label": "Hours",
+          "type": "number",
+          "required": true
+         }
+        ]
+       }
+      }
+     ]
+    }
+   ],
+   "answers": {
+    "q_few1": [
+     "low"
+    ],
+    "q_many": [
+     "low",
+     "high"
+    ],
+    "q_right": [
+     "low",
+     "high"
+    ],
+    "q_none": [],
+    "q_short": [
+     {
+      "host": "srv-01"
+     }
+    ],
+    "q_long": [
+     {
+      "host": "srv-01"
+     },
+     {
+      "host": "srv-02"
+     }
+    ],
+    "q_cells": [
+     {
+      "address": "198.51.100.1",
+      "port": 443
+     },
+     {
+      "address": "198.51.100.2",
+      "port": 70000
+     }
+    ],
+    "q_blank": [
+     {
+      "address": "198.51.100.1",
+      "port": null
+     },
+     {
+      "address": "",
+      "port": 80
+     }
+    ],
+    "q_week": [
+     {
+      "hours": 7
+     }
+    ],
+    "q_plan": [
+     {
+      "mail": "mette.lund@fjordvik.example"
+     },
+     {
+      "mail": "nobody"
+     }
+    ],
+    "q_full": [
+     {
+      "hours": 7
+     },
+     {
+      "hours": "left over"
+     }
+    ]
+   },
+   "expect": {
+    "hidden": [],
+    "required": [
+     "q_none"
+    ],
+    "invalid": {},
+    "values": {
+     "few": [
+      "low"
+     ],
+     "many": [
+      "low",
+      "high"
+     ],
+     "right": [
+      "low",
+      "high"
+     ],
+     "none": [],
+     "short": [
+      {
+       "host": "srv-01"
+      }
+     ],
+     "one": [],
+     "long": [
+      {
+       "host": "srv-01"
+      },
+      {
+       "host": "srv-02"
+      }
+     ],
+     "cells": [
+      {
+       "address": "198.51.100.1",
+       "port": 443
+      },
+      {
+       "address": "198.51.100.2",
+       "port": 70000
+      }
+     ],
+     "blank": [
+      {
+       "address": "198.51.100.1",
+       "port": 0.0
+      },
+      {
+       "address": "",
+       "port": 80.0
+      }
+     ],
+     "week": [
+      {
+       "hours": 7.0
+      }
+     ],
+     "plan": [
+      {
+       "mail": "mette.lund@fjordvik.example"
+      },
+      {
+       "mail": "nobody"
+      }
+     ],
+     "full": [
+      {
+       "hours": 7.0
+      },
+      {
+       "hours": 0.0
+      }
+     ]
+    },
+    "defaults": {},
+    "missing": [
+     {
+      "step": "s_lists",
+      "question": "q_few1",
+      "message": "Choose at least 2."
+     },
+     {
+      "step": "s_lists",
+      "question": "q_many",
+      "message": "Choose at most 1."
+     },
+     {
+      "step": "s_lists",
+      "question": "q_none",
+      "message": "Choose at least 1."
+     },
+     {
+      "step": "s_lists",
+      "question": "q_short",
+      "message": "Add at least 2 rows."
+     },
+     {
+      "step": "s_lists",
+      "question": "q_one1",
+      "message": "Add at least 1 row."
+     },
+     {
+      "step": "s_lists",
+      "question": "q_long",
+      "message": "Keep it to 1 row."
+     },
+     {
+      "step": "s_lists",
+      "question": "q_cells",
+      "message": "Row 2, Port: Enter a number from 1 to 65535."
+     },
+     {
+      "step": "s_lists",
+      "question": "q_blank",
+      "message": "Row 2, Address: This is required."
+     },
+     {
+      "step": "s_lists",
+      "question": "q_week",
+      "message": "Tuesday, Hours: This is required."
+     },
+     {
+      "step": "s_lists",
+      "question": "q_plan",
+      "message": "Row 2, Mail: Enter an email address, such as name@fjordvik.example."
+     }
+    ],
+    "errors": []
+   }
+  },
+  {
+   "name": "one thing is said for each question: its own problem before its rule's, its rule's before \"is required.\"",
+   "form": [
+    {
+     "id": "s_order",
+     "title": "Step",
+     "questions": [
+      {
+       "id": "q_mail",
+       "key": "mail",
+       "type": "email",
+       "label": "Mail",
+       "required": true,
+       "valid_when": "answers.mail.endsWith(\"@fjordvik.example\")",
+       "valid_message": "Use a Fjordvik address."
+      },
+      {
+       "id": "q_other",
+       "key": "other",
+       "type": "email",
+       "label": "Other",
+       "required": true,
+       "valid_when": "answers.other.endsWith(\"@fjordvik.example\")",
+       "valid_message": "Use a Fjordvik address."
+      },
+      {
+       "id": "q_third",
+       "key": "third",
+       "type": "email",
+       "label": "Third",
+       "required": true,
+       "valid_when": "answers.third.endsWith(\"@fjordvik.example\")",
+       "valid_message": "Use a Fjordvik address."
+      },
+      {
+       "id": "q_fourth",
+       "key": "fourth",
+       "type": "email",
+       "label": "Fourth",
+       "required": true
+      }
+     ]
+    }
+   ],
+   "answers": {
+    "q_mail": "not an address",
+    "q_other": "mette.lund@elsewhere.example"
+   },
+   "expect": {
+    "hidden": [],
+    "required": [
+     "q_mail",
+     "q_other",
+     "q_third",
+     "q_fourth"
+    ],
+    "invalid": {
+     "q_mail": "Use a Fjordvik address.",
+     "q_other": "Use a Fjordvik address.",
+     "q_third": "Use a Fjordvik address."
+    },
+    "values": {
+     "mail": "not an address",
+     "other": "mette.lund@elsewhere.example",
+     "third": null,
+     "fourth": null
+    },
+    "defaults": {},
+    "missing": [
+     {
+      "step": "s_order",
+      "question": "q_mail",
+      "message": "Enter an email address, such as name@fjordvik.example."
+     },
+     {
+      "step": "s_order",
+      "question": "q_other",
+      "message": "Use a Fjordvik address."
+     },
+     {
+      "step": "s_order",
+      "question": "q_third",
+      "message": "Use a Fjordvik address."
+     },
+     {
+      "step": "s_order",
+      "question": "q_fourth",
+      "message": "is required."
+     }
+    ],
+    "errors": []
+   }
+  },
+  {
+   "name": "what counts as empty for a required question",
+   "form": [
+    {
+     "id": "s_empty",
+     "title": "Step",
+     "questions": [
+      {
+       "id": "q_refused",
+       "key": "no",
+       "type": "yes_no",
+       "label": "No",
+       "required": true
+      },
+      {
+       "id": "q_zero",
+       "key": "zero",
+       "type": "number",
+       "label": "Zero",
+       "required": true
+      },
+      {
+       "id": "q_blank",
+       "key": "blank",
+       "type": "text",
+       "label": "Blank",
+       "required": true
+      },
+      {
+       "id": "q_space",
+       "key": "space",
+       "type": "text",
+       "label": "Space",
+       "required": true
+      },
+      {
+       "id": "q_chosen",
+       "key": "chosen",
+       "type": "multi_select",
+       "label": "Chosen",
+       "settings": {
+        "options": [
+         {
+          "value": "low",
+          "label": "Low"
+         },
+         {
+          "value": "medium",
+          "label": "Medium"
+         },
+         {
+          "value": "high",
+          "label": "High"
+         }
+        ]
+       },
+       "required": true
+      },
+      {
+       "id": "q_rows",
+       "key": "rows",
+       "type": "repeating",
+       "label": "Rows",
+       "settings": {
+        "columns": [
+         {
+          "key": "host",
+          "label": "Host",
+          "type": "text"
+         }
+        ]
+       },
+       "required": true
+      },
+      {
+       "id": "q_week",
+       "key": "week",
+       "type": "table",
+       "label": "Week",
+       "settings": {
+        "rows": [
+         {
+          "key": "mon",
+          "label": "Monday"
+         }
+        ],
+        "columns": [
+         {
+          "key": "hours",
+          "label": "Hours",
+          "type": "number"
+         }
+        ]
+       },
+       "required": true
+      },
+      {
+       "id": "q_score",
+       "key": "score",
+       "type": "cvss",
+       "label": "Score",
+       "required": true
+      },
+      {
+       "id": "q_files",
+       "key": "files",
+       "type": "file",
+       "label": "Files",
+       "required": true
+      },
+      {
+       "id": "q_secret",
+       "key": "secret",
+       "type": "secret",
+       "label": "Secret",
+       "required": true
+      },
+      {
+       "id": "q_who1",
+       "key": "who",
+       "type": "person",
+       "label": "Who",
+       "required": true
+      },
+      {
+       "id": "q_plain",
+       "key": "plain",
+       "type": "rich_text",
+       "label": "Plain",
+       "required": true
+      },
+      {
+       "id": "q_typed",
+       "key": "typed",
+       "type": "rich_text",
+       "label": "Typed",
+       "required": true
+      }
+     ]
+    }
+   ],
+   "answers": {
+    "q_refused": false,
+    "q_zero": 0,
+    "q_blank": "",
+    "q_space": " ",
+    "q_chosen": [],
+    "q_rows": [],
+    "q_week": [],
+    "q_score": {
+     "vector": "",
+     "score": 0,
+     "severity": ""
+    },
+    "q_files": [],
+    "q_secret": "",
+    "q_who1": null,
+    "q_plain": "",
+    "q_typed": {
+     "type": "doc",
+     "content": [
+      {
+       "type": "paragraph"
+      }
+     ]
+    }
+   },
+   "expect": {
+    "hidden": [],
+    "required": [
+     "q_refused",
+     "q_zero",
+     "q_blank",
+     "q_space",
+     "q_chosen",
+     "q_rows",
+     "q_week",
+     "q_score",
+     "q_files",
+     "q_secret",
+     "q_who1",
+     "q_plain",
+     "q_typed"
+    ],
+    "invalid": {},
+    "values": {
+     "no": false,
+     "zero": 0,
+     "blank": "",
+     "space": " ",
+     "chosen": [],
+     "rows": [],
+     "week": [],
+     "score": {
+      "vector": "",
+      "score": 0.0,
+      "severity": ""
+     },
+     "files": {
+      "filled": false,
+      "count": 0
+     },
+     "secret": {
+      "filled": false,
+      "printed": ""
+     },
+     "who": {
+      "filled": false,
+      "display_name": "",
+      "first_name": "",
+      "middle_name": "",
+      "last_name": "",
+      "job_title": "",
+      "department": "",
+      "company": "",
+      "email": "",
+      "phone": ""
+     },
+     "plain": "",
+     "typed": ""
+    },
+    "defaults": {},
+    "missing": [
+     {
+      "step": "s_empty",
+      "question": "q_blank",
+      "message": "is required."
+     },
+     {
+      "step": "s_empty",
+      "question": "q_chosen",
+      "message": "is required."
+     },
+     {
+      "step": "s_empty",
+      "question": "q_rows",
+      "message": "is required."
+     },
+     {
+      "step": "s_empty",
+      "question": "q_week",
+      "message": "is required."
+     },
+     {
+      "step": "s_empty",
+      "question": "q_score",
+      "message": "is required."
+     },
+     {
+      "step": "s_empty",
+      "question": "q_files",
+      "message": "is required."
+     },
+     {
+      "step": "s_empty",
+      "question": "q_secret",
+      "message": "is required."
+     },
+     {
+      "step": "s_empty",
+      "question": "q_who1",
+      "message": "is required."
+     },
+     {
+      "step": "s_empty",
+      "question": "q_plain",
+      "message": "is required."
+     }
+    ],
+    "errors": []
+   }
+  },
+  {
+   "name": "a signature is a name confirmed with a tick at a moment, and anything else isn't signed",
+   "form": [
+    {
+     "id": "s_signed",
+     "title": "Step",
+     "questions": [
+      {
+       "id": "q_customer",
+       "key": "customer",
+       "type": "signature",
+       "label": "Customer",
+       "required": true
+      },
+      {
+       "id": "q_witness",
+       "key": "witness",
+       "type": "signature",
+       "label": "Witness",
+       "required": true
+      },
+      {
+       "id": "q_drawn",
+       "key": "drawn",
+       "type": "signature",
+       "label": "Drawn",
+       "required": true
+      },
+      {
+       "id": "q_unticked",
+       "key": "unticked",
+       "type": "signature",
+       "label": "Unticked",
+       "required": true
+      },
+      {
+       "id": "q_early",
+       "key": "early",
+       "type": "signature",
+       "label": "Early",
+       "required": true,
+       "valid_when": "answers.early.time >= report.started",
+       "valid_message": "Sign once the work has started."
+      },
+      {
+       "id": "q_optional",
+       "key": "optional",
+       "type": "signature",
+       "label": "Optional"
+      },
+      {
+       "id": "q_names",
+       "key": "names",
+       "type": "calculated",
+       "label": "Names",
+       "value": "answers.customer.name + \" / \" + answers.witness.name + \" / \" + answers.early.name",
+       "settings": {
+        "result": "text"
+       }
+      },
+      {
+       "id": "q_when",
+       "key": "when",
+       "type": "calculated",
+       "label": "When",
+       "value": "format_date(answers.customer.time, \"d MMMM yyyy, HH:mm\")",
+       "settings": {
+        "result": "text"
+       }
+      },
+      {
+       "id": "q_none",
+       "key": "none",
+       "type": "calculated",
+       "label": "None",
+       "value": "!answers.witness.filled && !has(answers.witness.time) && answers.drawn.name == \"\"",
+       "settings": {
+        "result": "yes_no"
+       }
+      },
+      {
+       "id": "q_note",
+       "key": "note",
+       "type": "text",
+       "label": "Note",
+       "required_when": "!answers.witness.filled"
+      }
+     ]
+    }
+   ],
+   "answers": {
+    "q_customer": {
+     "name": "  Mette Lund ",
+     "confirmed": true,
+     "at": "2026-10-21T10:05:00+02:00"
+    },
+    "q_witness": null,
+    "q_drawn": {
+     "strokes": [
+      [
+       10,
+       10,
+       50,
+       40
+      ]
+     ]
+    },
+    "q_unticked": {
+     "name": "Mette Lund",
+     "confirmed": false,
+     "at": "2026-10-21T08:05:00Z"
+    },
+    "q_early": {
+     "name": "Anders Berg",
+     "confirmed": true,
+     "at": "2026-10-20T08:05:00.250Z"
+    }
+   },
+   "expect": {
+    "hidden": [],
+    "required": [
+     "q_customer",
+     "q_witness",
+     "q_drawn",
+     "q_unticked",
+     "q_early",
+     "q_note"
+    ],
+    "invalid": {
+     "q_early": "Sign once the work has started."
+    },
+    "values": {
+     "customer": {
+      "filled": true,
+      "name": "Mette Lund",
+      "time": "2026-10-21T08:05:00.000Z"
+     },
+     "witness": {
+      "filled": false,
+      "name": "",
+      "time": null
+     },
+     "drawn": {
+      "filled": false,
+      "name": "",
+      "time": null
+     },
+     "unticked": {
+      "filled": false,
+      "name": "",
+      "time": null
+     },
+     "early": {
+      "filled": true,
+      "name": "Anders Berg",
+      "time": "2026-10-20T08:05:00.250Z"
+     },
+     "optional": {
+      "filled": false,
+      "name": "",
+      "time": null
+     },
+     "note": null,
+     "names": "Mette Lund /  / Anders Berg",
+     "when": "21 October 2026, 10:05",
+     "none": true
+    },
+    "defaults": {},
+    "missing": [
+     {
+      "step": "s_signed",
+      "question": "q_witness",
+      "message": "is required."
+     },
+     {
+      "step": "s_signed",
+      "question": "q_drawn",
+      "message": "is required."
+     },
+     {
+      "step": "s_signed",
+      "question": "q_unticked",
+      "message": "is required."
+     },
+     {
+      "step": "s_signed",
+      "question": "q_early",
+      "message": "Sign once the work has started."
+     },
+     {
+      "step": "s_signed",
+      "question": "q_note",
+      "message": "is required."
+     }
+    ],
+    "errors": []
+   }
+  },
+  {
+   "name": "a rule that fails: what it's on is shown, isn't required and isn't refused, and the failure is noted",
+   "form": [
+    {
+     "id": "s_broken",
+     "title": "Step",
+     "visible_when": "answers.rows[0].port > 0",
+     "questions": [
+      {
+       "id": "q_rows",
+       "key": "rows",
+       "type": "repeating",
+       "label": "Rows",
+       "settings": {
+        "columns": [
+         {
+          "key": "port",
+          "label": "Port",
+          "type": "number",
+          "settings": {
+           "whole": true
+          }
+         }
+        ]
+       }
+      },
+      {
+       "id": "q_shown",
+       "key": "shown",
+       "type": "text",
+       "label": "Shown",
+       "required": true,
+       "visible_when": "answers.rows[0].port > 0"
+      },
+      {
+       "id": "q_spared",
+       "key": "spared",
+       "type": "text",
+       "label": "Spared",
+       "required_when": "100 / answers.rows.size() > 1"
+      },
+      {
+       "id": "q_kept",
+       "key": "kept",
+       "type": "text",
+       "label": "Kept",
+       "valid_when": "answers.missing == 1"
+      },
+      {
+       "id": "q_half",
+       "key": "half",
+       "type": "text",
+       "label": "Half",
+       "required": true,
+       "visible_when": "1 +",
+       "valid_when": "int(\"x\") == 1"
+      }
+     ]
+    },
+    {
+     "id": "s_after",
+     "title": "Step",
+     "questions": [
+      {
+       "id": "q_after",
+       "key": "after",
+       "type": "text",
+       "label": "After",
+       "required": true,
+       "visible_when": "answers.kept > 1"
+      }
+     ]
+    }
+   ],
+   "answers": {
+    "q_kept": "x"
+   },
+   "expect": {
+    "hidden": [],
+    "required": [
+     "q_shown",
+     "q_half",
+     "q_after"
+    ],
+    "invalid": {},
+    "values": {
+     "rows": [],
+     "shown": null,
+     "spared": null,
+     "kept": "x",
+     "half": null,
+     "after": null
+    },
+    "defaults": {},
+    "missing": [
+     {
+      "step": "s_broken",
+      "question": "q_shown",
+      "message": "is required."
+     },
+     {
+      "step": "s_broken",
+      "question": "q_half",
+      "message": "is required."
+     },
+     {
+      "step": "s_after",
+      "question": "q_after",
+      "message": "is required."
+     }
+    ],
+    "errors": [
+     {
+      "element": "s_broken"
+     },
+     {
+      "element": "q_shown"
+     },
+     {
+      "element": "q_spared"
+     },
+     {
+      "element": "q_kept",
+      "message": "answers.missing isn't a name this template has."
+     },
+     {
+      "element": "q_half",
+      "message": "The expression stops before it's finished."
+     },
+     {
+      "element": "q_half",
+      "message": "int() can't read 'x' as a whole number."
+     },
+     {
+      "element": "q_after",
+      "message": "> doesn't work with text and a whole number."
+     }
+    ]
+   }
+  },
+  {
+   "name": "rules read the report's own names and the shared library",
+   "library": {
+    "names": {
+     "vars.sla_hours": "int",
+     "vars.duty_phone": "string",
+     "text.disclaimer": "string"
+    },
+    "values": {
+     "vars": {
+      "sla_hours": 72,
+      "duty_phone": "+45 70 20 30 40"
+     },
+     "text": {
+      "disclaimer": "Confidential."
+     }
+    },
+    "tables": {
+     "sites": {
+      "columns": [
+       "city",
+       "country"
+      ],
+      "rows": {
+       "T3": [
+        "Esbjerg",
+        "Denmark"
+       ],
+       "T4": [
+        "Aarhus",
+        "Denmark"
+       ]
+      }
+     }
+    }
+   },
+   "form": [
+    {
+     "id": "s_names",
+     "title": "Step",
+     "questions": [
+      {
+       "id": "q_site",
+       "key": "site",
+       "type": "text",
+       "label": "Site",
+       "default": "lookup(\"sites\", \"T3\")"
+      },
+      {
+       "id": "q_phone",
+       "key": "phone",
+       "type": "phone",
+       "label": "Phone",
+       "default": "vars.duty_phone"
+      },
+      {
+       "id": "q_detected",
+       "key": "detected",
+       "type": "datetime",
+       "label": "Detected"
+      },
+      {
+       "id": "q_deadline",
+       "key": "deadline",
+       "type": "calculated",
+       "label": "Deadline",
+       "value": "add_hours(answers.detected, vars.sla_hours)",
+       "settings": {
+        "result": "date"
+       }
+      },
+      {
+       "id": "q_country",
+       "key": "country",
+       "type": "calculated",
+       "label": "Country",
+       "value": "lookup(\"sites\", \"T4\", \"country\")",
+       "settings": {
+        "result": "text"
+       }
+      },
+      {
+       "id": "q_danish",
+       "key": "danish",
+       "type": "text",
+       "label": "Danish",
+       "required_when": "customer.language == \"da\"",
+       "visible_when": "customer.name != \"\""
+      },
+      {
+       "id": "q_second",
+       "key": "second",
+       "type": "text",
+       "label": "Second",
+       "required_when": "report.revision > 1"
+      },
+      {
+       "id": "q_notice",
+       "key": "notice",
+       "type": "text",
+       "label": "Notice",
+       "valid_when": "answers.notice == text.disclaimer",
+       "valid_message": "Use the shared wording."
+      }
+     ]
+    }
+   ],
+   "answers": {
+    "q_detected": "2026-10-21T01:14:00.000Z",
+    "q_notice": "Secret."
+   },
+   "expect": {
+    "hidden": [],
+    "required": [
+     "q_danish"
+    ],
+    "invalid": {
+     "q_notice": "Use the shared wording."
+    },
+    "values": {
+     "site": "Esbjerg",
+     "phone": "+45 70 20 30 40",
+     "detected": "2026-10-21T01:14:00.000Z",
+     "danish": null,
+     "second": null,
+     "notice": "Secret.",
+     "deadline": "2026-10-24T01:14:00.000Z",
+     "country": "Denmark"
+    },
+    "defaults": {
+     "q_site": "Esbjerg",
+     "q_phone": "+45 70 20 30 40"
+    },
+    "missing": [
+     {
+      "step": "s_names",
+      "question": "q_danish",
+      "message": "is required."
+     },
+     {
+      "step": "s_names",
+      "question": "q_notice",
+      "message": "Use the shared wording."
+     }
+    ],
+    "errors": []
+   }
+  }
+ ]
+}
