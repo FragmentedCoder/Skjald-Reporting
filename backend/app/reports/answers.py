@@ -37,6 +37,8 @@ MAX_NAME = 200
 MAX_NUMBER = 1e15
 # All of a report's answers, sealed.
 MAX_ANSWERS_BYTES = 4 * 1024 * 1024
+# How deep an answer as sent may nest: rich text a dozen levels, rows two.
+MAX_DEPTH = 40
 
 TEXT_TYPES = frozenset({"text", "serial", "ip", "hostname", "mac", "email", "phone", "barcode"})
 UPLOAD_TYPES = frozenset({"file", "photo"})
@@ -49,6 +51,26 @@ PersonFinder = Callable[[str, str], dict[str, str] | None]
 
 class Refused(ValueError):
     """An answer that can't be kept; the message is fit to show."""
+
+
+def _sound(value: Any) -> None:
+    """Refuses what could be kept but never read again or sent back: an answer nested
+    past anything an answer holds, and half of a character pair (a lone surrogate).
+    Walked without recursion, before anything reads the answer by calling itself."""
+    stack: list[tuple[Any, int]] = [(value, 1)]
+    while stack:
+        node, depth = stack.pop()
+        if isinstance(node, dict | list):
+            if depth > MAX_DEPTH:
+                raise Refused("An answer is nested deeper than any answer is.")
+            children = [*node, *node.values()] if isinstance(node, dict) else node
+            stack.extend((child, depth + 1) for child in children)
+        elif isinstance(node, str):
+            try:
+                node.encode()
+            except UnicodeEncodeError:
+                raise Refused("An answer holds half of a character, such as half an emoji: "
+                              "take it out and type it again.") from None
 
 
 def _text(value: Any, label: str, most: int = MAX_TEXT) -> str:
@@ -243,6 +265,7 @@ def merge(content: TemplateContent, held: Mapping[str, Any], given: Mapping[str,
         question = by_id.get(question_id)
         if question is None:
             raise Refused("That question isn't in this report's template.")
+        _sound(value)
         before = answers.get(question_id, _UNANSWERED)
         if _blank(question, value):
             if question.default and question.default.strip():
