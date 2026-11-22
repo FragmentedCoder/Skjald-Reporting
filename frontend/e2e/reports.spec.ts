@@ -19,7 +19,7 @@ const CONTENT = {
       { id: "q_checked", key: "checked", type: "text", label: "What was checked", required: true },
       { id: "q_result", key: "result", type: "dropdown", label: "Result",
         settings: { options: [{ value: "ok", label: "In order" }, { value: "faults", label: "Faults found" }] } },
-      { id: "q_day", key: "day", type: "datetime", label: "Day of the visit", settings: { mode: "date" } },
+      { id: "q_visited", key: "day", type: "datetime", label: "Day of the visit", settings: { mode: "date" } },
       { id: "q_disks", key: "disks", type: "repeating", label: "Disks", settings: { columns: [
         { key: "serial", label: "Serial", type: "text" },
         { key: "size", label: "Size", type: "number", settings: { whole: true } },
