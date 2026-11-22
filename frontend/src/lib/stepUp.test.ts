@@ -25,6 +25,22 @@ describe("withStepUp", () => {
     expect(change).toHaveBeenCalledTimes(1);
   });
 
+  it("says what it asks for, when told", async () => {
+    const look = vi.fn().mockRejectedValueOnce(stepUpRefusal()).mockResolvedValueOnce("shown");
+    const result = withStepUp(look, "Skjald checks it's really you before it shows a secret.");
+    await vi.waitFor(() => expect(stepUp.open).toBe(true));
+    expect(stepUp.why).toBe("Skjald checks it's really you before it shows a secret.");
+    finishStepUp(true);
+    await expect(result).resolves.toBe("shown");
+
+    // The next one that doesn't say gets the dialog's own words again.
+    const change = withStepUp(vi.fn().mockRejectedValueOnce(stepUpRefusal()).mockResolvedValueOnce("saved"));
+    await vi.waitFor(() => expect(stepUp.open).toBe(true));
+    expect(stepUp.why).toBeNull();
+    finishStepUp(true);
+    await change;
+  });
+
   it("passes other refusals straight on", async () => {
     const change = vi.fn().mockRejectedValue(new ApiError(400, "Not an address."));
     await expect(withStepUp(change)).rejects.toMatchObject({ status: 400 });
