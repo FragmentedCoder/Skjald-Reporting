@@ -26,6 +26,7 @@ from app.auth import mfa_routes
 from app.auth import routes as auth_routes
 from app.auth.dependencies import SAFE_METHODS
 from app.library import routes as library_routes
+from app.reports import routes as report_routes
 from app.styles import routes as style_routes
 from app.templates import routes as template_routes
 from app.templates import transfer as template_transfer
@@ -86,6 +87,7 @@ app.include_router(audit_routes.router, prefix="/api")
 app.include_router(backup_routes.router, prefix="/api")
 app.include_router(customer_routes.router, prefix="/api")
 app.include_router(project_routes.router, prefix="/api")
+app.include_router(report_routes.router, prefix="/api")
 app.include_router(server_routes.router, prefix="/api")
 app.include_router(template_transfer.router, prefix="/api")
 app.include_router(template_routes.router, prefix="/api")
