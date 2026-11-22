@@ -7,8 +7,7 @@
   import { branding } from "#lib/branding.svelte.js";
   import { PreviewStyle } from "#lib/reportStyles/preview.svelte.js";
   import { useDraft } from "#lib/templates/draft.svelte.js";
-  import { fieldType } from "#lib/templates/fields.js";
-  import { answerProblem } from "#lib/templates/formChecks.js";
+  import { missingAnswers } from "#lib/templates/formChecks.js";
   import { LivePreview } from "#lib/templates/live.svelte.js";
   import { samplePeople } from "#lib/templates/preview.js";
   import type { Question, TemplateContent } from "#lib/templates/types.js";
@@ -64,22 +63,15 @@
     }
   }
 
-  // Everything that would keep the report from going for review.
+  // Everything that would keep the report from going for review (formChecks.ts), as
+  // this page shows it: the step by its place among those shown, and the question.
   let checked = $state(false);
   const missing = $derived.by(() => {
-    const found: { step: number; question: Question; message: string }[] = [];
-    steps.forEach((s, i) => {
-      for (const q of s.questions) {
-        if (hidden.has(q.id) || !fieldType(q.type).asks || q.type === "calculated") continue;
-        const value = answer(q);
-        const empty = value === undefined || value === null || value === "" || (Array.isArray(value) && !value.length)
-          || (q.type === "cvss" && !(value as { vector?: string } | null)?.vector);
-        // What the field itself says: its own check, how many are chosen, the rows and their cells.
-        const message = answerProblem(q, value) ?? invalid.get(q.id) ?? (required.has(q.id) && empty ? "is required." : null);
-        if (message) found.push({ step: i, question: q, message });
-      }
-    });
-    return found;
+    const questions = content.form.flatMap((s) => s.questions);
+    // The answers as kept: photos, files and signatures are this browser's alone.
+    const kept = Object.fromEntries(questions.map((q) => [q.id, LOCAL.has(q.type) ? (local[q.id] ?? null) : content.sample.answers[q.id]]));
+    const byId = new Map(questions.map((q) => [q.id, q]));
+    return missingAnswers(content, model, kept).map((m) => ({ step: steps.findIndex((s) => s.id === m.step), question: byId.get(m.question) as Question, message: m.message }));
   });
 
   function reset() {
