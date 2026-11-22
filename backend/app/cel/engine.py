@@ -7,7 +7,12 @@ reader.py for the syntax) and then the engine's own type check, so an expression
 that compiles here can't fail on a missing name or a mismatched type when a report
 is made. Values are converted by their declared type, the same way the browser
 converts them (frontend/src/lib/cel/engine.ts), and a missing value gets the empty
-value of its type, so a rule never fails on a blank answer.
+value of its type, so a rule never fails on a blank answer. A row's cells have no
+declared type (a repeating group is list<map<string, dyn>>), and there the engine's
+Python binding takes numbers, text and yes or no but not a date; so a date in a row is
+given as text and the expression reads the rows through a map() that makes it a date
+again (_dated below), which is how a date column's cells are dates here as they are
+in the browser.
 
 The browser's engine is another one (cel-js), and the two must take the same
 expressions and give the same answers. So Skjald reads the syntax itself, by the
@@ -544,45 +549,50 @@ def to_cel(value: Any, spec: TypeSpec, name: str) -> Any:
     """A plain value (as JSON would carry it) converted to its declared type."""
     if value is None:
         return _empty(spec)
-    wrong = ExpressionError("runtime", f"{name} should be {spec}, not {value!r}.")
+
+    def wrong() -> ExpressionError:
+        # Worded only when it's raised: a list of rows is long to write out, and this
+        # runs for every declared name each time an expression does.
+        return ExpressionError("runtime", f"{name} should be {spec}, not {value!r}.")
+
     kind = spec.name
     if kind == "bool":
         if not isinstance(value, bool):
-            raise wrong
+            raise wrong()
         return value
     if kind in ("int", "uint"):
         if isinstance(value, bool) or not isinstance(value, int | float):
-            raise wrong
+            raise wrong()
         if isinstance(value, float) and not value.is_integer():
-            raise wrong
+            raise wrong()
         return int(value)
     if kind == "double":
         if isinstance(value, bool) or not isinstance(value, int | float):
-            raise wrong
+            raise wrong()
         return float(value)
     if kind == "string":
         if not isinstance(value, str):
-            raise wrong
+            raise wrong()
         return value
     if kind == "timestamp":
         if isinstance(value, datetime):
             return value
         if not isinstance(value, str):
-            raise wrong
+            raise wrong()
         try:
             parsed = datetime.fromisoformat(value)
         except ValueError:
-            raise wrong from None
+            raise wrong() from None
         if parsed.tzinfo is None:
-            raise wrong
+            raise wrong()
         return parsed.astimezone(UTC)
     if kind == "list":
         if not isinstance(value, list):
-            raise wrong
+            raise wrong()
         return [to_cel(item, spec.args[0], name) for item in value]
     if kind == "map":
         if not isinstance(value, dict):
-            raise wrong
+            raise wrong()
         return {k: to_cel(v, spec.args[1], name) for k, v in value.items()}
     return value
 
@@ -596,6 +606,63 @@ def _find(values: Mapping[str, Any], dotted: str) -> Any:
     return current
 
 
+# Rows whose cells can be dates: a repeating group's or a table's.
+_ROWS = "list<map<string, dyn>>"
+_ROW = "skjald_row"
+_CELL = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
+# Names that can't be read after a dot: these cells are read as row["in"].
+_WORDS = RESERVED | {"true", "false", "null", "in"}
+
+
+def _dated(data: dict[str, Any], names: Collection[str]) -> dict[str, str]:
+    """Makes rows that hold dates into rows the engine takes, and says how they're read.
+
+    cel-expr-python (0.1.4) converts a Python value by its declared type, and takes a
+    datetime only where a timestamp is declared: in a row's cell, which is dyn, it
+    refuses one. So each such date becomes text here (in data, in place), and what
+    comes back, by declared name, is what a reference to those rows is rewritten to: a
+    map() over them that makes every row again, with timestamp() around its dates.
+    Inside the engine the cells are then real dates. Reading the rows this way is two
+    steps deeper than they were written, three when every column is a date (see
+    app/cel/reader.py), so an expression at the very limit of 32 can be too deep here
+    when its rows have a date column; it's refused in the same words. Rows that aren't
+    all alike (a cell a date in one row and not in another) are left as they are, for
+    the engine to refuse.
+    """
+    found: dict[str, str] = {}
+    for name in names:
+        rows = data.get(name)
+        if not rows:
+            continue
+        keys = list(rows[0])
+        dates = {key for key in keys if isinstance(rows[0][key], datetime)}
+        if not dates or not all(isinstance(key, str) and _CELL.match(key) for key in keys):
+            continue
+        if not all(row.keys() == rows[0].keys()
+                   and all(isinstance(row[key], datetime) == (key in dates) for key in keys)
+                   for row in rows):
+            continue
+        for row in rows:
+            for key in dates:
+                moment = row[key]
+                if moment.tzinfo is None:  # as where a timestamp is declared: read as UTC
+                    moment = moment.replace(tzinfo=UTC)
+                row[key] = moment.astimezone(UTC).isoformat().replace("+00:00", "Z")
+        read = {key: f'{_ROW}["{key}"]' if key in _WORDS else f"{_ROW}.{key}" for key in keys}
+        cells = {key: f"timestamp({read[key]})" if key in dates else read[key] for key in keys}
+        # The engine's checker takes a map's cells to be the kind its first one is, so a
+        # cell of no declared kind goes first; where every cell is a date, the first is
+        # said to be of any kind with dyn(), which only this writes.
+        first = next((key for key in keys if key not in dates), None)
+        if first is None:
+            first = keys[0]
+            cells[first] = f"dyn({cells[first]})"
+        written = ", ".join(f'"{key}": {cells[key]}'
+                            for key in [first, *(key for key in keys if key != first)])
+        found[name] = f"{name}.map({_ROW}, {{{written}}})"
+    return found
+
+
 # What makes each kind of value empty: has(answers.title) is whether the answer is
 # anything else, written out for the engine as a comparison.
 _FILLED = {
@@ -603,7 +670,8 @@ _FILLED = {
     "timestamp": ' != timestamp("1970-01-01T00:00:00Z")', "duration": ' != duration("0s")',
     "list": ".size() != 0", "map": ".size() != 0",
 }
-_ALLOWED_OVERLOADS = frozenset(SIGNATURES) | frozenset(ENGINE)
+# to_dyn is dyn(), which no template can call: _dated() writes it into what the engine gets.
+_ALLOWED_OVERLOADS = frozenset(SIGNATURES) | frozenset(ENGINE) | {"to_dyn"}
 # Google's checker lets nothing (null) stand in for a date or a length of time;
 # cel-js doesn't, and a declared date is never nothing, so it's refused here too.
 _NEVER_NULL = ("timestamp", "duration")
@@ -631,6 +699,7 @@ class Engine:
         tables: Mapping[str, Table] | None = None,
     ) -> None:
         self.declarations = {name: parse_type(text) for name, text in declarations.items()}
+        self._rows = [name for name, spec in self.declarations.items() if str(spec) == _ROWS]
         self._context = Context(ZoneInfo(timezone), LOCALES[language], tables or {})
         impls = implementations(self._context)
         grouped: dict[str, list[cel.Overload]] = {}
@@ -683,12 +752,23 @@ class Engine:
                 except ValueError as exc:
                     raise ExpressionError("compile", str(exc)) from None
 
-    def _rewritten(self, expr: str, tokens: list[Token], shape: Shape) -> str:
+    def _rewritten(self, expr: str, tokens: list[Token], shape: Shape,
+                   dated: Mapping[str, str]) -> str:
         """The expression as the engine gets it: has() of a declared name as whether
         it's filled in, has() of anything else as whether the name is in the row (the
-        one way of asking that both engines answer alike), and Skjald's own int(),
-        string() and the like by their names."""
+        one way of asking that both engines answer alike), Skjald's own int(),
+        string() and the like by their names, and rows that hold dates read as
+        _dated() says."""
         edits: dict[int, str] = {}
+        if dated:
+            at = {token.start: index for index, token in enumerate(tokens)}
+            for path in paths(tokens):
+                name = declared_prefix(path, self.declarations)
+                if name is not None and name in dated:
+                    first = at[path.start]
+                    edits[first] = dated[name]
+                    for index in range(first + 1, first + 2 * name.count(".") + 1):
+                        edits[index] = ""
         for call in shape.calls:
             if call.name == "has":
                 start, end = call.args[0]
@@ -731,15 +811,20 @@ class Engine:
             elif call.function == "_?_:_" and len(types) == 3 and _null_with(*types[1:]):
                 raise ExpressionError("compile", branches(types[1], types[2]))
 
-    def _compile(self, expr: str) -> tuple[cel.Expression, bool]:
-        """The compiled expression, and whether an "in" in it can only be has()'s."""
+    def _compile(self, expr: str, dated: Mapping[str, str] | None = None,
+                 ) -> tuple[cel.Expression, bool]:
+        """The compiled expression, and whether an "in" in it can only be has()'s.
+
+        dated: rows that hold dates, and what a reference to each is rewritten to.
+        """
         tokens, shape = inspect(expr, self.declarations)
         self._literals(tokens, shape)
-        source = self._rewritten(expr, tokens, shape)
+        source = self._rewritten(expr, tokens, shape, dated or {})
         has = any(call.name == "has" for call in shape.calls)
-        if has:
+        if has or source != expr and dated:
             # has() is written out as a comparison in brackets, which can be a step or
-            # two deeper than what was written, so what the engine gets is read too.
+            # two deeper than what was written, and rows with dates are read through a
+            # map(), which is deeper too; so what the engine gets is read as well.
             try:
                 read(tokenize(source))
             except Unreadable as exc:
@@ -761,9 +846,16 @@ class Engine:
         return references(validate(expr, self.declarations), self.declarations)
 
     def evaluate(self, expr: str, values: Mapping[str, Any]) -> Any:
-        compiled, asked = self._compile(expr)
-        data = {name: to_cel(_find(values, name), spec, name)
-                for name, spec in self.declarations.items()}
+        # An expression that can't be run says so before a value of the wrong kind does.
+        wrong: ExpressionError | None = None
+        try:
+            data = {name: to_cel(_find(values, name), spec, name)
+                    for name, spec in self.declarations.items()}
+        except ExpressionError as exc:
+            data, wrong = {}, exc
+        compiled, asked = self._compile(expr, _dated(data, self._rows))
+        if wrong is not None:
+            raise wrong
         try:
             result = compiled.eval(data=data)
         except Exception as exc:  # the engine's own failures, reported like the rest

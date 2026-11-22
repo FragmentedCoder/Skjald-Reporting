@@ -9,9 +9,14 @@ lands an hour later.
 
 from __future__ import annotations
 
+import math
 import re
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from zoneinfo import ZoneInfo
+
+from app.cel import numbers
 
 _DATE = re.compile(
     r"([0-9]{4})-([0-9]{2})-([0-9]{2})(?:T([0-9]{2}):([0-9]{2})(?::([0-9]{2}))?)?"
@@ -89,3 +94,36 @@ def format_date(moment: datetime, pattern: str, zone: ZoneInfo,
         else:
             out.append(text)
     return "".join(out)
+
+
+def start_of_day(moment: datetime, zone: ZoneInfo) -> datetime:
+    """Midnight, where the report is written, of the day a moment falls on."""
+    local = moment.astimezone(zone)
+    return datetime(local.year, local.month, local.day, tzinfo=zone).astimezone(UTC)
+
+
+def is_midnight(moment: datetime, zone: ZoneInfo) -> bool:
+    """Whether a moment is midnight where the report is written: a date with no time of day."""
+    local = moment.astimezone(zone)
+    return local.hour == 0 and local.minute == 0 and local.second == 0
+
+
+def format_duration(seconds: float, locale: Mapping[str, Any]) -> str:
+    """A length of time in words, largest unit first, leaving out what's nothing: "3 days
+    1 hour", "90 minutes" as "1 hour 30 minutes", "1.5 seconds". Seconds show only when
+    there are some; nothing at all is "0 minutes"."""
+    total = abs(seconds)
+    whole = math.floor(total)
+    parts: list[tuple[float, str]] = [
+        (whole // 86_400, "day"),
+        (whole % 86_400 // 3600, "hour"),
+        (whole % 3600 // 60, "minute"),
+        # To the millisecond, a half rounding up as the browser's Math.round does.
+        (math.floor((whole % 60 + (total - whole)) * 1000 + 0.5) / 1000, "second"),
+    ]
+    words = [
+        f"{numbers.written(n).replace('.', locale['decimal'])} {locale['units'][unit][n != 1]}"
+        for n, unit in parts if n != 0]
+    if not words:
+        return f"0 {locale['units']['minute'][1]}"
+    return ("-" if seconds < 0 else "") + " ".join(words)

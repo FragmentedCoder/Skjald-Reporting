@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { answerProblem, cellProblem } from "./formChecks";
+import { answerProblem, cellProblem, missingAnswers } from "./formChecks";
+import type { Question, Step } from "./types";
 
 const column = (key: string, type: string, more: Record<string, unknown> = {}) => ({ key, label: key[0].toUpperCase() + key.slice(1), type, required: false, settings: {}, ...more });
 
@@ -35,5 +36,40 @@ describe("what keeps an answer from being sent", () => {
     expect(answerProblem({ type: "cvss", settings: { versions: ["3.1"] } }, null)).toBeNull();
     expect(answerProblem({ type: "email", settings: {} }, "not an address")).not.toBeNull();
     expect(cellProblem(column("mail", "email"), "")).toBeNull();
+  });
+});
+
+describe("what keeps a report from going for review", () => {
+  const question = (id: string, type: string, more: Partial<Question> = {}): Question =>
+    ({ id, key: id.slice(2), type, label: id, help: "", required: false, required_when: null, visible_when: null, default: null, valid_when: null, valid_message: "", value: null, settings: {}, ...more });
+  const step = (id: string, questions: Question[]): Step => ({ id, title: id, help: "", visible_when: null, questions });
+  const form = [
+    step("s_one", [question("q_name", "text"), question("q_part", "heading"), question("q_mail", "email"), question("q_sum", "calculated")]),
+    step("s_two", [question("q_when", "datetime"), question("q_score", "cvss")]),
+  ];
+  type Worked = NonNullable<Parameters<typeof missingAnswers>[1]>;
+  const model = (more: Partial<Worked> = {}): Worked => ({ formHidden: [], formRequired: [], invalid: [], defaults: {}, ...more });
+
+  it("is each shown question's own problem, then its rule's, then that it's required and empty", () => {
+    const worked = model({ formRequired: ["q_name", "q_part", "q_mail", "q_sum", "q_when", "q_score"], invalid: [{ id: "q_name", message: "Write the whole name." }, { id: "q_mail", message: "Not this one." }] });
+    expect(missingAnswers({ form }, worked, { q_name: "Ada", q_mail: "not an address", q_score: { vector: "", score: 0, severity: "" } })).toEqual([
+      { step: "s_one", question: "q_name", message: "Write the whole name." },
+      { step: "s_one", question: "q_mail", message: "Enter an email address, such as name@fjordvik.example." },
+      { step: "s_two", question: "q_when", message: "is required." },
+      { step: "s_two", question: "q_score", message: "is required." },
+    ]);
+  });
+
+  it("leaves out what the form hides, and counts a question not answered yet as what it starts as", () => {
+    const worked = model({ formHidden: ["s_two", "q_mail"], formRequired: ["q_name", "q_mail", "q_when"], defaults: { q_name: "Ada" } });
+    expect(missingAnswers({ form }, worked, {})).toEqual([]);
+    // Cleared on purpose, it's empty whatever it starts as.
+    expect(missingAnswers({ form }, worked, { q_name: null })).toEqual([{ step: "s_one", question: "q_name", message: "is required." }]);
+  });
+
+  it("still says each answer's own problem before the form is worked out", () => {
+    expect(missingAnswers({ form }, null, { q_mail: "not an address" })).toEqual([
+      { step: "s_one", question: "q_mail", message: "Enter an email address, such as name@fjordvik.example." },
+    ]);
   });
 });

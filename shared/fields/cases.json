@@ -862,6 +862,31 @@
    },
    "value": "xyz",
    "message": null
+  },
+  {
+   "type": "number",
+   "settings": {
+    "min": 1e+21
+   },
+   "value": 5,
+   "message": "Enter a number of at least 1e+21."
+  },
+  {
+   "type": "number",
+   "settings": {
+    "max": 1e-07
+   },
+   "value": 5,
+   "message": "Enter a number of at most 1e-7."
+  },
+  {
+   "type": "number",
+   "settings": {
+    "min": 0.1,
+    "max": 123456789012345680000
+   },
+   "value": 0,
+   "message": "Enter a number from 0.1 to 123456789012345680000."
   }
  ]
 }

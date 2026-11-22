@@ -13,10 +13,11 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pytest
 
-from app.cel import Engine, ExpressionError, Table
+from app.cel import Engine, ExpressionError, Table, dates, numbers
 from app.cel.checked import calls
 from app.cel.engine import LOCALES, _engine_message, parse_type, validate
 from app.cel.lexer import LexError, tokenize
@@ -279,6 +280,102 @@ def test_lists_and_maps_come_back_plain() -> None:
     rows = engine.evaluate("answers.rows", values)
     assert type(rows) is list and type(rows[0]) is dict and type(rows[0]["ports"]) is list
     assert [type(port) for port in rows[0]["ports"]] == [int, int]
+
+
+def test_a_date_in_a_row_is_a_date() -> None:
+    # The engine's Python binding refuses a datetime where no type is declared, as in
+    # a row's cell; the engine is given it as text and reads the rows through a map()
+    # that makes it a date again (app/cel/engine.py, _dated).
+    engine = Engine({"answers.rows": "list<map<string, dyn>>", "answers.start": "timestamp",
+                     "answers.others": "list<map<string, dyn>>"})
+    when = datetime(2026, 10, 21, 12, 30, tzinfo=UTC)
+    never = datetime(1970, 1, 1, tzinfo=UTC)
+    rows = [{"n": 1, "hours": 3.0, "ok": True, "when": when, "in": "a"},
+            {"n": 2, "hours": 2.5, "ok": False, "when": never, "in": ""}]
+    values = {"answers": {"start": "2026-10-21T00:00:00Z", "rows": rows, "others": [{"x": 1}]}}
+    for expr, expected in (
+        ("answers.rows[0].when > answers.start", True),
+        ("answers.rows.filter(r, r.when > answers.start).size()", 1),
+        ("answers.rows.map(r, r.when)", [when, never]),
+        ("answers.rows", rows),
+        ("format_date(answers.rows[0].when, \"d MMMM yyyy, HH:mm\")", "21 October 2026, 14:30"),
+        ("format_date(answers.rows[1].when, \"d MMMM yyyy\")", ""),
+        ("has(answers.rows) && answers.rows.all(r, has(r.when) && !has(r.other))", True),
+        ("answers.others.map(o, answers.rows.filter(r, r.n > o.x).map(r, r.when))", [[never]]),
+        ("hours_between(answers.start, answers.rows[0].when)", 12.5),
+        ("answers.rows[0].when + duration(\"90m\")", datetime(2026, 10, 21, 14, tzinfo=UTC)),
+        ("sum(answers.rows.map(r, r.hours * 1.5)) + double(answers.rows[1].n)", 10.25),
+        ("answers.rows.map(skjald_row, skjald_row[\"in\"])", ["a", ""]),
+    ):
+        assert engine.evaluate(expr, values) == expected, expr
+    # The caller's own rows are left as they were given.
+    assert rows[0]["when"] is when
+    # A cell stays of no declared kind wherever its column stands, as the rows are
+    # declared: text can be read from the cell beside a date, and a date compared with
+    # text is a problem found when the rule runs, not when it's checked.
+    first = {"answers": {"rows": [{"when": when, "name": "srv-01"}],
+                         "others": [{"from": when, "to": never}]}}
+    assert engine.evaluate("answers.rows.exists(r, r.name.startsWith(\"srv\"))", first) is True
+    assert engine.evaluate("answers.others.all(r, r.to < r.from)", first) is True
+    for expr in ("answers.rows[0].when.startsWith(\"a\")", "answers.others[0].to.size() > 1"):
+        with pytest.raises(ExpressionError) as caught:
+            engine.evaluate(expr, first)
+        assert caught.value.kind == "runtime", expr
+    # What a rule is checked as doesn't change, and a problem is said as it was.
+    assert engine.check("answers.rows.map(r, r.when)") == "list<dyn>"
+    with pytest.raises(ExpressionError) as caught:
+        engine.evaluate("answers.rows[0].when > 1", values)
+    assert caught.value.message == "> doesn't work with a date and time and a whole number."
+    # Reading the rows this way is two or three steps deeper: at the very limit an
+    # expression is too deep with a date column, and says so in the same words.
+    deepest = "answers.rows.size()"
+    for _ in range(30):
+        deepest = f"[{deepest}]"
+    plain = {"answers": {"rows": [{"n": 1}, {"n": 2}]}}
+    assert engine.evaluate(deepest[2:-2], values) == engine.evaluate(deepest[2:-2], plain)
+    engine.evaluate(deepest, plain)
+    with pytest.raises(ExpressionError) as caught:
+        engine.evaluate(deepest, values)
+    assert caught.value.message == TOO_DEEP
+    # Rows that aren't alike can't be read this way, and the engine refuses the date.
+    with pytest.raises(ExpressionError):
+        engine.evaluate("answers.rows.size()", {"answers": {"rows": [{"a": when}, {"a": "x"}]}})
+
+
+def test_the_day_a_moment_falls_on() -> None:
+    copenhagen, havana = ZoneInfo("Europe/Copenhagen"), ZoneInfo("America/Havana")
+    late = datetime(2026, 10, 21, 22, 30, tzinfo=UTC)  # half past midnight on the 22nd
+    assert dates.start_of_day(late, copenhagen) == datetime(2026, 10, 21, 22, tzinfo=UTC)
+    assert dates.is_midnight(datetime(2026, 10, 21, 22, tzinfo=UTC), copenhagen)
+    assert not dates.is_midnight(late, copenhagen)
+    assert not dates.is_midnight(datetime(2026, 10, 21, tzinfo=UTC), copenhagen)
+    # The day summer time ends is an hour longer, and still starts at its midnight.
+    assert dates.start_of_day(datetime(2026, 10, 25, 20, tzinfo=UTC), copenhagen) == datetime(
+        2026, 10, 24, 22, tzinfo=UTC)
+    # In Havana summer time starts at midnight, so that day has none: it starts an
+    # hour later, as a time that never happens is read everywhere here.
+    assert dates.start_of_day(datetime(2026, 3, 8, 12, tzinfo=UTC), havana) == datetime(
+        2026, 3, 8, 5, tzinfo=UTC)
+
+
+def test_lengths_of_time_in_words() -> None:
+    en, da = LOCALES["en"], LOCALES["da"]
+    for seconds, words in ((5400, "1 hour 30 minutes"), (86_400 * 3 + 3600, "3 days 1 hour"),
+                           (1.5, "1.5 seconds"), (61, "1 minute 1 second"), (0, "0 minutes"),
+                           (-90, "-1 minute 30 seconds"), (0.0004, "0 minutes"),
+                           (59.9995, "60 seconds")):
+        assert dates.format_duration(seconds, en) == words, seconds
+    assert dates.format_duration(90061.5, da) == "1 dag 1 time 1 minut 1,5 sekunder"
+
+
+def test_numbers_are_written_as_the_browser_writes_them() -> None:
+    for value, text in ((0.1 + 0.2, "0.30000000000000004"), (100.0, "100"), (-1.5, "-1.5"),
+                        (1e21, "1e+21"), (123456789012345680000.0, "123456789012345680000"),
+                        (1e-7, "1e-7"), (1.5e-7, "1.5e-7"), (0.000001, "0.000001"),
+                        (5e-324, "5e-324"), (-0.0, "0"), (7, "7"),
+                        (2**60, "1152921504606847000"), (1.7976931348623157e308,
+                                                         "1.7976931348623157e+308")):
+        assert numbers.written(value) == text, value
 
 
 def test_engine_errors_are_said_plainly() -> None:
