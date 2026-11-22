@@ -302,6 +302,59 @@ def test_whole_numbers_are_the_engines_64_bits() -> None:
     assert state.missing == [Missing("s_step", "q_count", "is required.")]
 
 
+def test_a_date_at_the_end_of_the_calendar_fails_nothing() -> None:
+    # In Copenhagen the last hour of the year 9999 is already the year 10000, which
+    # no date here can be: it's printed as nothing and starts nothing, and no more.
+    content = one_step(
+        ask("q_when", "when", "datetime"),
+        ask("q_text", "text", "calculated", settings={"result": "text"}, value="answers.when"),
+        ask("q_day1", "day", "datetime", settings={"mode": "date"}, default="answers.when"),
+        ask("q_shown", "shown", "calculated", settings={"result": "text"},
+            value='format_date(answers.when, "yyyy")'),
+        ask("q_other", "other", "text", required_when="1 == 1"))
+    state = evaluate(content, {"q_when": "9999-12-31T23:59:59Z"}, sample_context())
+    assert state.values["when"] == "9999-12-31T23:59:59.000Z" and state.defaults == {}
+    assert state.errors[0] == ("q_text", "This should give text, but with these answers it "
+                                         "gives something else.")
+    assert [element for element, _ in state.errors] == ["q_text", "q_shown"]
+    assert state.required == ["q_other"]
+
+
+def test_the_first_moment_of_all_is_no_answer() -> None:
+    # The engine's binding takes the first moment of the year 1 for the beginning of
+    # time and then runs nothing at all: as an answer it would switch every rule off.
+    content = one_step(
+        ask("q_when", "when", "datetime", required=True),
+        ask("q_before", "before", "calculated", settings={"result": "date"},
+            value="add_hours(answers.when, -1)"),
+        ask("q_other", "other", "text", required_when="1 == 1", valid_when="1 == 2"),
+        ask("q_rows", "rows", "repeating", settings={"columns": [
+            {"key": "seen", "label": "Seen", "type": "datetime"}]}))
+    never = "1970-01-01T00:00:00.000Z"
+    for first in ("0001-01-01T00:00:00Z", "0001-01-01T00:00:00.000Z", "0001-01-01T05:30:00+05:30"):
+        state = evaluate(content, {"q_when": first, "q_rows": [{"seen": first}]}, sample_context())
+        assert state.errors == []
+        assert state.values == {"when": None, "other": None, "rows": [{"seen": never}],
+                                "before": never}
+        assert state.required == ["q_when", "q_other"] and list(state.invalid) == ["q_other"]
+        assert [m.question for m in state.missing] == ["q_when", "q_other"]
+    # An hour later it's a moment like any other; the hour before it, which a rule
+    # then works out, is the one that can't be, and is that rule's own failure.
+    state = evaluate(content, {"q_when": "0001-01-01T01:00:00Z"}, sample_context())
+    assert state.values["when"] == "0001-01-01T01:00:00.000Z" and "before" not in state.values
+    assert [element for element, _ in state.errors] == ["q_before"]
+    assert state.required == ["q_when", "q_other"] and list(state.invalid) == ["q_other"]
+    # Nor is it kept when a template writes it out: the value stays empty, and the
+    # other rules run.
+    written = one_step(
+        ask("q_first", "first", "calculated", settings={"result": "date"},
+            value='timestamp("0001-01-01T00:00:00Z")'),
+        ask("q_other", "other", "text", required_when="!has(answers.first)"))
+    state = evaluate(written, {}, sample_context())
+    assert state.values == {"other": None, "first": None} and state.required == ["q_other"]
+    assert [element for element, _ in state.errors] == ["q_first"]
+
+
 def test_a_long_chain_of_calculated_values_is_followed() -> None:
     # Each reads the next, the last one the answer: as long a chain as a template can
     # hold (500 questions), written from its far end.

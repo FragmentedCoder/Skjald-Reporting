@@ -57,6 +57,10 @@ _NOTHING = re.compile(f"{_SPACE}*")
 _ENDS = re.compile(rf"^{_SPACE}+|{_SPACE}+\Z")
 # The longest name a signature question takes (signature.ts NAME_MAX), counted as there.
 _NAME_MAX = 200
+# The first and the last moment Python can write. The engine's binding takes exactly
+# these two for the beginning and the end of time and then refuses to run anything, so
+# neither is a moment an answer or a calculated value holds.
+_NEVER = (datetime.min.replace(tzinfo=UTC), datetime.max.replace(tzinfo=UTC))
 # How far into a long text's document the words are looked for (app/templates/text.py
 # keeps a real one within 12 levels and 5,000 nodes).
 _DOC_DEPTH = 32
@@ -146,7 +150,7 @@ def _moment(value: Any) -> datetime | None:
             moment -= sign * timedelta(hours=int(offset[1:3]), minutes=int(offset[4:6]))
     except (ValueError, OverflowError):
         return None
-    return moment
+    return None if moment in _NEVER else moment
 
 
 def _iso(moment: datetime) -> str:
@@ -406,8 +410,11 @@ def _start_value(question: Question, value: Any, zone: ZoneInfo) -> Any:
     if kind == "datetime":
         if not isinstance(value, datetime) or value == EPOCH:
             return None
-        start = _iso(dates.start_of_day(value, zone) if settings["mode"] == "date"
-                     else value.replace(second=0, microsecond=0))
+        try:
+            start = _iso(dates.start_of_day(value, zone) if settings["mode"] == "date"
+                         else value.replace(second=0, microsecond=0))
+        except (OverflowError, ValueError):  # a day at the very end of the calendar
+            return None
     elif kind == "number":
         number = _number(value)
         start = number if number is None or not settings["whole"] else math.trunc(number)
@@ -435,8 +442,13 @@ def _printed(value: Any, language: str, zone: ZoneInfo) -> str:
         if value == EPOCH:
             return ""
         # A moment at midnight is a date with no time of day: the time is left out.
-        pattern = "d MMMM yyyy" if dates.is_midnight(value, zone) else "d MMMM yyyy, HH:mm"
-        return dates.format_date(value, pattern, zone, locale)
+        try:
+            pattern = "d MMMM yyyy" if dates.is_midnight(value, zone) else "d MMMM yyyy, HH:mm"
+            return dates.format_date(value, pattern, zone, locale)
+        except (OverflowError, ValueError):
+            # The last or first hours of the calendar, which in the company's time zone
+            # fall outside the years 1 to 9999: nothing Python can write out.
+            return ""
     if isinstance(value, list):
         return ", ".join(_printed(item, language, zone) for item in value)
     if isinstance(value, timedelta):
@@ -446,14 +458,17 @@ def _printed(value: Any, language: str, zone: ZoneInfo) -> str:
 
 def _as_declared(value: Any, spec: TypeSpec, name: str) -> Any:
     """A calculated value as the kind it's declared to give, or _FAILED when it's
-    another kind (or a whole number the engine's 64 bits can't hold)."""
+    another kind (or a whole number or a moment the engine can't be given back)."""
     try:
         kept = to_cel(value, spec, name)
     except (ExpressionError, OverflowError):
         return _FAILED
     if spec.name == "int" and not -_MAX_INT - 1 <= kept <= _MAX_INT:
         return _FAILED
-    if isinstance(kept, datetime):  # to the millisecond, as the browser holds one
+    if isinstance(kept, datetime):
+        if kept in _NEVER:
+            return _FAILED
+        # To the millisecond, as the browser holds one.
         kept = kept.replace(microsecond=kept.microsecond // 1000 * 1000)
     return kept
 
