@@ -1,5 +1,5 @@
 {
- "about": "What a report's form comes to for a set of answers, the same on the server (backend/app/reports/form.py, with Google's engine) and in the browser (frontend/src/lib/templates/preview.ts and formChecks.ts, with cel-js): what expressions read (values, by variable name, a moment as ISO text in UTC), what unanswered questions start as (defaults, by question ID, as answers are kept), what the form hides and requires, which answers their own rule refuses (invalid), and everything that keeps the report from going for review (missing). Each case is a form (the template's steps; language is en unless given), answers by question ID as they're kept (a question that isn't there isn't answered yet; null was cleared on purpose), and where it matters the time zone (Europe/Copenhagen otherwise), the shared library, and context: values laid over the sample context in shared/templates/names.json. errors lists the elements whose expressions fail, in order; a message is given where it's Skjald's own sentence, which both sides must say, and left out where each engine words the failure its own way. Signature questions aren't here yet: their answer changes shape in Phase 3. Everything is fictional.",
+ "about": "What a report's form comes to for a set of answers, the same on the server (backend/app/reports/form.py, with Google's engine) and in the browser (frontend/src/lib/templates/preview.ts and formChecks.ts, with cel-js): what expressions read (values, by variable name, a moment as ISO text in UTC), what unanswered questions start as (defaults, by question ID, as answers are kept), what the form hides and requires, which answers their own rule refuses (invalid), and everything that keeps the report from going for review (missing). Each case is a form (the template's steps; language is en unless given), answers by question ID as they're kept (a question that isn't there isn't answered yet; null was cleared on purpose), and where it matters the time zone (Europe/Copenhagen otherwise), the shared library, and context: values laid over the sample context in shared/templates/names.json. errors lists the elements whose expressions fail, in order; a message is given where it's Skjald's own sentence, which both sides must say, and left out where each engine words the failure its own way. Everything is fictional.",
  "cases": [
   {
    "name": "what expressions read of each kind of answer",
@@ -188,6 +188,12 @@
        "label": "Who"
       },
       {
+       "id": "q_signed",
+       "key": "signed",
+       "type": "signature",
+       "label": "Signed"
+      },
+      {
        "id": "q_part",
        "key": null,
        "type": "heading",
@@ -198,7 +204,7 @@
        "key": "empty",
        "type": "calculated",
        "label": "Empty",
-       "value": "!has(answers.text) && answers.long == \"\" && answers.amount == 0.0 && answers.count == 0 && !has(answers.when) && !answers.agreed && answers.level == \"\" && answers.levels.size() == 0 && answers.score.score == 0.0 && !answers.password.filled && answers.logs.count == 0 && !answers.who.filled && answers.who.email == \"\"",
+       "value": "!has(answers.text) && answers.long == \"\" && answers.amount == 0.0 && answers.count == 0 && !has(answers.when) && !answers.agreed && answers.level == \"\" && answers.levels.size() == 0 && answers.score.score == 0.0 && !answers.password.filled && answers.logs.count == 0 && !answers.who.filled && answers.who.email == \"\" && !answers.signed.filled && answers.signed.name == \"\" && !has(answers.signed.time)",
        "settings": {
         "result": "yes_no"
        }
@@ -293,6 +299,11 @@
      "company": "Nordlys IT ApS",
      "email": "freja.holm@nordlys.example",
      "phone": "+45 70 20 30 41"
+    },
+    "q_signed": {
+     "name": "Mette Lund",
+     "confirmed": true,
+     "at": "2026-10-21T08:05:00Z"
     }
    },
    "expect": {
@@ -355,6 +366,11 @@
       "company": "Nordlys IT ApS",
       "email": "freja.holm@nordlys.example",
       "phone": "+45 70 20 30 41"
+     },
+     "signed": {
+      "filled": true,
+      "name": "Mette Lund",
+      "time": "2026-10-21T08:05:00.000Z"
      },
      "empty": false
     },
@@ -556,6 +572,12 @@
        "label": "Who"
       },
       {
+       "id": "q_signed",
+       "key": "signed",
+       "type": "signature",
+       "label": "Signed"
+      },
+      {
        "id": "q_part",
        "key": null,
        "type": "heading",
@@ -566,7 +588,7 @@
        "key": "empty",
        "type": "calculated",
        "label": "Empty",
-       "value": "!has(answers.text) && answers.long == \"\" && answers.amount == 0.0 && answers.count == 0 && !has(answers.when) && !answers.agreed && answers.level == \"\" && answers.levels.size() == 0 && answers.score.score == 0.0 && !answers.password.filled && answers.logs.count == 0 && !answers.who.filled && answers.who.email == \"\"",
+       "value": "!has(answers.text) && answers.long == \"\" && answers.amount == 0.0 && answers.count == 0 && !has(answers.when) && !answers.agreed && answers.level == \"\" && answers.levels.size() == 0 && answers.score.score == 0.0 && !answers.password.filled && answers.logs.count == 0 && !answers.who.filled && answers.who.email == \"\" && !answers.signed.filled && answers.signed.name == \"\" && !has(answers.signed.time)",
        "settings": {
         "result": "yes_no"
        }
@@ -632,6 +654,11 @@
       "company": "",
       "email": "",
       "phone": ""
+     },
+     "signed": {
+      "filled": false,
+      "name": "",
+      "time": null
      },
      "empty": true
     },
@@ -3574,6 +3601,204 @@
      {
       "step": "s_empty",
       "question": "q_plain",
+      "message": "is required."
+     }
+    ],
+    "errors": []
+   }
+  },
+  {
+   "name": "a signature is a name confirmed with a tick at a moment, and anything else isn't signed",
+   "form": [
+    {
+     "id": "s_signed",
+     "title": "Step",
+     "questions": [
+      {
+       "id": "q_customer",
+       "key": "customer",
+       "type": "signature",
+       "label": "Customer",
+       "required": true
+      },
+      {
+       "id": "q_witness",
+       "key": "witness",
+       "type": "signature",
+       "label": "Witness",
+       "required": true
+      },
+      {
+       "id": "q_drawn",
+       "key": "drawn",
+       "type": "signature",
+       "label": "Drawn",
+       "required": true
+      },
+      {
+       "id": "q_unticked",
+       "key": "unticked",
+       "type": "signature",
+       "label": "Unticked",
+       "required": true
+      },
+      {
+       "id": "q_early",
+       "key": "early",
+       "type": "signature",
+       "label": "Early",
+       "required": true,
+       "valid_when": "answers.early.time >= report.started",
+       "valid_message": "Sign once the work has started."
+      },
+      {
+       "id": "q_optional",
+       "key": "optional",
+       "type": "signature",
+       "label": "Optional"
+      },
+      {
+       "id": "q_names",
+       "key": "names",
+       "type": "calculated",
+       "label": "Names",
+       "value": "answers.customer.name + \" / \" + answers.witness.name + \" / \" + answers.early.name",
+       "settings": {
+        "result": "text"
+       }
+      },
+      {
+       "id": "q_when",
+       "key": "when",
+       "type": "calculated",
+       "label": "When",
+       "value": "format_date(answers.customer.time, \"d MMMM yyyy, HH:mm\")",
+       "settings": {
+        "result": "text"
+       }
+      },
+      {
+       "id": "q_none",
+       "key": "none",
+       "type": "calculated",
+       "label": "None",
+       "value": "!answers.witness.filled && !has(answers.witness.time) && answers.drawn.name == \"\"",
+       "settings": {
+        "result": "yes_no"
+       }
+      },
+      {
+       "id": "q_note",
+       "key": "note",
+       "type": "text",
+       "label": "Note",
+       "required_when": "!answers.witness.filled"
+      }
+     ]
+    }
+   ],
+   "answers": {
+    "q_customer": {
+     "name": "  Mette Lund ",
+     "confirmed": true,
+     "at": "2026-10-21T10:05:00+02:00"
+    },
+    "q_witness": null,
+    "q_drawn": {
+     "strokes": [
+      [
+       10,
+       10,
+       50,
+       40
+      ]
+     ]
+    },
+    "q_unticked": {
+     "name": "Mette Lund",
+     "confirmed": false,
+     "at": "2026-10-21T08:05:00Z"
+    },
+    "q_early": {
+     "name": "Anders Berg",
+     "confirmed": true,
+     "at": "2026-10-20T08:05:00.250Z"
+    }
+   },
+   "expect": {
+    "hidden": [],
+    "required": [
+     "q_customer",
+     "q_witness",
+     "q_drawn",
+     "q_unticked",
+     "q_early",
+     "q_note"
+    ],
+    "invalid": {
+     "q_early": "Sign once the work has started."
+    },
+    "values": {
+     "customer": {
+      "filled": true,
+      "name": "Mette Lund",
+      "time": "2026-10-21T08:05:00.000Z"
+     },
+     "witness": {
+      "filled": false,
+      "name": "",
+      "time": null
+     },
+     "drawn": {
+      "filled": false,
+      "name": "",
+      "time": null
+     },
+     "unticked": {
+      "filled": false,
+      "name": "",
+      "time": null
+     },
+     "early": {
+      "filled": true,
+      "name": "Anders Berg",
+      "time": "2026-10-20T08:05:00.250Z"
+     },
+     "optional": {
+      "filled": false,
+      "name": "",
+      "time": null
+     },
+     "note": null,
+     "names": "Mette Lund /  / Anders Berg",
+     "when": "21 October 2026, 10:05",
+     "none": true
+    },
+    "defaults": {},
+    "missing": [
+     {
+      "step": "s_signed",
+      "question": "q_witness",
+      "message": "is required."
+     },
+     {
+      "step": "s_signed",
+      "question": "q_drawn",
+      "message": "is required."
+     },
+     {
+      "step": "s_signed",
+      "question": "q_unticked",
+      "message": "is required."
+     },
+     {
+      "step": "s_signed",
+      "question": "q_early",
+      "message": "Sign once the work has started."
+     },
+     {
+      "step": "s_signed",
+      "question": "q_note",
       "message": "is required."
      }
     ],

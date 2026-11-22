@@ -13,6 +13,7 @@ import pytest
 from app.cel import Table
 from app.reports.form import FormState, Missing, answer_problem, cell_problem, evaluate
 from app.templates.content import Question, TemplateContent
+from app.templates.fields import FIELD_TYPES
 
 SHARED = Path(__file__).resolve().parents[2] / "shared"
 CASES = json.loads((SHARED / "reports" / "form.json").read_text())["cases"]
@@ -88,12 +89,9 @@ def test_shared_case(case: dict[str, Any]) -> None:
     json.dumps([state.values, state.defaults], allow_nan=False)
 
 
-def test_the_shared_cases_cover_every_kind_of_question_but_a_signature() -> None:
+def test_the_shared_cases_cover_every_kind_of_question() -> None:
     kinds = {q["type"] for case in CASES for step in case["form"] for q in step["questions"]}
-    assert sorted(kinds) == [
-        "barcode", "calculated", "cvss", "datetime", "dropdown", "email", "file", "heading",
-        "hostname", "ip", "mac", "multi_select", "number", "person", "phone", "photo", "repeating",
-        "rich_text", "secret", "serial", "table", "text", "yes_no"]
+    assert kinds == set(FIELD_TYPES)
 
 
 # What the server has to itself
@@ -142,7 +140,7 @@ EMPTY_VALUES = {
     "person": {"filled": False, **{part: "" for part in (
         "display_name", "first_name", "middle_name", "last_name", "job_title", "department",
         "company", "email", "phone")}},
-    "signed": {"filled": False, "name": "", "time": "1970-01-01T00:00:00.000Z"},
+    "signed": {"filled": False, "name": "", "time": None},
 }
 SIGNED = {"name": "Mette Lund", "confirmed": True, "at": "2026-10-21T08:00:00.000Z"}
 TEXT_WRONG = [5, 2.5, True, [], ["a"], {}, {"a": 1}, "a\x00b", "half \ud83d"]
@@ -166,7 +164,9 @@ WRONG: dict[str, list[Any]] = {
                {"display_name": "a\x00"}, {"first_name": "Freja"}],
     "signed": ["Mette Lund", 5, [], {}, {"strokes": [[1, 2, 3, 4]]}, {**SIGNED, "confirmed": "yes"},
                {**SIGNED, "confirmed": 1}, {**SIGNED, "name": ""}, {**SIGNED, "name": 7},
-               {**SIGNED, "at": "yesterday"}, {**SIGNED, "at": "1970-01-01T00:00:00.000Z"},
+               {**SIGNED, "at": "yesterday"}, {**SIGNED, "at": "2026-10-21T08:00Z"},
+               {**SIGNED, "at": 1792569600}, {**SIGNED, "name": "x" * 201},
+               {**SIGNED, "name": " \u00a0\t"}, {**SIGNED, "name": "Mette\x00"},
                {"name": "Mette Lund", "confirmed": True}],
 }
 
@@ -253,23 +253,31 @@ def test_a_cvss_score_is_worked_out_here_not_taken_from_the_answer() -> None:
 
 
 def test_a_signature_is_a_name_confirmed_at_a_moment() -> None:
-    # The Phase 3 shape. Expressions read whether it's signed today; the name and the
-    # time are ready for when the field type declares them.
     content = one_step(
         ask("q_witness", "witness", "signature", required=True),
-        ask("q_note", "note", "text", required_when="!answers.witness.filled"))
-    signed = {"name": "Mette Lund", "confirmed": True, "at": "2026-10-21T10:05:00+02:00"}
+        ask("q_note", "note", "text", required_when="!answers.witness.filled"),
+        ask("q_reads", "reads", "calculated", settings={"result": "text"},
+            value='answers.witness.name + format_date(answers.witness.time, " (HH:mm)")'))
+    signed = {"name": " Mette Lund ", "confirmed": True, "at": "2026-10-21T10:05:00+02:00"}
     state = evaluate(content, {"q_witness": signed}, sample_context())
-    assert state.values["witness"] == {
-        "filled": True, "name": "Mette Lund", "time": "2026-10-21T08:05:00.000Z"}
+    assert state.values == {
+        "witness": {"filled": True, "name": "Mette Lund", "time": "2026-10-21T08:05:00.000Z"},
+        "note": None, "reads": "Mette Lund (10:05)"}
     assert state.required == ["q_witness"] and state.missing == [] and state.errors == []
-    unsigned = {"filled": False, "name": "", "time": "1970-01-01T00:00:00.000Z"}
+    # As long a name as the form takes, an emoji counting as the two it's kept as.
+    for name, taken in (("x" * 200, True), ("x" * 201, False), ("🙂" * 100, True),
+                        ("🙂" * 100 + "x", False)):
+        state = evaluate(content, {"q_witness": {**signed, "name": name}}, sample_context())
+        assert state.values["witness"]["filled"] is taken, len(name)
+    # Anything else isn't signed: a drawing from the pad this replaced, a name not
+    # confirmed, a moment that isn't one.
+    unsigned = {"filled": False, "name": "", "time": None}
     for answer in (None, {"strokes": [[10, 10, 50, 40]]}, {**signed, "confirmed": False},
                    {**signed, "name": "  "}, {**signed, "at": None}, {"name": "Mette Lund"},
                    "Mette"):
         state = evaluate(content, {"q_witness": answer}, sample_context())
-        assert state.values["witness"] == unsigned, answer
-        assert state.required == ["q_witness", "q_note"]
+        assert state.values["witness"] == unsigned and state.values["reads"] == "", answer
+        assert state.required == ["q_witness", "q_note"] and state.errors == []
         assert [m.question for m in state.missing] == ["q_witness", "q_note"]
     assert evaluate(content, {}, sample_context()).values["witness"] == unsigned
 

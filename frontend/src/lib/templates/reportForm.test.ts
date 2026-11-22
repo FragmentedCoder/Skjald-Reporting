@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import shared from "../../../../shared/reports/form.json";
 import type { Table } from "#lib/cel/library.js";
+import { FIELD_TYPES } from "./fields";
 import { missingAnswers, type Missing } from "./formChecks";
 import { preview, sampleContext } from "./preview";
 import { questionsOf, type Step, type TemplateContent } from "./types";
@@ -55,9 +56,8 @@ describe("a report's form, as the server works it out too", () => {
     });
   });
 
-  it("covers every kind of question but a signature, whose answer changes shape in Phase 3", () => {
+  it("covers every kind of question", () => {
     const kinds = new Set((shared.cases as unknown as Case[]).flatMap((c) => c.form.flatMap((s) => s.questions.map((q) => q.type))));
-    expect([...kinds].sort()).toEqual(["barcode", "calculated", "cvss", "datetime", "dropdown", "email", "file", "heading", "hostname", "ip", "mac",
-      "multi_select", "number", "person", "phone", "photo", "repeating", "rich_text", "secret", "serial", "table", "text", "yes_no"]);
+    expect([...kinds].sort()).toEqual(Object.keys(FIELD_TYPES).sort());
   });
 });

@@ -14,10 +14,9 @@ empty: expressions get the empty value, and a required question counts as not
 answered. Nothing an answer holds can make this raise. Where the browser reads such
 an answer at all, every rule fails there; here the rules still run.
 
-Three things are the server's own. A CVSS answer's score and severity are worked
-out from its vector, not taken from the answer. A whole number must fit the 64 bits
-the engine gives one. And a signature is the Phase 3 kind, a typed name confirmed
-with a tick: {"name", "confirmed": true, "at"}.
+Two things are the server's own. A CVSS answer's score and severity are worked out
+from its vector, not taken from the answer. And a whole number must fit the 64 bits
+the engine gives one.
 """
 
 from __future__ import annotations
@@ -49,11 +48,15 @@ _LISTS = ("repeating", "table")
 _MAX_INT = 2**63 - 1
 # A moment as answers keep it: the browser's toISOString(), or the same with an offset.
 _MOMENT = re.compile(
-    r"([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2})(?::([0-9]{2})(?:\.([0-9]{1,9}))?)?"
+    r"([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2})(?::([0-9]{2})(?:\.([0-9]+))?)?"
     r"(Z|[+-][0-9]{2}:[0-9]{2})")
 # What JavaScript's trim() takes off: a rule that's nothing else isn't a rule, as in
-# the browser.
-_NOTHING = re.compile("[\t\n\v\f\r \xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]*")
+# the browser, and a signature's name is read without it at either end.
+_SPACE = "[\t\n\v\f\r \xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]"
+_NOTHING = re.compile(f"{_SPACE}*")
+_ENDS = re.compile(rf"^{_SPACE}+|{_SPACE}+\Z")
+# The longest name a signature question takes (signature.ts NAME_MAX), counted as there.
+_NAME_MAX = 200
 # How far into a long text's document the words are looked for (app/templates/text.py
 # keeps a real one within 12 levels and 5,000 nodes).
 _DOC_DEPTH = 32
@@ -190,14 +193,21 @@ def _doc_text(doc: Any) -> str | None:
 
 
 def _signed(value: Any) -> tuple[str, datetime] | None:
-    """Who signed a signature question and when, or None while it isn't signed: a name,
-    typed, confirmed with a tick at a moment."""
+    """Who signed a signature question and when, or None when the answer isn't signed
+    (signature.ts signed): a name typed and confirmed with a tick, kept as {"name",
+    "confirmed": true, "at"} with at the moment it was ticked, to the second or finer.
+    Anything else isn't signed, an answer from the drawing pad this replaced included."""
     if not isinstance(value, dict) or value.get("confirmed") is not True:
         return None
-    name, at = _text(value.get("name")), _moment(value.get("at"))
-    if name is None or _NOTHING.fullmatch(name) or at is None or at == EPOCH:
+    name, at = _text(value.get("name")), value.get("at")
+    written = _MOMENT.fullmatch(at) if isinstance(at, str) else None
+    moment = _moment(at) if written is not None and written.group(6) is not None else None
+    if name is None or moment is None:
         return None
-    return name, at
+    typed = _ENDS.sub("", name)
+    if not typed or len(typed.encode("utf-16-le")) // 2 > _NAME_MAX:
+        return None
+    return typed, moment
 
 
 def _kept(question: Question, raw: Any) -> Any:
@@ -282,8 +292,9 @@ def _read(question: Question, kept: Any) -> Any:
         count = len(kept or ())
         return {"filled": count > 0, "count": count}
     if kind == "signature":
-        name, at = _signed(kept) or ("", EPOCH)
-        return {"filled": name != "", "name": name, "time": at}
+        # Not signed, the name is empty and the time is no date, as a date not filled in is.
+        name, at = _signed(kept) or ("", None)
+        return {"filled": at is not None, "name": name, "time": at}
     if kind == "person":
         picked = kept or {}
         parts = {part: _text(picked.get(part)) or "" for part in PERSON_PARTS}
