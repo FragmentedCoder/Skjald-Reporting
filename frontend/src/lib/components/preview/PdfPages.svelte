@@ -45,6 +45,7 @@
     company = "Nordlys IT ApS",
     language = "en",
     selected = null,
+    unsigned = false,
     onselect,
     onplace,
   }: {
@@ -55,6 +56,12 @@
     company?: string;
     language?: "en" | "da";
     selected?: string | null;
+    /**
+     * A real report that nobody has signed yet: where its technician, its reviewer and
+     * the company will sign says "Not signed", as a signature question not signed yet
+     * does. Left out, those places show the sample's signers, as the builder wants.
+     */
+    unsigned?: boolean;
     onselect?: (id: string) => void;
     /** Given, blocks can be dragged on the pages, and the palette's dropped onto them. */
     onplace?: (dropped: Dropped, at: DropAt) => void;
@@ -355,9 +362,10 @@
       {#each b.signers as signer, i (i)}
         <!-- Signed in the form (the stored role "pad"): the name typed there and when it was confirmed, in the look chosen. -->
         {@const typed = signer.role === "pad"}
+        {@const open = typed ? !signer.signed : unsigned}
         {@const name = signer.role === "pad" ? (signer.signed?.name ?? "") : signer.role === "company" ? company : SAMPLE_SIGNERS[signer.role]}
         <figure class="signature">
-          {#if typed && !signer.signed}
+          {#if open}
             <!-- Not signed yet: an empty line saying so. -->
             <div class="hand open"><span class="unsigned">{language === "da" ? "Ikke underskrevet" : "Not signed"}</span></div>
           {:else if signer.style === "stamp"}
@@ -369,7 +377,7 @@
           {:else}
             <div class="hand"><span>{name}</span></div>
           {/if}
-          {#if typed && !signer.signed}
+          {#if open}
             <figcaption><strong>{signer.label}</strong></figcaption>
           {:else}
             <figcaption><strong>{signer.label}</strong>{name}{b.showDate ? ` · ${signedWord} ${signer.signed?.time ?? signedOn}` : ""}</figcaption>
@@ -377,7 +385,7 @@
         </figure>
       {/each}
     </div>
-    {#if b.signers.some((signer) => signer.role !== "pad")}
+    {#if !unsigned && b.signers.some((signer) => signer.role !== "pad")}
       <p class="sample-note">Sample signatures. In the PDF each one is a digital signature that can be checked.</p>
     {/if}
   {:else if b.kind === "columns"}
