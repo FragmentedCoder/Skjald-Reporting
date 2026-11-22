@@ -1,4 +1,18 @@
+<script lang="ts" module>
+  /** What a question needs from the report it's answered in. */
+  export interface InReport {
+    /** Whether this person may see a kept secret: those who write or review the report. */
+    mayReveal: boolean;
+    /**
+     * Asks the server for a kept secret, which takes a fresh confirmation that it's
+     * them. Null when it isn't shown; whoever gives this says why.
+     */
+    reveal: (question: string) => Promise<{ value: string; seconds: number } | null>;
+  }
+</script>
+
 <script lang="ts">
+  import { onDestroy, tick, untrack } from "svelte";
   import Eye from "@lucide/svelte/icons/eye";
   import EyeOff from "@lucide/svelte/icons/eye-off";
   import Plus from "@lucide/svelte/icons/plus";
@@ -12,12 +26,15 @@
   import { keepPhoto } from "#lib/templates/localPhotos.js";
   import { COLUMN_TYPES, settingsOf } from "#lib/templates/fields.js";
   import { peopleFor, type Person } from "#lib/templates/preview.js";
+  import { DOTS, maskedSecret } from "#lib/templates/secrets.js";
   import { NAME_MAX, sign, signed } from "#lib/templates/signature.js";
   import type { Question, RichText } from "#lib/templates/types.js";
 
   // One question as the technician answers it, with its own check as they type. In
   // "Try it", files and photos stay in the browser and a secret is the sample's own.
-  let { question, value = $bindable(), required, hidden, invalid, computed, checked = false, people = [], zone, readonly = false }: {
+  // In a report, a kept secret is never here: only that it's filled in, until someone
+  // who may asks to see it for a moment.
+  let { question, value = $bindable(), required, hidden, invalid, computed, checked = false, people = [], zone, readonly = false, report = null }: {
     question: Question;
     value: unknown;
     required: boolean;
@@ -34,6 +51,8 @@
     zone: string;
     /** Shown to be read, not changed: a report's step someone else holds, or nobody does. */
     readonly?: boolean;
+    /** The report the question is answered in; none in "Try it". */
+    report?: InReport | null;
   } = $props();
 
   const s = $derived(settingsOf(question.type, question.settings));
@@ -67,6 +86,81 @@
     value = answer;
     box.checked = answer !== null;
   }
+
+  // A report's kept secret arrives masked (templates/secrets.ts). It's shown as filled
+  // in; "Replace" gives an empty field, and what's typed there is the answer, sent like
+  // any other. The field stays while it's being typed in, though the save a moment
+  // later brings the answer back masked; once it's left, what was typed is forgotten here.
+  const kept = $derived(report && question.type === "secret" ? maskedSecret(value) : null);
+  let secretDraft = $state<string | null>(null);
+  let secretInput = $state<HTMLInputElement>();
+
+  function typeSecret(text: string) {
+    if (report) secretDraft = text;
+    value = text;
+  }
+
+  async function replace() {
+    hide();
+    showSecret = false;
+    secretDraft = "";
+    await tick();
+    secretInput?.focus();
+  }
+
+  function leaveSecret() {
+    secretDraft = null;
+    showSecret = false;
+  }
+
+  // A kept secret shown on request: here only, for the seconds the server gives, then
+  // forgotten. Sooner when the page is put away, the field goes, or another secret is kept.
+  let revealed = $state<string | null>(null);
+  let revealLeft = $state(0);
+  let revealing = $state(false);
+  let revealTimer: ReturnType<typeof setInterval> | undefined;
+  let here = true;
+
+  function hide() {
+    clearInterval(revealTimer);
+    revealed = null;
+    revealLeft = 0;
+  }
+
+  async function reveal() {
+    if (!report || revealing) return;
+    revealing = true;
+    try {
+      const shown = await report.reveal(question.id);
+      if (!shown || !kept || !here) return;
+      const until = Date.now() + shown.seconds * 1000;
+      revealed = shown.value;
+      revealLeft = shown.seconds;
+      clearInterval(revealTimer);
+      revealTimer = setInterval(() => {
+        revealLeft = Math.ceil((until - Date.now()) / 1000);
+        if (revealLeft <= 0) hide();
+      }, 500);
+    } finally {
+      revealing = false;
+    }
+  }
+
+  onDestroy(() => {
+    here = false;
+    hide();
+  });
+
+  // What's kept changed (saved, replaced by someone, cleared): a value shown belongs to
+  // the secret kept before, and a typed one that's saved and no longer in use is dropped.
+  const keptAs = $derived(kept ? kept.printed : null);
+  $effect(() => {
+    const now = keptAs;
+    untrack(() => {
+      hide();
+      if (now !== null && secretDraft !== null && document.activeElement !== secretInput) leaveSecret();
+    });
+  });
 
   const empty = $derived(value === null || value === undefined || value === "" || (Array.isArray(value) && value.length === 0)
     || (question.type === "cvss" && !(value as { vector?: string } | null)?.vector) || (question.type === "signature" && !signature));
@@ -137,6 +231,8 @@
   {/if}
 {/snippet}
 
+<svelte:document onvisibilitychange={() => { if (document.hidden) hide(); }} />
+
 {#if !hidden}
   {#if question.type === "heading"}
     <h3 class="part">{question.label}</h3>
@@ -196,15 +292,48 @@
           <input class="input mono" aria-labelledby="{id}-label" placeholder="CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
             value={scored?.vector ?? ""} disabled={readonly} oninput={(e) => setCvss(e.currentTarget.value)} spellcheck="false" />
           {#if scored?.vector && !typeProblem}<span class="small">Score {scored.score} · {scored.severity}</span>{/if}
+        {:else if question.type === "secret" && kept && secretDraft === null}
+          <span class="kept">
+            <span class="mono" aria-hidden="true">{DOTS}{DOTS}</span>
+            <span class="small">Filled in. Its value isn't shown.</span>
+          </span>
+          {#if revealed !== null}
+            <input class="input mono" readonly value={revealed} aria-label="{question.label}, shown for a moment" autocomplete="off" spellcheck="false" />
+            <span class="small muted">
+              Hidden again in {revealLeft} second{revealLeft === 1 ? "" : "s"}.
+              <button class="link-button" type="button" onclick={hide}>Hide it now</button>
+            </span>
+          {/if}
+          {#if (report?.mayReveal && revealed === null) || !readonly}
+            <span class="secret-actions">
+              {#if report?.mayReveal && revealed === null}
+                <button class="link-button" type="button" disabled={revealing} onclick={reveal}>Show for 30 seconds</button>
+              {/if}
+              {#if !readonly}<button class="link-button" type="button" onclick={replace}>Replace</button>{/if}
+            </span>
+          {/if}
+          <span class="small muted">
+            {report?.mayReveal ? "Seeing it takes a confirmation that it's you, and each look is logged." : "Only those who write or review this report can see it."}
+          </span>
         {:else if question.type === "secret"}
-          <span class="with-unit">
-            <input class="input mono" type={showSecret ? "text" : "password"} aria-labelledby="{id}-label" autocomplete="off"
-              value={String(value ?? "")} oninput={(e) => (value = e.currentTarget.value)} />
-            <button class="icon" type="button" aria-label={showSecret ? "Hide it" : "Show it"} onclick={() => (showSecret = !showSecret)}>
+          <!-- Left, a typed secret that's kept by now gives way to "Filled in". -->
+          <span class="with-unit" onfocusout={(e) => { if (kept && !e.currentTarget.contains(e.relatedTarget as Node | null)) leaveSecret(); }}>
+            <input bind:this={secretInput} class="input mono" type={showSecret ? "text" : "password"} aria-labelledby="{id}-label" autocomplete="off" disabled={readonly}
+              value={report ? (secretDraft ?? (typeof value === "string" ? value : "")) : String(value ?? "")} oninput={(e) => typeSecret(e.currentTarget.value)} />
+            <button class="icon" type="button" aria-label={showSecret ? "Hide it" : "Show it"} disabled={readonly} onclick={() => (showSecret = !showSecret)}>
               {#if showSecret}<EyeOff size={16} aria-hidden="true" />{:else}<Eye size={16} aria-hidden="true" />{/if}
             </button>
           </span>
-          <span class="small muted">In a report, seeing it again takes a confirmation with multifactor, and each look is logged.</span>
+          {#if kept && secretDraft === ""}
+            <button class="link-button" type="button" onclick={leaveSecret}>Keep the one that's there</button>
+          {/if}
+          <span class="small muted">
+            {report ? "Kept encrypted. Seeing it again takes a confirmation that it's you, and each look is logged."
+              : "In a report, seeing it again takes a confirmation with multifactor, and each look is logged."}
+          </span>
+        {:else if (question.type === "photo" || question.type === "file") && report}
+          <input type="file" aria-labelledby="{id}-label" disabled />
+          <span class="small muted">Files and photos can't be added yet: they come with the next part of Phase 3.</span>
         {:else if question.type === "photo" || question.type === "file"}
           <input type="file" aria-labelledby="{id}-label" accept={question.type === "photo" ? "image/png,image/jpeg" : undefined} multiple={Boolean(s.multiple)} onchange={files} />
           {#if Array.isArray(value) && value.length}
@@ -257,7 +386,8 @@
           <input class="input" class:mono={["ip", "mac", "serial", "hostname"].includes(question.type)} aria-labelledby="{id}-label"
             placeholder={readonly ? "" : String(s.placeholder ?? "")} value={String(value ?? "")} disabled={readonly} oninput={(e) => (value = e.currentTarget.value)}
             spellcheck={question.type === "text"} aria-invalid={problem ? "true" : undefined} />
-          {#if question.type === "barcode"}<span class="small muted">In a report, it's read from a photo of the code.</span>{/if}
+          {#if question.type === "barcode" && !report}<span class="small muted">In a report, it's read from a photo of the code.</span>
+          {:else if question.type === "barcode" && !readonly}<span class="small muted">Type what the code says. Reading it from a photo comes with files and photos.</span>{/if}
         {/if}
         {#if problem}<span class="small message" role="status">{problem}</span>{/if}
       </div>
@@ -299,6 +429,17 @@
     min-width: 0;
   }
   .choices {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-4);
+  }
+  .kept {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-2);
+  }
+  .secret-actions {
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-1) var(--space-4);
