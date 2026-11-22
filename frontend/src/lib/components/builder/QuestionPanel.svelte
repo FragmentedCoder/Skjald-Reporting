@@ -171,7 +171,7 @@
     {:else}
       <p class="small muted">
         {question.type === "signature"
-          ? "No block prints this signature. On the Layout tab, add a Signatures block and choose “A signature pad in the form”, or an Answer block."
+          ? "No block prints this signature. On the Layout tab, add a Signatures block and choose “A signature question in the form”, or an Answer block."
           : "No block prints this answer. Add one on the Layout tab, or use it in text and rules."}
       </p>
     {/if}
